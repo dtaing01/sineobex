@@ -1,4 +1,4 @@
-> Reviewed on Nov 21 against the PRD and against the code as built (`c307a0b`, phase 4 closed) by four reviewers, and revised from the review in two passes, sections 1 to 12 and then section 13 and this top matter: 103 of its 104 findings were applied, in part where the logs give the evidence, and the one that matters only for a small model was not ("What the review found"). No unit is built yet.
+> Reviewed on Nov 21 against the PRD and against the code as built (`c307a0b`, phase 4 closed) by four reviewers, and revised from the review in two passes, sections 1 to 12 and then section 13 and this top matter: 103 of its 104 findings were applied, some in part with the evidence for the rest in the revision's logs, and the one that matters only for a small model was not ("What the review found"). No unit is built yet.
 
 # Phase 5: Admin configuration
 PRD citations are `main.md:<line>` and `build-plan.md:<line>` (the saved copies of the product spec). Code citations are paths at `c307a0b`. "forms" and "lifecycle" with a section number are the two parts of the phase 4 design (`docs/design/phase-4/`).
@@ -781,7 +781,7 @@ Short paths: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`,
 | P1-done-when | X | `vectors/presets-done-when.json` (10.1's steps and names, written before any test that walks them) | P0-install |
 | P1-tests | X | `api-test/presets-pull.test.ts` (`since`, the revision read with the rows in one statement, `reset` and the epoch, archived rows, never a `billing_code_map`, membership, the installer first and its skips logged by count); `api-test/presets-routes.test.ts` (every write's reason kept, shown in the history and never audited; a stale sign-in answered `reauth_required` and not logged; every refusal of 5.1 and 7; a fixed field; `referenced` with its counts; a bag made from the template or from another bag; take as new); `api-test/presets-revision.test.ts` (two writers; a writer that commits between a pull's reads is never skipped; every write takes the lock first); `api-test/presets-audit.test.ts` (each event in its write's transaction, a failed audit rolling the write back; field names only); `api-test/presets-refs.test.ts` (a walk over every kind) | P1-done-when, P0-install, P0-rules, P0-validate |
 | P1-store | T | `api/presets/store.ts` (load references; write a version with its event and reason; archive and restore; `lockTeamWrites` first, then `takeRevision`; the audit event in the same transaction) | P1-tests |
-| P1-pull | T | `api/routes/presets.ts` (`GET /v1/presets`, after the installer), `api/app.ts` (its register line) | P1-store |
+| P1-pull | T | `api/routes/presets.ts` (`GET /v1/presets`, after the installer: `preset.platform_installed` when it wrote, its skips logged by count), `api/app.ts` (its register line) | P1-store |
 | P1-create | T | `api/routes/presets-admin.ts` (the admin list and create, with `recentAuth`), `api/app.ts` (its register line) | P1-pull |
 | P1-edit | T | `api/routes/presets-admin.ts` (edit) | P1-create |
 | P1-archive | T | `api/routes/presets-admin.ts` (archive, restore) | P1-edit |
@@ -789,7 +789,7 @@ Short paths: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`,
 | P1-order | T | `api/routes/presets-admin.ts` (a tier's flag order) | P1-update |
 | P1-permissions | R | `api-test/permissions.test.ts` (a `ROUTES` row for every route of this unit; a stale-sign-in case for every write) | P1-order |
 | P1-contract | R | The generated contract; `packages/contract/test/spec.test.ts` (`{kind}` as the enum of the kinds, on these paths only: 7) | P1-permissions |
-| P1-seed | R | `db/seed/demo-presets.ts` (the demo team's own made-up item, bundle and bag, each named "Demo: …", written as `demo-encounters.ts` writes its visits and stamped with one `takeRevision`), `db/seed/seed.ts`, `db/test/demo-presets.test.ts` (every seeded body passes its schema and `validatePreset`; each version has its event and reason; the revision has no gap; a second run writes nothing) | P0-install |
+| P1-seed | R | `db/seed/demo-presets.ts` (the demo team's own made-up item, bundle and bag, each named "Demo: …", written as `demo-encounters.ts` writes its visits and stamped with one `takeRevision`), `db/seed/seed.ts`, `db/test/demo-presets.test.ts` (every seeded body passes its schema and `validatePreset`; each version has its event, by the seed's made-up author, with a reason; the revision has no gap; a second run writes nothing) | P0-install |
 
 #### P2 The phone's copy (6.1, 8.2's Team setup)
 | Card | Level | Files | Needs |
