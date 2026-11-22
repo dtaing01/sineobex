@@ -1112,6 +1112,19 @@ describe('the admin list (design 7)', () => {
     expect(bags.find((b) => b.id === gone.id)?.state).toBe('archived');
   });
 
+  it('lists a kind by name as a reader sorts names, whatever the database’s collation', async () => {
+    // In code point order, and so under the C collation, "Banana" comes before "apple" and "10"
+    // before "9".
+    const names = ['Demo: apple kit', 'Demo: Banana kit', 'Demo: kit 9', 'Demo: kit 10'];
+    for (const name of [...names].reverse()) await createdPreset(api, 'item', make.item({ name }));
+    const r = await api.list('item');
+    expect(r.status).toBe(200);
+    const listed = (r.body as unknown as { name: string }[]).map((x) => x.name);
+    expect(listed.filter((n) => names.includes(n))).toEqual(names);
+    const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+    expect(listed).toEqual([...listed].sort((a, b) => collator.compare(a, b)));
+  });
+
   it('names no other team’s preset', async () => {
     const r = await api.list('item');
     expect(r.status).toBe(200);

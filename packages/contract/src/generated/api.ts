@@ -1,5 +1,23 @@
 // GENERATED FILE. Do not edit by hand. Regenerate with `pnpm contract:generate`.
 export interface paths {
+    "/v1/admin/presets/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every preset of a kind, archived ones too, with what names each and any update on offer */
+        get: operations["listPresets"];
+        put?: never;
+        /** Add a preset of the team’s own, with a reason (recent sign-in) */
+        post: operations["createPreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/devices": {
         parameters: {
             query?: never;
@@ -1372,6 +1390,20 @@ export interface components {
             reason: string;
             requestedByPatient: boolean;
         };
+        CreatePreset: {
+            /** @description Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets */
+            body?: unknown;
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
+        CreatePresetResult: {
+            /** Format: uuid */
+            id: string;
+            /** @description The team’s revision this write took: a phone’s next pull gets the change */
+            revision: number;
+            /** @enum {number} */
+            version: 1;
+        };
         CreateTeam: {
             name: string;
         };
@@ -2181,6 +2213,32 @@ export interface components {
             /** @description Send as since next time: the greatest revision among presets, else since */
             revision: number;
         };
+        PresetView: {
+            /** @description Its current version’s body, in the shape of @sineobex/presets for its kind */
+            body: {
+                [key: string]: unknown;
+            };
+            /** @description The team edited, archived or restored it: a platform version is then only offered */
+            customized: boolean;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description How many active presets name it, by their kind; only kinds that do. It can’t be archived while any do */
+            referencedBy: {
+                [key: string]: number;
+            };
+            /**
+             * @description An archived preset is offered for no new work
+             * @enum {string}
+             */
+            state: "active" | "archived";
+            /** @description The update changes a field fixed at creation, so it is taken only as a new preset */
+            updateChangesFixed: boolean;
+            /** @description A newer platform version is on offer to take */
+            updateOnOffer: boolean;
+            /** @description Its current version: an edit sends it back */
+            version: number;
+        };
         ProblemNoteView: {
             author: components["schemas"]["UserRef"];
             /** Format: uuid */
@@ -2892,6 +2950,119 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The kind of preset */
+                kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Presets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetView"][];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The kind of preset */
+                kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePreset"];
+            };
+        };
+        responses: {
+            /** @description Created at version 1 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatePresetResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     registerDevice: {
         parameters: {
             query?: never;
