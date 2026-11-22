@@ -186,6 +186,21 @@ describe('openapi.json, patient data in requests and refusals', () => {
       expect(spec.paths[path]?.[method], `${method} ${path}`).toBeDefined();
   });
 
+  it('holds every field a preset write takes required, as its route refuses one left out', async () => {
+    // A preset's body is any JSON value until the store parses it, yet the route refuses one left
+    // out (presets-routes.test.ts), so the contract, and the portal's and the phone's types, must
+    // not let it be left out: an untyped field is otherwise generated as optional.
+    const spec = await loadSpec();
+    const required = (name: string) =>
+      [...((spec.components.schemas[name] as { required?: string[] }).required ?? [])].sort();
+    expect(required('CreatePreset')).toEqual(['body', 'reason']);
+    expect(required('EditPreset')).toEqual(['baseVersion', 'body', 'reason']);
+    expect(required('ArchivePreset')).toEqual(['baseVersion', 'reason']);
+    expect(required('RestorePreset')).toEqual(['reason']);
+    expect(required('TakePresetUpdate')).toEqual(['asNew', 'baseVersion', 'reason']);
+    expect(required('ReorderFlags')).toEqual(['ids', 'reason', 'tier']);
+  });
+
   it('defines every phase 5 preset route, under the name its clients call', async () => {
     // The phone's client names each method after its operation ID (scripts/dart.ts), so renaming
     // one renames what the phone calls.

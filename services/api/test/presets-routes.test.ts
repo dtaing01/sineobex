@@ -533,6 +533,30 @@ describe('a request that is not well formed (design 7)', () => {
     await expectNothingWritten(h, team.teamId, before);
   });
 
+  it('refuses a create or an edit with no body as malformed, naming it, as its contract holds it required', async () => {
+    // Any JSON value reaches the store, which answers 422 invalid for one that is no body of the
+    // kind; one left out is the request's own refusal, as a reason left out is.
+    const { id } = await createdPreset(api, 'flag', make.flag());
+    const sends: [string, () => Promise<Answer>][] = [
+      ['create', () => api.send('POST', '/v1/admin/presets/flag', { reason: REASON })],
+      ['edit', () => api.send('PUT', `/v1/admin/presets/flag/${id}`, { baseVersion: 1, reason: REASON })],
+    ];
+    for (const [act, send] of sends) {
+      const before = await footprint(h, team.teamId);
+      const r = await send();
+      expect(r.status, `${act}: ${JSON.stringify(r.body)}`).toBe(422);
+      expect(errorOf(r).code, act).toBe('validation_failed');
+      expect(errorOf(r).details!.fields, act).toEqual([{ path: 'body', problem: 'invalid_type' }]);
+      await expectNothingWritten(h, team.teamId, before);
+    }
+    // A body that is there but no object is the store's to refuse, with its path.
+    for (const body of [null, 3, 'Demo: not a body']) {
+      const r = await api.create('flag', body);
+      expect(r.status, JSON.stringify(body)).toBe(422);
+      expect(errorOf(r).code, JSON.stringify(body)).toBe('invalid');
+    }
+  });
+
   it('refuses a base version that is not a whole number from 1 as malformed, naming it, never as stale', async () => {
     // As stale, the answer would send the person to reload a preset nobody else changed.
     const body = make.flag();
