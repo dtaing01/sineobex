@@ -483,17 +483,23 @@ The sheet, intake and Needs attention write through one domain class, `apps/mobi
 ## 9. Audit events and the PHI rules
 | Event | Entity, id | Details |
 |---|---|---|
-| `preset.created`, `.updated`, `.archived`, `.restored`, `.platform_update_taken` | `preset`, preset id | `kind`, `version`, `revision`, changed top-level field names; never a value |
+| `preset.created`, `.updated`, `.archived`, `.restored`, `.platform_update_taken` | `preset`, preset id | `kind`, `version`, `revision`, changed top-level field names; never a value, never the reason |
 | `preset.reordered` | `preset`, none | `tier`, count changed |
-| `preset.platform_installed` | `team`, team id | counts of `install`, `update`, `offer` by kind; actor is the system. Note types keep phase 4's `forms.presets_installed` |
-| `note_type.created`, `.published`, `.archived`, `.restored`, `.platform_update_taken` | `note_type`, key | `version`, operation names and count |
-| `patient.flag_changed` | `patient`, patient id | change id, flag id, `action`, tier; never the reason. Written in the change's transaction, from a push and from the route |
-| `access.denied` | as today | permission and route |
+| `preset.platform_installed` | `team`, team id | counts of `install`, `update`, `offer` and skipped entries, by kind; the member whose request ran the installer is the actor, as for phase 4's `forms.presets_installed`, which note types keep |
+| `note_type.created`, `.published`, `.archived`, `.restored`, `.platform_update_taken` | `note_type`, key | `version`, operation names and count; never the reason |
+| `patient_flag.changed` | `patient_flag_change`, the change's id, with the patient | `action`, `tier`, and the flag id only when the flag is not sensitive; never the reason. Written in the change's transaction, from a push and from the route |
+| `patient_flag.entered_in_error` | `patient_flag_change`, the change's id, with the patient | `tier`, and the flag id only when the flag is not sensitive; never a reason |
+| `sync.quarantined` | as today | a held flag change, reason `permission`, as every hold (6.2) |
+| `access.denied` | as today | permission and route; for a flag route refused over a hidden flag, the permission and the patient (D98 as amended) |
 
-- Preset bodies are admin text, not patient data, but an admin can type anything. Audit details carry field names and counts only, and the portal warns under every free-text box (8.1).
-- A flag reason is patient detail. It lives only in `patient_flag_changes` and the phone's encrypted store. It is never in audit details, logs, notices, URLs or page titles.
-- A sensitive flag on a patient is a sensitive detail (`main.md:121`): filtered on the server by `patients.view_sensitive`, in sync reads, the chart read and search.
-- Team setup, `GET /v1/presets` and the note type routes name no patient, so none writes a patient into the audit log (as phase 4's Home counts). The phone's `presets` table and the `presets_revision` key hold no patient data, and nothing derived from a legal name (D40). Platform and seed presets pass the PHI guard; demo additions start "Demo:".
+A stale sign-in (`reauth_required`) is not logged (D98).
+
+- A flag id names its flag to every member, through `GET /v1/presets`, and the audit chain cannot be redacted (D41); a reader of the audit log need not hold `patients.view_sensitive`. So a change of a sensitive flag is logged without its flag id, as phase 3's `problem.created` carries no code.
+- Preset bodies and reasons are admin text, not patient data, but an admin can type anything. Audit details carry field names and counts only. A preset's reason lives only in `team_preset_events`. The portal warns under every free-text box (8.1).
+- A flag change's reason, and an entered-in-error reason, is patient detail. It lives in `patient_flag_changes`, in `field_history` (`storeCreate` writes every created field there), in `quarantine_items` while a change is held, and in the phone's encrypted store. It is never in audit details, logs, notices, URLs or page titles, and an entered-in-error change's reasons are shown only to its author and Program Admins (6.2).
+- A sensitive flag on a patient is a sensitive detail (`main.md:121`), hidden by the one flag rule (6.2) wherever it is read: the sync read, the review queue, a value sent back, the chart, the team index and search.
+- Team setup, `GET /v1/presets` and the note type routes name no patient, so none writes a patient into the audit log (as phase 4's Home counts). The phone's `presets` table and its two keys hold no patient data and nothing derived from a legal name (D40). The installers log counts, never a preset's key.
+- Platform and seed presets pass the PHI guard, which reads `packages/presets/` as a fixture tree as it reads `packages/forms/` (`tools/phi-guard-rules.mjs`); demo additions start "Demo:".
 - A reason and a search by flag travel in POST bodies.
 
 ## 10. Tests
