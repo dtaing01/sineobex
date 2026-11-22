@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useFieldId, useFormState } from '@/components/ActionForm';
+import { answerKey } from '@/components/presets/answer';
 import { ItemLines, type ItemChoice } from '@/components/presets/ItemLines';
 import styles from '@/components/presets/presets.module.css';
 import type { ActionState } from '@/lib/forms';
@@ -52,11 +53,14 @@ export function NewBagMinimums({
           Choosing one fills the minimums below with its list, in place of what they hold. Change them before
           you add the bag, or later.
         </p>
+        {/* Not controlled: React resets a form once its action answers, and a select is reset to
+            the option it started with, so it starts afresh at each answer from what was sent. */}
         <select
           id={id}
           name="copyFrom"
           className={`px-select ${styles.choose}`}
-          value={from}
+          defaultValue={from}
+          key={answerKey(state)}
           aria-describedby={`${id}-hint`}
           onChange={(e) => setChosen({ from: e.target.value, at: state })}
         >
