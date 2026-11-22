@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { expect, test, type Locator } from '@playwright/test';
 import {
   apiCall,
@@ -11,6 +12,7 @@ import {
   setRole,
   signIn,
   staffToken,
+  TEAM,
   watchCsp,
   watchTraffic,
 } from './helpers';
@@ -3680,5 +3682,342 @@ test.describe('bag minimums, /team/presets/bag-minimums', () => {
     // The bags were asked, and refused: nothing else was.
     expect(after).toHaveLength(before + 1);
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Shared on every page (8.1): Sineobex's update, reviewed and taken
+// ------------------------------------------------------------------------------------------------
+
+/** A list row with the update on offer to it, as the admin list answers it (design 7). */
+type Offered<B> = Row<B> & {
+  customized: boolean;
+  update: { platformVersion: number; body: B; changesFixed: string[] } | null;
+};
+
+async function offeredOf<B>(kind: string, id: string): Promise<Offered<B>> {
+  return (await listed<B>(kind)).find((p) => p.id === id) as Offered<B>;
+}
+
+/** The e2e database as the API's own role (playwright.config.ts), for the one write no route makes. */
+const API_DATABASE_URL =
+  process.env.E2E_API_DATABASE_URL ??
+  'postgres://sineobex_api_e2e:e2e-local-only@localhost:5432/sineobex_e2e';
+
+/**
+ * The installer's offer (design 5.2), for a copy of a platform preset: the platform ships version 1
+ * of every entry, so no team is ever offered one in this database. The copy is marked as taken from
+ * no platform version, so the version 1 it was installed from is on offer above it, and the list
+ * answers its body, as taking it would write it, for review. Written as the API's role in the team's
+ * scope, under the team lock, at a revision taken as takeRevision takes one, as 0023 asks of every
+ * head written; with no event, as an offer writes none. A take puts the copy at version 1 again, so
+ * nothing is left on offer, as the other cases of this file and every later spec expect.
+ */
+function offerPlatformVersion(id: string) {
+  const sql = `
+    begin;
+    select set_config('app.team_id', :'team', true);
+    select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || :'team'::uuid::text, 0));
+    with taken as (
+      update sineobex.team_preset_state set revision = revision + 1 where team_id = :'team'::uuid
+      returning team_id, revision)
+    select set_config('app.revision_' || replace(team_id::text, '-', ''), revision::text, true) from taken;
+    update sineobex.team_presets
+    set origin_version = null,
+        revision = current_setting('app.revision_' || replace(:'team', '-', ''))::bigint
+    where team_id = :'team'::uuid and id = :'id'::uuid and origin_key is not null
+    returning 'offered ' || id;
+    commit;`;
+  const out = execFileSync(
+    'psql',
+    [
+      API_DATABASE_URL,
+      '-X',
+      '-q',
+      '-A',
+      '-t',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-v',
+      `team=${TEAM}`,
+      '-v',
+      `id=${id}`,
+    ],
+    { input: sql, encoding: 'utf8' },
+  );
+  expect(out, 'the copy is offered its platform version').toContain(`offered ${id}`);
+}
+
+/** A row of the review: the field, then its value now and in the update, said "Changes" where they differ. */
+async function expectReview(review: Locator, rows: [field: string, now: string, update: string][]) {
+  const shown = review.getByRole('row');
+  await expect(shown).toHaveCount(rows.length + 1);
+  await expect(shown.first().getByRole('columnheader')).toHaveText([
+    'Field',
+    'Your copy now',
+    'Sineobex’s new version',
+  ]);
+  for (const [i, [field, now, update]] of rows.entries()) {
+    const row = shown.nth(i + 1);
+    await expect(row.getByRole('rowheader')).toHaveText(now === update ? field : `${field} Changes`);
+    await expect(row.getByRole('cell')).toHaveText([now, update]);
+  }
+}
+
+test.describe('Sineobex’s update, on an item’s page', () => {
+  const LIST = '/team/presets/items';
+  const ITEM_FIELDS = ['Name', 'Category', 'Counted in', 'Medical', 'Capture lot and expiry', 'Result'];
+
+  test('an update on offer is badged on the hub and the list, reviewed field by field on its page, and taken with a reason once a stale take has shown what is on offer now', async ({
+    page,
+  }) => {
+    test.slow();
+    // A copy of a platform item the team edited, so Sineobex's version is only offered (5.2).
+    const mepilex = await named<ItemBody>('item', 'Mepilex');
+    await changedMeanwhile<ItemBody>('item', mepilex.id, (b) => ({
+      ...b,
+      name: 'Demo: Mepilex border',
+      captureLot: true,
+    }));
+    offerPlatformVersion(mepilex.id);
+    // What is on offer is the platform's version as the team installed it.
+    expect(await offeredOf<ItemBody>('item', mepilex.id)).toMatchObject({
+      version: 2,
+      customized: true,
+      updateOnOffer: true,
+      update: { platformVersion: 1, body: mepilex.body, changesFixed: [] },
+    });
+
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    await portalNav(page).getByRole('link', { name: 'Presets', exact: true }).click();
+    const cards = page.getByRole('main').getByRole('listitem');
+    // Only the area that holds it is badged.
+    await expect(cards.filter({ hasText: 'Update available' })).toHaveCount(1);
+    const card = cards.filter({ has: page.getByRole('heading', { name: 'Items', exact: true }) });
+    await expect(card.getByText('Update available', { exact: true })).toBeVisible();
+    await card.getByRole('link', { name: 'Items', exact: true }).click();
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(1);
+    const entry = page
+      .getByRole('region', { name: 'Supplies', exact: true })
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('link', { name: 'Demo: Mepilex border', exact: true }) });
+    await expect(entry.getByText('Update available', { exact: true })).toBeVisible();
+    await entry.getByRole('link').click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${mepilex.id}$`));
+
+    // Its page offers Sineobex's version, to review before it replaces the team's.
+    const offer = (name: string) => page.getByRole('region', { name: `Update available for ${name}` });
+    const take = (name: string) => page.getByRole('form', { name: `Take Sineobex’s update to ${name}` });
+    await expect(offer('Demo: Mepilex border')).toContainText(
+      'Sineobex updated this preset. Your edited copy hasn’t changed.',
+    );
+    await expect(offer('Demo: Mepilex border')).not.toContainText('Add it as a new one');
+    await expect(take('Demo: Mepilex border').getByRole('button')).toHaveText([
+      'Replace with the new version',
+    ]);
+    await expect(take('Demo: Mepilex border').getByLabel('Reason')).toHaveAccessibleDescription(
+      'Don’t put patient names here.',
+    );
+    const review = (name: string) =>
+      offer(name).getByRole('table', { name: `What taking the update changes in ${name}` });
+    await expect(review('Demo: Mepilex border')).toBeHidden();
+    await offer('Demo: Mepilex border').getByText('Review', { exact: true }).click();
+    const values = (name: string, lot: string): [string, string, string][] =>
+      ITEM_FIELDS.map((field, i) => [
+        field,
+        [name, 'Supplies', 'each', 'No', lot, 'None'][i]!,
+        ['Mepilex', 'Supplies', 'each', 'No', 'No', 'None'][i]!,
+      ]);
+    await expectReview(review('Demo: Mepilex border'), values('Demo: Mepilex border', 'Yes'));
+    await expectAccessible(page, 'An update on offer, reviewed', { inPlace: true });
+    await expectReflow(page, 'An update on offer, reviewed');
+
+    // Another admin edits the copy meanwhile: the take is refused stale, the page is read again, and
+    // the review opens on what taking the update changes now, the reason kept.
+    await changedMeanwhile<ItemBody>('item', mepilex.id, (b) => ({ ...b, name: 'Demo: Mepilex dressing' }));
+    await take('Demo: Mepilex border').getByLabel('Reason').fill('Demo: back to Sineobex’s dressing');
+    await take('Demo: Mepilex border').getByRole('button', { name: 'Replace with the new version' }).click();
+    await expect(take('Demo: Mepilex dressing').getByRole('alert')).toContainText(STALE);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Mepilex dressing');
+    await expect(review('Demo: Mepilex dressing')).toBeVisible();
+    await expectReview(review('Demo: Mepilex dressing'), values('Demo: Mepilex dressing', 'Yes'));
+    await expect(take('Demo: Mepilex dressing').getByLabel('Reason')).toHaveValue(
+      'Demo: back to Sineobex’s dressing',
+    );
+    expect(await offeredOf<ItemBody>('item', mepilex.id)).toMatchObject({ version: 3, updateOnOffer: true });
+    await expectAccessible(page, 'A take refused stale', { inPlace: true });
+    await expectReflow(page, 'A take refused stale');
+
+    // Taken, now that the copy reviewed is the copy held: Sineobex's version, back on the list.
+    await take('Demo: Mepilex dressing')
+      .getByRole('button', { name: 'Replace with the new version' })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}\\?done=updated&preset=${mepilex.id}$`));
+    await expect(page.getByRole('heading', { name: 'Update taken: Mepilex' })).toBeFocused();
+    await expect(page.getByRole('main')).toContainText(
+      'Sineobex’s new version is in place, on the phones after their next sync.',
+    );
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+    expect(await offeredOf<ItemBody>('item', mepilex.id)).toMatchObject({
+      name: 'Mepilex',
+      version: 4,
+      customized: false,
+      updateOnOffer: false,
+      update: null,
+      body: mepilex.body,
+    });
+    expect((await historyOf('item', mepilex.id)).at(-1)).toMatchObject({
+      act: 'update_taken',
+      version: 4,
+      source: 'platform',
+      by: { displayName: 'Alex Rivera (demo)' },
+      reason: 'Demo: back to Sineobex’s dressing',
+    });
+    await expectAccessible(page, 'Items after an update taken');
+
+    // Its page offers nothing now, and its history says who took Sineobex's version, and why.
+    await page
+      .getByRole('region', { name: 'Supplies', exact: true })
+      .getByRole('link', { name: 'Mepilex', exact: true })
+      .click();
+    await expect(page.getByRole('region', { name: /^Update available/ })).toHaveCount(0);
+    const taken = page.getByRole('region', { name: 'History' }).getByRole('row', {
+      name: /Sineobex’s update taken, version 4/,
+    });
+    await expect(taken.getByRole('cell')).toContainText([
+      'Alex Rivera (demo)',
+      'Sineobex’s',
+      'Demo: back to Sineobex’s dressing',
+    ]);
+    await portalNav(page).getByRole('link', { name: 'Presets', exact: true }).click();
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    await expectNothingStored(page, 'An update taken');
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('a stale sign-in sends a take through /reauth and back, taking nothing; once another admin took the update, a take is refused and says nothing is on offer', async ({
+    page,
+  }) => {
+    const aquacel = await named<ItemBody>('item', 'Aquacel');
+    const version = await changedMeanwhile<ItemBody>('item', aquacel.id, (b) => ({
+      ...b,
+      name: 'Demo: Aquacel ribbon',
+    }));
+    offerPlatformVersion(aquacel.id);
+    const here = `${LIST}/${aquacel.id}`;
+    const take = (name: string) => page.getByRole('form', { name: `Take Sineobex’s update to ${name}` });
+
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(here);
+    await take('Demo: Aquacel ribbon').getByLabel('Reason').fill('Demo: an old sign-in');
+    await take('Demo: Aquacel ribbon').getByRole('button', { name: 'Replace with the new version' }).click();
+    await expect(page).toHaveURL(`/reauth?next=${encodeURIComponent(here)}`);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${here}$`));
+    expect(await offeredOf<ItemBody>('item', aquacel.id)).toMatchObject({ version, updateOnOffer: true });
+
+    // Another admin takes it meanwhile: this take is refused, and the page, read again, has nothing
+    // on offer, which the form says beside the refusal.
+    const other = await apiCall(
+      await staffToken('admin@example.com'),
+      'POST',
+      `/v1/admin/presets/item/${aquacel.id}/take-update`,
+      { baseVersion: version, platformVersion: 1, asNew: false, reason: 'Demo: another admin’s take' },
+    );
+    expect(other.status).toBe(200);
+    await take('Demo: Aquacel ribbon').getByLabel('Reason').fill('Demo: Sineobex’s ribbon');
+    await take('Demo: Aquacel ribbon').getByRole('button', { name: 'Replace with the new version' }).click();
+    const gone = page.getByRole('region', { name: 'Sineobex’s update for Aquacel' });
+    await expect(gone.getByRole('alert')).toContainText(STALE);
+    await expect(gone).toContainText('Nothing is on offer for this now.');
+    await expect(gone.getByRole('button')).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aquacel');
+    await expectAccessible(page, 'A take refused once the update has gone', { inPlace: true });
+    expect(await offeredOf<ItemBody>('item', aquacel.id)).toMatchObject({
+      version: version + 1,
+      updateOnOffer: false,
+      body: aquacel.body,
+    });
+    expect((await historyOf('item', aquacel.id)).filter((e) => e.act === 'update_taken')).toHaveLength(1);
+    await expectNothingStored(page, 'A take refused once the update has gone');
+    expectOnlyIds(traffic.addresses);
+  });
+});
+
+test.describe('Sineobex’s update, on a flag the team ranked', () => {
+  test('the review shows the place in its list that taking the update gives back, and the flag takes that place', async ({
+    page,
+  }) => {
+    test.slow();
+    // The team moves a platform condition to the end of its list, so its rank is the team's own.
+    const before = await tierOf('secondary');
+    const flag = before.find((f) => f.name === 'Dehydration risk')!;
+    const order = [...before.filter((f) => f.id !== flag.id), flag];
+    const moved = await apiCall(
+      await staffToken('admin@example.com'),
+      'POST',
+      '/v1/admin/preset-order/flag',
+      {
+        tier: 'secondary',
+        flags: order.map((f) => ({ id: f.id, baseVersion: f.version })),
+        reason: 'Demo: little dehydration this month',
+      },
+    );
+    expect(moved.status).toBe(200);
+    const ranked = await offeredOf<FlagBody>('flag', flag.id);
+    offerPlatformVersion(flag.id);
+    const { update } = await offeredOf<FlagBody>('flag', flag.id);
+    expect(update).toMatchObject({ platformVersion: 1, changesFixed: [] });
+    expect(update!.body.rank).not.toBe(ranked.body.rank);
+
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto('/team/presets/flags');
+    const last = page.getByRole('region', { name: 'Conditions', exact: true }).getByRole('listitem').last();
+    await expect(last.getByRole('link')).toHaveText(pillOf(ranked));
+    await expect(last.getByText('Update available', { exact: true })).toBeVisible();
+    await last.getByRole('link').click();
+    await expect(page).toHaveTitle('Flag · Sineobex');
+
+    const offer = page.getByRole('region', { name: `Update available for ${flag.name}` });
+    await offer.getByText('Review', { exact: true }).click();
+    const said = (criteria: string) => criteria || 'None';
+    await expectReview(offer.getByRole('table', { name: `What taking the update changes in ${flag.name}` }), [
+      ['Name', ranked.name, update!.body.name],
+      ['List', 'Conditions', 'Conditions'],
+      ['Criteria', said(ranked.body.criteria), said(update!.body.criteria)],
+      ['Colour', COLOUR_NAMES[ranked.body.color]!, COLOUR_NAMES[update!.body.color]!],
+      ['Place in its list (lowest first)', String(ranked.body.rank), String(update!.body.rank)],
+      ['Sensitive', 'No', 'No'],
+    ]);
+    await expectAccessible(page, 'A flag’s update, reviewed', { inPlace: true });
+    await expectReflow(page, 'A flag’s update, reviewed');
+
+    const take = page.getByRole('form', { name: `Take Sineobex’s update to ${flag.name}` });
+    await take.getByLabel('Reason').fill('Demo: Sineobex’s order again');
+    await take.getByRole('button', { name: 'Replace with the new version' }).click();
+    await expect(page).toHaveURL(new RegExp(`/team/presets/flags\\?done=updated&preset=${flag.id}$`));
+    await expect(page.getByRole('heading', { name: `Update taken: ${flag.name}` })).toBeFocused();
+    expect(await offeredOf<FlagBody>('flag', flag.id)).toMatchObject({
+      customized: false,
+      updateOnOffer: false,
+      update: null,
+      body: update!.body,
+    });
+    // It is where the platform's rank puts it; a flag the team ranked the same is ordered by name.
+    const after = await tierOf('secondary');
+    await expect(
+      page.getByRole('region', { name: 'Conditions', exact: true }).getByRole('listitem').getByRole('link'),
+    ).toHaveText(after.map(pillOf));
+    expect(after.at(-1)!.id).not.toBe(flag.id);
+    await expectNothingStored(page, 'A flag’s update taken');
+    expectOnlyIds(traffic.addresses);
   });
 });
