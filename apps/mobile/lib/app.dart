@@ -31,6 +31,7 @@ import 'features/patients/patient_screen.dart';
 import 'features/patients/patient_widgets.dart' show IntakeStart, TypedDetails;
 import 'features/patients/patients_screen.dart';
 import 'features/patients/problem_screen.dart';
+import 'features/presets/team_setup_screen.dart';
 import 'features/sign_in/sign_in_screens.dart';
 import 'features/sync/needs_attention_screen.dart';
 import 'security/idle_lock.dart';
@@ -167,6 +168,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: queueLocation(act),
           builder: (_, _) => QueueScreen(act: act),
         ),
+      // Home's row under the tiles (phase 5 design 8.2): the team's presets, read only.
+      GoRoute(path: teamSetupLocation, builder: (_, _) => const TeamSetupScreen()),
       // A note's form, or its read view once finished (9.5, 9.7). The section to open, the summary's
       // jump (9.6), is a section's ID and travels in `extra`, never in the location.
       GoRoute(

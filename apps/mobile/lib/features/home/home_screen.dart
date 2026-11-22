@@ -10,6 +10,7 @@ import '../../design/tokens.dart';
 import '../../patients/patient_providers.dart';
 import '../encounters/home_tiles.dart';
 import '../patients/patient_labels.dart' show ago;
+import '../presets/team_setup_screen.dart' show TeamSetupRow;
 import '../sync/sign_out_dialog.dart';
 import '../sync/sync_cards.dart';
 
@@ -56,6 +57,12 @@ class HomeScreen extends ConsumerWidget {
               ],
               // Phase 4 (lifecycle 9.9): notes to finish and the queues, under Needs attention.
               const EncounterTiles(),
+              // Phase 5 (design 8.2): the team's setup, under the tiles. Nothing of the team's shows
+              // while it is handed over.
+              if (snapshot.open && snapshot.frozen == null) ...[
+                const TeamSetupRow(),
+                const SizedBox(height: FieldSpace.s4),
+              ],
               if (snapshot.open) ...[
                 SyncStatusCard(snapshot: snapshot, onSyncNow: () => unawaited(sync.syncNow())),
                 if (index != null && index.eligible) ...[
