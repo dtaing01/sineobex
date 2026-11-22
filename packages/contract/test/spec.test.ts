@@ -8,6 +8,7 @@ interface Schema {
   pattern?: string;
 }
 interface Operation {
+  operationId?: string;
   parameters?: { in: string; name: string; schema?: Schema }[];
   responses?: Record<string, unknown>;
 }
@@ -128,6 +129,17 @@ describe('openapi.json, patient data in requests and refusals', () => {
     expect(bad).toEqual([]);
   });
 
+  it('takes a preset’s kind on exactly the admin preset paths, as the enum of the kinds', async () => {
+    // The list names only paths that take a kind, so no later route takes the exception unasked.
+    const spec = await loadSpec();
+    const taken = new Set<string>();
+    for (const [path, item] of Object.entries(spec.paths))
+      for (const op of Object.values(item))
+        for (const p of op.parameters ?? [])
+          if (p.in === 'path' && isPresetKind(path, p.name, p.schema ?? {})) taken.add(path);
+    expect([...taken].sort()).toEqual([...PRESET_KIND_PATHS].sort());
+  });
+
   it('never carries a chart value, a summary or a token in a 409', async () => {
     // A 409 is thrown inside the transaction and rolls its audit event back, so it discloses
     // codes, IDs and versions only; the client re-reads through the audited GET.
@@ -172,5 +184,24 @@ describe('openapi.json, patient data in requests and refusals', () => {
     ];
     for (const [method, path] of routes)
       expect(spec.paths[path]?.[method], `${method} ${path}`).toBeDefined();
+  });
+
+  it('defines every phase 5 preset route, under the name its clients call', async () => {
+    // The phone's client names each method after its operation ID (scripts/dart.ts), so renaming
+    // one renames what the phone calls.
+    const spec = await loadSpec();
+    const routes: [string, string, string][] = [
+      ['get', '/v1/presets', 'pullPresets'],
+      ['get', '/v1/admin/presets/{kind}', 'listPresets'],
+      ['post', '/v1/admin/presets/{kind}', 'createPreset'],
+      ['put', '/v1/admin/presets/{kind}/{id}', 'editPreset'],
+      ['post', '/v1/admin/presets/{kind}/{id}/archive', 'archivePreset'],
+      ['post', '/v1/admin/presets/{kind}/{id}/restore', 'restorePreset'],
+      ['post', '/v1/admin/presets/{kind}/{id}/take-update', 'takePresetUpdate'],
+      ['get', '/v1/admin/presets/{kind}/{id}/history', 'getPresetHistory'],
+      ['post', '/v1/admin/preset-order/flag', 'reorderFlags'],
+    ];
+    for (const [method, path, operationId] of routes)
+      expect(spec.paths[path]?.[method]?.operationId, `${method} ${path}`).toBe(operationId);
   });
 });
