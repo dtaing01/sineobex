@@ -6,6 +6,7 @@ import { answerKey } from '@/components/presets/answer';
 import { FixedFact } from '@/components/presets/FixedFact';
 import { FreeText } from '@/components/presets/FreeText';
 import styles from '@/components/presets/presets.module.css';
+import { TextList } from '@/components/presets/TextList';
 import type { LabResult } from '@/lib/presets';
 
 /**
@@ -80,128 +81,22 @@ export function CategorySelect({
 const RESULT_HINT =
   'Only an item in a category that holds tests records a result. What kind of result it records can’t be changed later.';
 
-/** The options of a result that is a choice: the API takes 2 to 12, and the form offers no more. */
-const MOST_OPTIONS = 12;
-
-interface Option {
-  key: number;
-  text: string;
-}
-
-let nextKey = 0;
-const optionOf = (text: string): Option => ({ text, key: nextKey++ });
-
-/** The options a refused form sent, from the values it came back with; null when it sent none. */
-function sentOptions(values: Record<string, string> | undefined): string[] | null {
-  const count = Number(values?.['result.options.count']);
-  if (!values || !Number.isInteger(count) || count < 0) return null;
-  return Array.from({ length: count }, (_, i) => values[`result.options.${i}`] ?? '');
-}
-
 /**
- * The answers a test's result is chosen from, one box each, with Add an option and Take out. A
- * refused form keeps the options it sent; a saved one starts from what is stored.
+ * The answers a test's result is chosen from, one box each, with Add an option and Take out: the
+ * API takes 2 to 12, and the form offers no more. A refused form keeps the options it sent; a saved
+ * one starts from what is stored.
  */
 function OptionList({ stored }: { stored: readonly string[] }) {
-  const state = useFormState();
-  const sent = sentOptions(state.values);
-  const start = sent ?? stored;
-  return <Options key={JSON.stringify([sent ? 'sent' : 'stored', start])} start={start} />;
-}
-
-function Options({ start }: { start: readonly string[] }) {
-  const state = useFormState();
-  const [options, setOptions] = useState<Option[]>(() => start.map(optionOf));
-  const id = useFieldId('result.options');
-  const error = state.fieldErrors?.['result.options'];
   return (
-    <fieldset
-      id={id}
-      className={`px-fieldset ${styles.group}`}
-      tabIndex={-1}
-      aria-describedby={[`${id}-hint`, error ? `${id}-error` : null].filter(Boolean).join(' ')}
-    >
-      <legend>Options</legend>
-      <p id={`${id}-hint`} className="sx-help">
-        The answers staff choose from, such as Positive and Negative: 2 to 12 of them.
-      </p>
-      {error && (
-        <p id={`${id}-error`} className="sx-help sx-help--error">
-          {error}
-        </p>
-      )}
-      <input type="hidden" name="result.options.count" value={options.length} />
-      <ol className={styles.lines}>
-        {options.map((option, i) => (
-          <li key={option.key}>
-            <OptionBox
-              index={i}
-              text={option.text}
-              warning={`${id}-warning`}
-              onTakeOut={() => setOptions((now) => now.filter((o) => o.key !== option.key))}
-            />
-          </li>
-        ))}
-      </ol>
-      <p id={`${id}-warning`} className="sx-help">
-        Don’t put patient names here.
-      </p>
-      {options.length < MOST_OPTIONS && (
-        <div className="px-actions">
-          <button
-            type="button"
-            className="sx-btn sx-btn--secondary"
-            onClick={() => setOptions((now) => [...now, optionOf('')])}
-          >
-            Add an option
-          </button>
-        </div>
-      )}
-    </fieldset>
-  );
-}
-
-function OptionBox({
-  index,
-  text,
-  warning,
-  onTakeOut,
-}: {
-  index: number;
-  text: string;
-  warning: string;
-  onTakeOut: () => void;
-}) {
-  const state = useFormState();
-  const name = `result.options.${index}`;
-  const id = useFieldId(name);
-  const error = state.fieldErrors?.[name];
-  return (
-    <div className={styles.line}>
-      <div className={`px-field ${styles.item}`}>
-        <label htmlFor={id}>Option {index + 1}</label>
-        {error && (
-          <p id={`${id}-error`} className="sx-help sx-help--error">
-            {error}
-          </p>
-        )}
-        <div className={`sx-input${error ? ' sx-input--error' : ''}`}>
-          <input
-            id={id}
-            name={name}
-            type="text"
-            autoComplete="off"
-            size={10}
-            defaultValue={text}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={[error ? `${id}-error` : null, warning].filter(Boolean).join(' ')}
-          />
-        </div>
-      </div>
-      <button type="button" className="sx-btn sx-btn--ghost" onClick={onTakeOut}>
-        Take out option {index + 1}
-      </button>
-    </div>
+    <TextList
+      name="result.options"
+      legend="Options"
+      hint="The answers staff choose from, such as Positive and Negative: 2 to 12 of them."
+      entry="Option"
+      addLabel="Add an option"
+      stored={stored}
+      max={12}
+    />
   );
 }
 

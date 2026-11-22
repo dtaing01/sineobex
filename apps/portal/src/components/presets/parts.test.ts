@@ -12,6 +12,7 @@ import { PresetNotice } from './PresetNotice';
 import { ReasonBox } from './ReasonBox';
 import { RemovedList, RestorePresetForm } from './RemovedList';
 import { RemoveForm, RemovePresetForm } from './RemoveForm';
+import { TextList, type TextListProps } from './TextList';
 
 // The parts every preset page places (phase 5 design 8.1), as a page first draws them: an
 // end-to-end test reaches them through the pages that place them. Every name is made up.
@@ -310,6 +311,42 @@ describe('item lines', () => {
     expect(inForm(createElement(ItemLines, { ...bundle, lines: [] }))).toContain(
       '<p class="sx-help">None yet.</p>',
     );
+  });
+});
+
+describe('a list of short texts', () => {
+  const codes: TextListProps = {
+    name: 'codes',
+    legend: 'Condition codes',
+    hint: 'Demo: what a code looks like.',
+    entry: 'Condition code',
+    addLabel: 'Add a code',
+    stored: ['R21', 'L30.9'],
+    max: 20,
+  };
+
+  it('draws a box for each, posted at the body’s own paths, each named by its place', () => {
+    const html = inForm(createElement(TextList, codes));
+    expect(html).toContain('<legend>Condition codes</legend>');
+    expect(html).toContain('<input type="hidden" name="codes.count" value="2"/>');
+    expect(html).toContain('<label for="f-codes.0">Condition code 1</label>');
+    const second = tagOf(html, 'f-codes.1');
+    for (const attribute of ['name="codes.1"', 'type="text"', 'autoComplete="off"', 'value="L30.9"'])
+      expect(second).toContain(attribute);
+    expect(html).toContain('Take out condition code 2</button>');
+    expect(html).toContain('Add a code</button>');
+  });
+
+  it('reads its hint with the group, and the warning with each box', () => {
+    const html = inForm(createElement(TextList, codes));
+    expect(tagOf(html, 'f-codes')).toContain('aria-describedby="f-codes-hint"');
+    expect(html).toContain('<p id="f-codes-hint" class="sx-help">Demo: what a code looks like.</p>');
+    expect(tagOf(html, 'f-codes.0')).toContain('aria-describedby="f-codes-warning"');
+    expect(html).toContain('<p id="f-codes-warning" class="sx-help">Don’t put patient names here.</p>');
+  });
+
+  it('offers no Add at its most', () => {
+    expect(inForm(createElement(TextList, { ...codes, max: 2 }))).not.toContain('Add a code');
   });
 });
 
