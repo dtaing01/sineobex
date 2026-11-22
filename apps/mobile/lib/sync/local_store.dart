@@ -447,6 +447,10 @@ const serverCopyLifetime = Duration(hours: 24);
 /// The keys of the team index's bookkeeping in `kv` (section 6), cleared with the index.
 const indexKvPrefix = 'index.';
 
+/// The keys of the presets copy's bookkeeping in `kv` (phase 5 design 6.1: its revision, its epoch,
+/// when it was last written), cleared with the copy.
+const presetsKvPrefix = 'presets.';
+
 final _noteTypeKey = RegExp(r'^[a-z][a-z0-9_]{1,60}$');
 
 /// SyncChange.field's limit in the API. A longer field fails the whole push.
@@ -2955,8 +2959,10 @@ class LocalStore {
   /// patient with waiting work and the chart that holds them; and the charts no local work is
   /// about, with their search names and ID links. A chart local work keeps stays whole, its names
   /// and redirect included, as in the purge: the worker must still find offline the patient whose
-  /// work waits. Never an outbox entry. Called at sign-out, at the index's 7-day expiry, on a 403
-  /// for the index, and first at open when the file was marked stale.
+  /// work waits. The team's presets go too, with every key of their bookkeeping, so the next pull
+  /// sends no revision and is answered everything (phase 5 design 6.1). Never an outbox entry.
+  /// Called at sign-out, at the index's 7-day expiry, on a 403 for the index, and first at open
+  /// when the file was marked stale.
   void clearServerData() {
     _tx(() {
       final work = localWorkPatients();
@@ -2991,7 +2997,9 @@ class LocalStore {
       }
       _db
         ..execute('DELETE FROM cache_scopes')
-        ..execute("DELETE FROM kv WHERE key LIKE '$indexKvPrefix%'");
+        ..execute("DELETE FROM kv WHERE key LIKE '$indexKvPrefix%'")
+        ..execute('DELETE FROM presets')
+        ..execute("DELETE FROM kv WHERE key LIKE '$presetsKvPrefix%'");
     });
   }
 }

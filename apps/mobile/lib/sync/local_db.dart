@@ -18,7 +18,7 @@ class LocalDatabase {
   final Database db;
   final String path;
 
-  static const schemaVersion = 2;
+  static const schemaVersion = 3;
 
   /// The oldest SQLite whose FTS5 has the `secure-delete` option (3.42). Without it a deleted
   /// name's trigrams stay in the search table's segments on disk (D29), so v2 refuses to run.
@@ -109,6 +109,7 @@ class LocalDatabase {
       }
       _step(db, _v2, 2);
     }
+    if (version < 3 && target >= 3) _step(db, _v3, 3);
   }
 
   static void _step(Database db, String sql, int version) {
@@ -302,5 +303,21 @@ CREATE TABLE local_notices (
   field      TEXT,
   created_at INTEGER NOT NULL,
   read_at    INTEGER
+);
+''';
+
+/// Phase 5 (admin configuration), additive: a phase 3 or 4 file keeps every row.
+const _v3 = '''
+-- The team's presets (phase 5 design 6.1): server data that names no patient, each preset at its
+-- current version, archived ones kept for their names. A pull puts each by its id, or replaces the
+-- table on a reset; the revision and epoch it was pulled at are kv keys under 'presets.', and all
+-- of it goes with the team's other server copies (LocalStore.clearServerData).
+CREATE TABLE presets (
+  kind       TEXT NOT NULL,
+  id         TEXT PRIMARY KEY,
+  version    INTEGER NOT NULL,
+  state      TEXT NOT NULL CHECK (state IN ('active', 'archived')),
+  origin_key TEXT,
+  body_json  TEXT NOT NULL
 );
 ''';
