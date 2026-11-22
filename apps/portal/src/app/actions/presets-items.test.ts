@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Api from '@/lib/api';
 import type { ActionState } from '@/lib/forms';
-import { addItemAction } from './presets-items';
+import { addItemAction, saveItemAction } from './presets-items';
 
 // Adding an item and editing one (phase 5 design 4.4, 5.1, 7, 8.1), as the Items pages' forms send
 // them. The API is a stand-in that records each request and answers it by its method: the list
@@ -214,5 +214,163 @@ describe('adding an item', () => {
     answer = refusal(403, 'reauth_required');
     expect((await run(addItemAction, fields)).to).toBe('/reauth?next=%2Fteam%2Fpresets%2Fitems');
     expect(revalidated).toEqual([]);
+  });
+});
+
+describe('editing an item', () => {
+  const SOCKS = '30f00000-0000-4000-8000-000000000004';
+  const row = (body: Record<string, unknown>, version = 2) => ({
+    id: SOCKS,
+    name: body.name,
+    state: 'active',
+    version,
+    customized: true,
+    updateOnOffer: false,
+    updateChangesFixed: false,
+    update: null,
+    referencedBy: { bundle: 1 },
+    body,
+  });
+  const socks = {
+    name: 'Demo: Wool socks',
+    categoryId: SUPPLIES,
+    unit: 'pair',
+    medical: false,
+    captureLot: false,
+    result: null,
+  };
+  const fields = {
+    id: SOCKS,
+    baseVersion: '2',
+    name: 'Demo: Warm socks ',
+    categoryId: SUPPLIES,
+    captureLot: 'on',
+    reason: 'Demo: we record the lot now',
+  };
+  const writes = () => requests.filter((r) => r.method !== 'GET');
+
+  beforeEach(() => {
+    pathname = `/team/presets/items/${SOCKS}`;
+    listed = [row(socks)];
+    answer = { status: 200, body: { version: 3, revision: 9 } };
+  });
+
+  it('sends the item as the API holds it with the form’s fields over it, at the version shown', async () => {
+    const r = await run(saveItemAction, fields);
+    expect(writes()).toEqual([
+      {
+        method: 'PUT',
+        path: '/v1/admin/presets/{kind}/{id}',
+        init: {
+          params: { path: { kind: 'item', id: SOCKS } },
+          body: {
+            baseVersion: 2,
+            // What it is counted in, and that it records no result, are the API's: fixed (4.4).
+            body: { ...socks, name: 'Demo: Warm socks', captureLot: true },
+            reason: 'Demo: we record the lot now',
+          },
+        },
+      },
+    ]);
+    expect(r.state).toEqual({
+      ok: true,
+      message: 'Saved: Demo: Warm socks. It’s on the phones after their next sync.',
+    });
+    expect(revalidated).toEqual([`/team/presets/items/${SOCKS}`, '/team/presets/items']);
+  });
+
+  it('keeps every field of the body the form doesn’t show, and never what it is counted in from the form', async () => {
+    listed = [row({ ...socks, icon: 'sock' })];
+    await run(saveItemAction, { ...fields, unit: 'dozen' });
+    expect(sentBody()).toEqual({ ...socks, name: 'Demo: Warm socks', captureLot: true, icon: 'sock' });
+  });
+
+  it('sends a test’s options or a number’s unit as typed, the kind of result the API’s', async () => {
+    listed = [
+      row({
+        ...socks,
+        categoryId: LABS,
+        medical: true,
+        result: { type: 'choice', options: ['Positive', 'Negative'] },
+      }),
+    ];
+    await run(saveItemAction, {
+      ...fields,
+      categoryId: LABS,
+      medical: 'on',
+      'result.type': 'number',
+      'result.options.count': '3',
+      'result.options.0': 'Positive',
+      'result.options.1': ' Negative',
+      'result.options.2': 'Unclear ',
+    });
+    expect(sentBody(0).result).toEqual({ type: 'choice', options: ['Positive', 'Negative', 'Unclear'] });
+    listed = [row({ ...socks, categoryId: LABS, medical: true, result: { type: 'number', unit: 'mg/dL' } })];
+    await run(saveItemAction, { ...fields, categoryId: LABS, medical: 'on', 'result.unit': ' mmol/L ' });
+    expect(sentBody(1).result).toEqual({ type: 'number', unit: 'mmol/L' });
+    // A form that sent none of them leaves the result as it is.
+    await run(saveItemAction, { ...fields, categoryId: LABS, medical: 'on' });
+    expect(sentBody(2).result).toEqual({ type: 'number', unit: 'mg/dL' });
+  });
+
+  it('says in 8.1’s words that Non-Medical bundles hold an item moved into a medication category', async () => {
+    answer = refusal(409, 'bundle_not_medical', { bundles: 1 });
+    const r = await run(saveItemAction, { ...fields, categoryId: LABS, medical: 'on' });
+    expect(r.state).toEqual({
+      error:
+        'Non-Medical bundles hold this item, and a bundle that holds a medication must be Medical. Make them Medical first.',
+      values: { ...fields, categoryId: LABS, medical: 'on' },
+    });
+    expect(revalidated).toEqual([]);
+  });
+
+  it('says a move into or out of Labs beside the result it would change', async () => {
+    answer = refusal(422, 'invalid', { problems: [{ path: 'result', code: 'result_mismatch' }] });
+    expect((await run(saveItemAction, { ...fields, categoryId: LABS })).state?.fieldErrors).toEqual({
+      result: 'Result: An item records a result exactly when its category holds tests.',
+    });
+  });
+
+  it('says someone else changed it, keeps what was typed, and leaves the page as it is', async () => {
+    answer = refusal(409, 'stale', { currentVersion: 3 });
+    const r = await run(saveItemAction, fields);
+    expect(r.state).toEqual({
+      error: 'Someone else changed this while you were editing. Reload to see their version.',
+      values: fields,
+    });
+    expect(revalidated).toEqual([]);
+  });
+
+  it('says nothing was changed, and a removed item was removed', async () => {
+    answer = refusal(422, 'no_change');
+    expect((await run(saveItemAction, fields)).state?.error).toBe('You haven’t changed anything.');
+    answer = refusal(409, 'archived');
+    expect((await run(saveItemAction, fields)).state?.error).toBe('This was removed. Restore it first.');
+  });
+
+  it('says an item no longer on the list isn’t, and asks nothing more', async () => {
+    listed = [];
+    const r = await run(saveItemAction, fields);
+    expect(r.state?.error).toBe(
+      'This isn’t on your team’s list. Reload the page to see the list as it is now.',
+    );
+    expect(writes()).toEqual([]);
+  });
+
+  it('asks nothing of the API for a form the page doesn’t write', async () => {
+    for (const bad of [
+      { ...fields, id: 'not-an-id' },
+      { ...fields, baseVersion: '' },
+      { ...fields, baseVersion: '1.5' },
+    ])
+      expect((await run(saveItemAction, bad)).state?.error).toBe('This can’t be found. Reload the page.');
+    expect(requests).toEqual([]);
+  });
+
+  it('goes through /reauth and back to the item’s page when the sign-in is too old', async () => {
+    answer = refusal(403, 'reauth_required');
+    expect((await run(saveItemAction, fields)).to).toBe(
+      `/reauth?next=${encodeURIComponent(`/team/presets/items/${SOCKS}`)}`,
+    );
   });
 });

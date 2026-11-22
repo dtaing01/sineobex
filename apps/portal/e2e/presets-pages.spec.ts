@@ -594,6 +594,28 @@ async function named<B>(kind: string, name: string): Promise<Row<B>> {
   return row!;
 }
 
+/** A preset made as another admin would make it; its ID. */
+async function made(kind: string, body: Record<string, unknown>): Promise<string> {
+  const res = await apiCall(await staffToken('admin@example.com'), 'POST', `/v1/admin/presets/${kind}`, {
+    body,
+    reason: 'Demo: set up for a test',
+  });
+  expect(res.status, `${kind} ${String(body.name)}`).toBe(201);
+  return ((await res.json()) as { id: string }).id;
+}
+
+/** Another admin's edit, at the version the preset is at now; its new version. */
+async function changedMeanwhile<B>(kind: string, id: string, change: (body: B) => B): Promise<number> {
+  const now = (await listed<B>(kind)).find((p) => p.id === id)!;
+  const res = await apiCall(await staffToken('admin@example.com'), 'PUT', `/v1/admin/presets/${kind}/${id}`, {
+    baseVersion: now.version,
+    body: change(now.body),
+    reason: 'Demo: another admin’s change',
+  });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { version: number }).version;
+}
+
 // As the API sorts names (routes/presets-admin.ts), and the pages after it.
 const byName = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 
@@ -602,6 +624,23 @@ const byPlace = (rows: Row<CategoryBody>[]) =>
   rows
     .filter((c) => c.state === 'active')
     .sort((a, b) => a.body.sort - b.body.sort || byName.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
+
+/** "Still used by 1 bundle and 1 bag", as a list row counts what names a preset. */
+const usedByOf = (referencedBy: Record<string, number>) => {
+  const nouns: Record<string, [string, string]> = {
+    bundle: ['bundle', 'bundles'],
+    field_supply_map: ['mapping', 'mappings'],
+    condition_supply_map: ['condition mapping', 'condition mappings'],
+    bag: ['bag', 'bags'],
+  };
+  const parts = Object.keys(nouns)
+    .filter((k) => (referencedBy[k] ?? 0) > 0)
+    .map((k) => `${referencedBy[k]} ${referencedBy[k] === 1 ? nouns[k]![0] : nouns[k]![1]}`);
+  if (referencedBy.settings) parts.push('the template for new bags');
+  return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+};
+
+const STALE = 'Someone else changed this while you were editing. Reload to see their version.';
 
 /** A stale sign-in for the admin: their next write goes through /reauth. */
 async function staleSignIn() {
@@ -870,6 +909,355 @@ test.describe('items, /team/presets/items', () => {
     );
     const after = await deniedOf('clinician@example.com');
     // The items were asked, and refused: the categories never were.
+    expect(after).toHaveLength(before + 1);
+    expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// An item's own page (8.1): its form, Remove and Restore, and its history
+// ------------------------------------------------------------------------------------------------
+
+test.describe('an item, /team/presets/items/[id]', () => {
+  const LIST = '/team/presets/items';
+
+  /** An item of the team's own in a category, as another admin would add it; its ID. */
+  async function itemIn(category: string, body: Partial<ItemBody> & { name: string }): Promise<string> {
+    const { id: categoryId } = await named<CategoryBody>('order_category', category);
+    return made('item', {
+      unit: 'each',
+      medical: false,
+      captureLot: false,
+      result: null,
+      categoryId,
+      ...body,
+    });
+  }
+
+  test('@responsive a Program Admin opens an item from the list and finds its form as the item is, accessible in all three themes', async ({
+    page,
+  }) => {
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    const gauze = await named<ItemBody>('item', 'Gauze');
+    await page.goto(LIST);
+    await page
+      .getByRole('region', { name: 'Supplies', exact: true })
+      .getByRole('link', { name: 'Gauze', exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${gauze.id}$`));
+    await expect(page).toHaveTitle('Item · Sineobex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Gauze');
+    await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    const used = usedByOf(gauze.referencedBy);
+    expect(used).not.toBe('');
+    await expect(page.getByRole('main').locator('.px-lede')).toHaveText(
+      `In Supplies, counted in each. Used by ${used}.`,
+    );
+
+    const form = page.getByRole('form', { name: 'Edit Gauze' });
+    await expect(form.getByLabel('Name', { exact: true })).toHaveValue('Gauze');
+    await expect(form.getByLabel('Category').locator('option:checked')).toHaveText('Supplies');
+    const unit = form.getByLabel('Counted in');
+    await expect(unit).toHaveValue('each');
+    await expect(unit).not.toBeEditable();
+    await expect(unit).toHaveAccessibleDescription(
+      '1 means one of these, for example 1 tablet or 1 packet. This can’t be changed later.',
+    );
+    await expect(form.getByLabel('Medical', { exact: true })).not.toBeChecked();
+    await expect(form.getByLabel('Capture lot and expiry')).not.toBeChecked();
+    await expect(form.getByLabel('Result', { exact: true })).toHaveValue('None');
+    await expect(form.getByLabel('Result', { exact: true })).not.toBeEditable();
+    await expect(form.getByLabel('Reason')).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Remove Gauze', exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'History' })
+        .getByRole('row', { name: /Added by Sineobex, version 1/ }),
+    ).toHaveCount(1);
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    const here = `${LIST}/${gauze.id}`;
+    await expectAccessible(page, here);
+    await expectReflow(page, here);
+    await expectNothingStored(page, here);
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('editing an item saves it with a reason; nothing changed, a move under a Non-Medical bundle, a Medical item made not, a move into Labs and an edit made stale meanwhile are each refused with their sentence', async ({
+    page,
+  }) => {
+    test.slow();
+    const id = await itemIn('Supplies', { name: 'Demo: Wool socks', unit: 'pair' });
+    await made('bundle', {
+      name: 'Demo: Cold feet',
+      medical: false,
+      prompt: '',
+      lines: [{ itemId: id, qty: 1, core: true }],
+    });
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(`${LIST}/${id}`);
+    let form = page.getByRole('form', { name: 'Edit Demo: Wool socks' });
+    const category = form.getByLabel('Category');
+    const medical = form.getByLabel('Medical', { exact: true });
+    const reason = form.getByLabel('Reason');
+    const save = form.getByRole('button', { name: 'Save' });
+    const alert = form.getByRole('alert');
+
+    // Saved as it is: nothing changed.
+    await reason.fill('Demo: socks are a medication now');
+    await save.click();
+    await expect(alert).toHaveText('You haven’t changed anything.');
+
+    // Into a medication category while a Non-Medical bundle holds it: 8.1's sentence, kept as typed.
+    await category.selectOption({ label: 'OTC' });
+    await medical.check();
+    await save.click();
+    await expect(alert).toHaveText(
+      'Non-Medical bundles hold this item, and a bundle that holds a medication must be Medical. Make them Medical first.',
+    );
+    await expect(category.locator('option:checked')).toHaveText('OTC');
+    await expect(medical).toBeChecked();
+    await expect(reason).toHaveValue('Demo: socks are a medication now');
+    await expectAccessible(page, 'Edit an item, under a Non-Medical bundle', { inPlace: true });
+    await expectReflow(page, 'Edit an item, under a Non-Medical bundle');
+    expect((await listed<ItemBody>('item')).find((i) => i.id === id)).toMatchObject({ version: 1 });
+
+    // In a medication category, not Medical: said beside Medical.
+    await category.selectOption({ label: 'Rx' });
+    await medical.uncheck();
+    await save.click();
+    await expect(alert.getByRole('link')).toHaveText([
+      'Medical: An item in a category that holds medications or tests is always Medical.',
+    ]);
+    await expect(medical).not.toBeChecked();
+
+    // Into Labs: what it records can't change, so the move is said beside the result.
+    await category.selectOption({ label: 'Labs' });
+    await medical.check();
+    await save.click();
+    const result = alert.getByRole('link', {
+      name: 'Result: An item records a result exactly when its category holds tests.',
+    });
+    await expect(result).toBeVisible();
+    await expectAccessible(page, 'Edit an item, into Labs', { inPlace: true });
+    await result.click();
+    await expect(form.getByLabel('Result', { exact: true })).toBeFocused();
+
+    // Renamed, ticked to record its lot, and kept in Supplies: saved, with its history.
+    await category.selectOption({ label: 'Supplies' });
+    await medical.uncheck();
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Warm wool socks');
+    await form.getByLabel('Capture lot and expiry').check();
+    await reason.fill('Demo: we record the lot now');
+    await save.click();
+    form = page.getByRole('form', { name: 'Edit Demo: Warm wool socks' });
+    await expect(form.getByRole('status')).toHaveText(
+      'Saved: Demo: Warm wool socks. It’s on the phones after their next sync.',
+    );
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Warm wool socks');
+    const supplies = await named<CategoryBody>('order_category', 'Supplies');
+    expect((await listed<ItemBody>('item')).find((i) => i.id === id)).toMatchObject({
+      version: 2,
+      body: {
+        name: 'Demo: Warm wool socks',
+        categoryId: supplies.id,
+        unit: 'pair',
+        medical: false,
+        captureLot: true,
+        result: null,
+      },
+    });
+    await expect(form.getByLabel('Capture lot and expiry')).toBeChecked();
+    await expect(form.getByLabel('Reason')).toHaveValue('');
+    await expect(
+      page.getByRole('region', { name: 'History' }).getByRole('row', { name: /Edited, version 2/ }),
+    ).toContainText('Demo: we record the lot now');
+
+    // Another admin edits it meanwhile: this form, at version 2, is stale, and stays so.
+    expect(await changedMeanwhile<ItemBody>('item', id, (b) => ({ ...b, captureLot: false }))).toBe(3);
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Wool socks, warm');
+    await form.getByLabel('Reason').fill('Demo: a better name');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    await expect(form.getByLabel('Name', { exact: true })).toHaveValue('Demo: Wool socks, warm');
+    await expectAccessible(page, 'Edit an item, stale', { inPlace: true });
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    // Reloaded, the page shows their version.
+    await page.reload();
+    await expect(
+      page.getByRole('form', { name: 'Edit Demo: Warm wool socks' }).getByLabel('Capture lot and expiry'),
+    ).not.toBeChecked();
+    await expectNothingStored(page, 'An item after an edit');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('a test’s options change on its page, each problem said beside its option', async ({ page }) => {
+    test.slow();
+    const id = await itemIn('Labs', {
+      name: 'Demo: Strep test',
+      unit: 'test',
+      medical: true,
+      result: { type: 'choice', options: ['Positive', 'Negative'] },
+    });
+    await signIn(page, 'admin@example.com');
+    await page.goto(`${LIST}/${id}`);
+    const form = page.getByRole('form', { name: 'Edit Demo: Strep test' });
+    const result = form.getByRole('group', { name: 'Result' });
+    await expect(result).toHaveAccessibleDescription(
+      'It records a choice from a list. What kind of result it records can’t be changed later; its options can.',
+    );
+    await expect(result.getByRole('radio')).toHaveCount(0);
+    const options = form.getByRole('group', { name: 'Options' });
+    await expect(options.getByRole('textbox')).toHaveCount(2);
+
+    // A third option, given in other letters as the first: said beside it, the options kept.
+    await options.getByRole('button', { name: 'Add an option' }).click();
+    await options.getByLabel('Option 3', { exact: true }).fill('positive');
+    await form.getByLabel('Reason').fill('Demo: some results are unclear');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert').getByRole('link')).toHaveText([
+      'Option 3: This option is on the list twice.',
+    ]);
+    await expect(options.getByLabel('Option 3', { exact: true })).toHaveValue('positive');
+    await expect(options.getByLabel('Option 3', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+    await expectAccessible(page, 'Edit a test, an option twice', { inPlace: true });
+    await expectReflow(page, 'Edit a test, an option twice');
+
+    await options.getByLabel('Option 3', { exact: true }).fill('Unclear');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Saved: Demo: Strep test. It’s on the phones after their next sync.',
+    );
+    expect((await listed<ItemBody>('item')).find((i) => i.id === id)).toMatchObject({
+      version: 2,
+      body: { result: { type: 'choice', options: ['Positive', 'Negative', 'Unclear'] } },
+    });
+
+    // Down to one option: the API asks for two, and the page says so.
+    await options.getByRole('button', { name: 'Take out option 3' }).click();
+    await options.getByRole('button', { name: 'Take out option 2' }).click();
+    await form.getByLabel('Reason').fill('Demo: one answer is enough');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert').getByRole('link')).toHaveText(['Options: Give 2 to 12 options.']);
+    await expect(options.getByRole('textbox')).toHaveCount(1);
+  });
+
+  test('Remove refuses an item a bundle holds, saying what holds it; an unused one goes to the Removed list, and Restore on its page brings it back', async ({
+    page,
+  }) => {
+    test.slow();
+    const held = await itemIn('Supplies', { name: 'Demo: Ice packs' });
+    await made('bundle', {
+      name: 'Demo: Sprain care',
+      medical: false,
+      prompt: '',
+      lines: [{ itemId: held, qty: 2, core: true }],
+    });
+    const spare = await itemIn('Supplies', { name: 'Demo: Spare gloves', unit: 'pair' });
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+
+    // Held by a bundle: it stays, and the page says what holds it.
+    await page.goto(`${LIST}/${held}`);
+    await page.getByRole('button', { name: 'Remove Demo: Ice packs', exact: true }).click();
+    const refused = page.getByRole('form', { name: 'Remove Demo: Ice packs' });
+    await refused.getByLabel('Reason').fill('Demo: trying to remove it');
+    await refused.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(refused.getByRole('alert')).toHaveText(
+      'Still used by 1 bundle. Take it out of those first.',
+    );
+    await expectAccessible(page, 'Remove an item, refused', { inPlace: true });
+    expect((await listed('item')).find((i) => i.id === held)).toMatchObject({ state: 'active' });
+
+    // Unused: removed, and the list says so.
+    await page.goto(`${LIST}/${spare}`);
+    await page.getByRole('button', { name: 'Remove Demo: Spare gloves', exact: true }).click();
+    const remove = page.getByRole('form', { name: 'Remove Demo: Spare gloves' });
+    await remove.getByLabel('Reason').fill('Demo: we have none left');
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}\\?done=removed&preset=${spare}$`));
+    await expect(page.getByRole('heading', { name: 'Removed: Demo: Spare gloves' })).toBeFocused();
+    await expect(
+      page
+        .getByRole('region', { name: 'Supplies', exact: true })
+        .getByRole('link', { name: 'Demo: Spare gloves' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('region', { name: /^Removed \(\d+\)$/ })).toContainText('Demo: Spare gloves');
+    await expectAccessible(page, 'Items after a remove');
+
+    // Its own page says it is removed, and restores it there.
+    await page.goto(`${LIST}/${spare}`);
+    await expect(page.getByRole('form', { name: 'Edit Demo: Spare gloves' })).toHaveCount(0);
+    const gone = page.getByRole('region', { name: 'Removed', exact: true });
+    await expect(gone).toContainText('This item isn’t offered for new work. Restore it to offer it again.');
+    await expectAccessible(page, 'A removed item');
+    await gone.getByLabel('Reason').fill('Demo: a box came in');
+    await gone.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${spare}\\?done=restored&preset=${spare}$`));
+    await expect(page.getByRole('heading', { name: 'Restored: Demo: Spare gloves' })).toBeFocused();
+    await expect(page.getByRole('form', { name: 'Edit Demo: Spare gloves' })).toBeVisible();
+    const history = page.getByRole('region', { name: 'History' });
+    await expect(history.getByRole('row', { name: /Removed, version 1/ })).toContainText(
+      'Demo: we have none left',
+    );
+    await expect(history.getByRole('row', { name: /Restored, version 1/ })).toContainText(
+      'Demo: a box came in',
+    );
+    expect((await listed('item')).find((i) => i.id === spare)).toMatchObject({ state: 'active', version: 1 });
+
+    await expectNothingStored(page, 'An item after a restore');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('an address that names no item of the team’s is no page', async ({ page }) => {
+    await signIn(page, 'admin@example.com');
+    const category = await named<CategoryBody>('order_category', 'Labs');
+    for (const id of ['30e00000-0000-4000-8000-0000000000ff', category.id, 'not-an-id']) {
+      await page.goto(`${LIST}/${id}`);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Page not found');
+    }
+  });
+
+  test('a stale sign-in sends an item being saved through /reauth and back to its page, saving nothing', async ({
+    page,
+  }) => {
+    const id = await itemIn('Supplies', { name: 'Demo: Rain hats' });
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(`${LIST}/${id}`);
+    const form = page.getByRole('form', { name: 'Edit Demo: Rain hats' });
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Rain caps');
+    await form.getByLabel('Reason').fill('Demo: an old sign-in');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(page).toHaveURL(new RegExp(`/reauth\\?next=${encodeURIComponent(`${LIST}/${id}`)}$`));
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${id}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Rain hats');
+    expect((await listed('item')).find((i) => i.id === id)).toMatchObject({
+      version: 1,
+      name: 'Demo: Rain hats',
+    });
+  });
+
+  test('staff without the permission are refused an item at a typed address, logged once', async ({
+    page,
+  }) => {
+    const gauze = await named('item', 'Gauze');
+    await signIn(page, 'clinician@example.com');
+    const before = (await deniedOf('clinician@example.com')).length;
+    await page.goto(`${LIST}/${gauze.id}`);
+    await expect(page).toHaveURL(/\/home\?denied=1$/);
+    const after = await deniedOf('clinician@example.com');
+    // The items were asked, and refused: neither the categories nor the history were.
     expect(after).toHaveLength(before + 1);
     expect(after[0]!.details).toMatchObject({ permission: 'team.manage_presets' });
   });
