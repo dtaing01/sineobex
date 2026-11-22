@@ -94,6 +94,65 @@ void main() {
     expect(option(), '1');
   });
 
+  // Phase 5 (design 6.1): the team's presets, a server copy, in a table of their own. Written
+  // ahead of P2-local-db's `_v3`, which makes them pass.
+  group('the presets table (v3)', () {
+    /// Each column of the presets table, and whether it is the primary key.
+    Map<String, Object?> presetColumns(Database db) => {
+      for (final c in db.select('PRAGMA table_info(presets)')) c['name']! as String: c['pk'],
+    };
+    const columns = {'kind': 0, 'id': 1, 'version': 0, 'state': 0, 'origin_key': 0, 'body_json': 0};
+    int count(Database db, String table) => db.select('SELECT count(*) AS n FROM $table').first['n']! as int;
+
+    test('a version 2 file opens at version 3 with its work kept and an empty presets table', () {
+      const patient = 'c0000000-0000-4000-8000-00000000000c';
+      final v2 = openRaw(path);
+      LocalDatabase.migrate(v2, target: 2);
+      expect(version(v2), 2);
+      v2
+        ..execute(
+          'INSERT INTO outbox (change_id, seq, entity, record_id, op, value_json, value_hash, base_version, '
+          "device_time, clock_verified, category, state, created_at, patient_id) VALUES ('c1', 1, 'patient', ?, "
+          "'create', '{}', 'h', 0, 0, 1, 'patients', 'pending', 0, ?)",
+          [patient, patient],
+        )
+        ..execute(
+          'INSERT INTO records (id, entity, status, attributes_json, open, origin, created_at, updated_at, patient_id) '
+          "VALUES (?, 'patient', 'active', '{}', 0, 'local', 0, 0, ?)",
+          [patient, patient],
+        )
+        ..execute(
+          "INSERT INTO team_index (patient_id, entry_json) VALUES ('c0000000-0000-4000-8000-00000000000d', '{}')",
+        )
+        ..execute("INSERT INTO kv (key, value) VALUES ('seq', '1'), ('index.version', '7.idx1')");
+      v2.close();
+
+      final db = LocalDatabase.open(path, key);
+      addTearDown(db.close);
+      expect(LocalDatabase.schemaVersion, 3);
+      expect(version(db.db), 3);
+      // The work and the server copies it held are as they were.
+      expect([count(db.db, 'outbox'), count(db.db, 'records'), count(db.db, 'team_index')], [1, 1, 1]);
+      expect([db.kvGet('seq'), db.kvGet('index.version')], ['1', '7.idx1']);
+      expect(presetColumns(db.db), columns, reason: 'each preset is put by its id');
+      expect(count(db.db, 'presets'), 0);
+      // The store reads the upgraded file as its own.
+      final store = LocalStore(
+        db,
+        userId: userId,
+        stamp: () => ClockStamp(deviceTime: DateTime.utc(2026), correctedTime: null, verified: false),
+      );
+      expect(store.outbox().map((e) => e.changeId), ['c1']);
+    });
+
+    test('a new file is made at version 3 with the presets table', () {
+      final db = LocalDatabase.open(path, key);
+      addTearDown(db.close);
+      expect(version(db.db), 3);
+      expect(presetColumns(db.db), columns);
+    });
+  });
+
   test('a file from a newer app is refused', () {
     final raw = openRaw(path);
     LocalDatabase.migrate(raw);

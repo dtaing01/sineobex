@@ -688,4 +688,77 @@ void main() {
     expect(fields.values.every((f) => f.confirmed), isTrue);
     expect(fields['data.plan']!.value, 'Demo plan ${'p' * 30000}');
   });
+
+  // ---- phase 5: the team's presets (design 6.1) ----
+  // Written ahead of P2-local-db's `presets` table and its part in clearServerData.
+
+  group('the presets copy goes with the server copies', () {
+    const epoch = '00000000-0000-4000-8000-0000000e0001';
+    int count(String sql) => db.db.select(sql).first.values.first! as int;
+    int presetRows() => count('SELECT count(*) FROM presets');
+    int presetKeys() => count("SELECT count(*) FROM kv WHERE key LIKE 'presets.%'");
+    int indexRows() => count('SELECT count(*) FROM team_index');
+
+    /// A copy as a pull leaves it: two rows, one archived, its revision, epoch and time.
+    void holdPresets() {
+      db.db
+        ..execute(
+          'INSERT INTO presets (kind, id, version, state, origin_key, body_json) VALUES '
+          "('flag', '00000000-0000-4000-8000-00000000f002', 2, 'active', 'flag.high', ?), "
+          "('item', '00000000-0000-4000-8000-00000000a002', 1, 'archived', NULL, ?)",
+          [
+            jsonEncode({'name': 'Demo: High'}),
+            jsonEncode({'name': 'Demo: Gauze'}),
+          ],
+        )
+        ..execute(
+          "INSERT INTO team_index (patient_id, entry_json) VALUES ('c0000000-0000-4000-8000-00000000000d', '{}')",
+        );
+      store
+        ..setKv('presets.revision', '12')
+        ..setKv('presets.epoch', epoch)
+        ..setKv('presets.updatedAt', '2026-10-20T15:00:00.000Z');
+    }
+
+    test('clearServerData takes every row and every key of the copy, so the next pull sends no since', () {
+      holdPresets();
+      store
+        ..setKv('intake.draft', '{}')
+        ..setKv('seq', '4');
+      store.clearServerData();
+      expect([presetRows(), presetKeys(), indexRows()], [0, 0, 0]);
+      expect([store.kv('presets.revision'), store.kv('presets.epoch')], [null, null]);
+      // What isn't a server copy stays.
+      expect([store.kv('intake.draft'), store.kv('seq')], ['{}', '4']);
+    });
+
+    test('a sign-out that keeps unsynced work still takes the copy', () {
+      holdPresets();
+      final enc = store.createEncounter(kind: 'medical');
+      store.createNote(encounterId: enc, noteTypeKey: 'vitals', data: {'temp_c': 37.1});
+      final waiting = store.outbox().map((e) => e.changeId).toList();
+      expect(waiting, hasLength(2));
+      // What "Log out anyway" runs on each of the person's team files (SyncController.clearServerCopies).
+      store.clearServerData();
+      expect([presetRows(), presetKeys()], [0, 0]);
+      expect(store.outbox().map((e) => e.changeId), waiting);
+      expect(store.record(enc), isNotNull);
+    });
+
+    test('the copy goes in clearServerData’s one transaction: when any part fails, nothing goes', () {
+      for (final (part, trigger) in [
+        ('the rows', 'BEFORE DELETE ON presets'),
+        ('the keys', "BEFORE DELETE ON kv WHEN OLD.key LIKE 'presets.%'"),
+        ('the index', 'BEFORE DELETE ON team_index'),
+      ]) {
+        holdPresets();
+        db.db.execute("CREATE TRIGGER fail_clear $trigger BEGIN SELECT RAISE(ABORT, 'demo: the delete failed'); END");
+        expect(() => store.clearServerData(), throwsA(isA<SqliteException>()), reason: part);
+        expect([presetRows(), presetKeys(), indexRows()], [2, 3, 1], reason: part);
+        db.db.execute('DROP TRIGGER fail_clear');
+        store.clearServerData();
+        expect([presetRows(), presetKeys(), indexRows()], [0, 0, 0], reason: part);
+      }
+    });
+  });
 }
