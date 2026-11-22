@@ -906,6 +906,14 @@ describe('archiving and restoring a preset (design 5.1, 7)', () => {
     expect((await api.archive('flag', id, 1)).status).toBe(200);
     expect((await api.restore('flag', id)).status).toBe(200);
   });
+
+  it('finds a preset whose ID the address writes in capitals, as the database reads a UUID', async () => {
+    const { id } = await createdPreset(api, 'flag', make.flag());
+    expect((await api.archive('flag', id.toUpperCase(), 1)).status).toBe(200);
+    expect(await headOf(h, id)).toMatchObject({ state: 'archived' });
+    expect((await api.restore('flag', id.toUpperCase())).status).toBe(200);
+    expect(await headOf(h, id)).toMatchObject({ state: 'active' });
+  });
 });
 
 describe('a write’s reason (design 7; PL-14)', () => {

@@ -132,6 +132,27 @@
         ],
         "type": "object"
       },
+      "ArchivePreset": {
+        "properties": {
+          "baseVersion": {
+            "description": "The version you opened: any other is refused as stale, with the current one",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "reason"
+        ],
+        "type": "object"
+      },
       "AssignInput": {
         "additionalProperties": false,
         "properties": {
@@ -3520,6 +3541,19 @@
         ],
         "type": "object"
       },
+      "PresetRevision": {
+        "properties": {
+          "revision": {
+            "description": "The team’s revision this write took: a phone’s next pull gets the change",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
       "PresetView": {
         "properties": {
           "body": {
@@ -4465,6 +4499,20 @@
           "reason": {
             "description": "Why, in a few words. Logged.",
             "maxLength": 500,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "RestorePreset": {
+        "properties": {
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
             "minLength": 3,
             "type": "string"
           }
@@ -6184,6 +6232,240 @@
           }
         ],
         "summary": "Give a preset its next version, with a reason (recent sign-in); what is fixed at creation stays",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/admin/presets/{kind}/{id}/archive": {
+      "post": {
+        "operationId": "archivePreset",
+        "parameters": [
+          {
+            "description": "The kind of preset",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "description": "The kind of preset",
+              "enum": [
+                "order_category",
+                "item",
+                "bundle",
+                "flag",
+                "field_supply_map",
+                "condition_supply_map",
+                "bag",
+                "settings"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchivePreset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetRevision"
+                }
+              }
+            },
+            "description": "Archived, at the version it is at"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Archive a preset no active preset names, with a reason (recent sign-in); nothing is deleted",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/admin/presets/{kind}/{id}/restore": {
+      "post": {
+        "operationId": "restorePreset",
+        "parameters": [
+          {
+            "description": "The kind of preset",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "description": "The kind of preset",
+              "enum": [
+                "order_category",
+                "item",
+                "bundle",
+                "flag",
+                "field_supply_map",
+                "condition_supply_map",
+                "bag",
+                "settings"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestorePreset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetRevision"
+                }
+              }
+            },
+            "description": "Restored, at the version it is at"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Restore an archived preset at the version it is at, with a reason (recent sign-in)",
         "tags": [
           "presets"
         ]

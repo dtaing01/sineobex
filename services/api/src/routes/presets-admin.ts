@@ -2,6 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { PRESET_KINDS, type HeldPreset, type PresetKind } from '@sineobex/presets';
 import type { TeamScope } from '../auth/context.ts';
 import {
+  archivePreset,
   createPreset,
   editPreset,
   loadTeamPresets,
@@ -10,6 +11,7 @@ import {
   presetWriteScope,
   PresetReason,
   referencedBy,
+  restorePreset,
   type TeamPresets,
 } from '../presets/store.ts';
 import type { App } from '../app.ts';
@@ -69,6 +71,13 @@ const EditPreset = z
 const EditPresetResult = z
   .object({ version: z.number().int().min(2), revision: Revision })
   .openapi('EditPresetResult');
+
+const ArchivePreset = z.object({ baseVersion: BaseVersion, reason: PresetReason }).openapi('ArchivePreset');
+
+const RestorePreset = z.object({ reason: PresetReason }).openapi('RestorePreset');
+
+/** What an archive or a restore answers: it stays at the version it is at, so only the revision moves. */
+const PresetRevision = z.object({ revision: Revision }).openapi('PresetRevision');
 
 const PresetView = z
   .object({
@@ -130,6 +139,34 @@ const editPresetRoute = createRoute({
   request: { params: presetParam, body: { required: true, ...json(EditPreset) } },
   responses: {
     200: { description: 'Its next version', ...json(EditPresetResult) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const archivePresetRoute = createRoute({
+  method: 'post',
+  path: '/v1/admin/presets/{kind}/{id}/archive',
+  operationId: 'archivePreset',
+  tags: ['presets'],
+  summary: 'Archive a preset no active preset names, with a reason (recent sign-in); nothing is deleted',
+  security: [{ bearer: [] }],
+  request: { params: presetParam, body: { required: true, ...json(ArchivePreset) } },
+  responses: {
+    200: { description: 'Archived, at the version it is at', ...json(PresetRevision) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const restorePresetRoute = createRoute({
+  method: 'post',
+  path: '/v1/admin/presets/{kind}/{id}/restore',
+  operationId: 'restorePreset',
+  tags: ['presets'],
+  summary: 'Restore an archived preset at the version it is at, with a reason (recent sign-in)',
+  security: [{ bearer: [] }],
+  request: { params: presetParam, body: { required: true, ...json(RestorePreset) } },
+  responses: {
+    200: { description: 'Restored, at the version it is at', ...json(PresetRevision) },
     ...errors(401, 403, 404, 409, 422),
   },
 });
@@ -199,5 +236,22 @@ export function registerPresetAdminRoutes(app: App, deps: Deps): void {
     const { baseVersion, body, reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
     return c.json(await editPreset(scope, { kind, id, baseVersion, body, reason }), 200);
+  });
+
+  // PLAN-OPEN (PL-12): is a preset nobody uses deleted, or archived like the rest? Archived: no
+  // route deletes one, so every old note, order and report can still name what it used, and a
+  // platform update cannot bring it back.
+  app.openapi(archivePresetRoute, async (c) => {
+    const { kind, id } = presetIn(c.req.valid('param'));
+    const { baseVersion, reason } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    return c.json(await archivePreset(scope, { kind, id, baseVersion, reason }), 200);
+  });
+
+  app.openapi(restorePresetRoute, async (c) => {
+    const { kind, id } = presetIn(c.req.valid('param'));
+    const { reason } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    return c.json(await restorePreset(scope, { kind, id, reason }), 200);
   });
 }
