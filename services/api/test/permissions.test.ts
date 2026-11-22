@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   FIELD_PERMISSIONS,
   hasFieldAccess,
@@ -13,9 +13,35 @@ import {
 } from '../src/auth/permissions.ts';
 import { createHarness, type Harness } from './harness.ts';
 import { auditMark, createTeam, expectAudit, memberWith } from './patient-fixtures.ts';
+import {
+  auditAfter,
+  bodies,
+  createdPreset,
+  expectNothingWritten,
+  footprint,
+  idOf,
+  nextVersion,
+  presetsApi,
+  presetsTeam,
+  REASON,
+  releasePlatform,
+  revisionOf,
+  runInstaller,
+  STALE_MINUTES,
+  tokenOf,
+  type PresetsApi,
+  type PresetsTeam,
+} from './presets-fixtures.ts';
 
 // Phase 3 adds no permission key (D37): every check is one of the 23 keys of migration 0002, alone
 // or combined by the three rules below, which the phone mirrors (access.json pins both).
+
+// This file's platform is its own copy, so the platform updates a stale sign-in is tried on can be
+// released into it (presets-fixtures.ts, releasePlatform).
+vi.mock('../../../packages/presets/data/platform.json', async (importOriginal) => {
+  const real = (await importOriginal()) as { default: unknown[] };
+  return { default: [...real.default] };
+});
 
 interface AccessCase {
   name: string;
@@ -55,7 +81,7 @@ describe('access rules over the existing permissions', () => {
 
 /** A route, a body it accepts, what it needs, and a role that lacks it. */
 interface RouteCase {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT';
   path: string;
   body?: unknown;
   /** Tells two cases of one route apart in the test name. */
@@ -336,6 +362,49 @@ function checksEach(routes: readonly RouteCase[], context: () => { h: Harness; t
   }
 }
 
+/**
+ * For each route any member of the team may read, whatever the role: every role gets past, one with
+ * no permission included, and no refusal is logged; a member of another team is refused, and the
+ * refusal is logged in the platform chain.
+ */
+function checksMembership(
+  routes: readonly { path: string; route: string }[],
+  context: () => { h: Harness; teamId: string; otherTeamId: string },
+) {
+  for (const { path, route } of routes) {
+    it(`GET ${route} lets every role past, one with no permission included, and refuses none`, async () => {
+      const { h, teamId } = context();
+      const roles = [...vectors.cases, { name: 'no permission', permissions: [] }];
+      for (const c of roles) {
+        const member = await memberWith(h, teamId, c.permissions as Permission[]);
+        const mark = await auditMark(h);
+        const res = await h.request(path, { token: member.token, teamId });
+        expect(res.status, c.name).not.toBe(403);
+        expect(res.status, c.name).not.toBe(422);
+        const denied = await h.scratch.owner`
+          select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
+        expect(denied, c.name).toHaveLength(0);
+      }
+    });
+
+    it(`GET ${route} refuses a member of another team, and logs it`, async () => {
+      const { h, teamId, otherTeamId } = context();
+      const outsider = await memberWith(h, otherTeamId, [...PERMISSION_KEYS]);
+      const mark = await auditMark(h);
+      const res = await h.request(path, { token: outsider.token, teamId });
+      expect(res.status).toBe(403);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_a_member');
+      const denied = await h.scratch.owner<{ teamId: string | null; details: Record<string, unknown> }[]>`
+        select team_id as "teamId", details from sineobex.audit_events
+        where action = 'access.denied' and actor_user_id = ${outsider.userId} and id > ${mark}::bigint`;
+      expect(denied).toEqual([
+        { teamId: null, details: { rule: 'not_a_member', route: expect.any(String), teamId } },
+      ]);
+    });
+  }
+}
+
 describe('phase 3 routes', () => {
   let h: Harness;
   let teamId: string;
@@ -595,36 +664,300 @@ describe('phase 4 forms routes', () => {
     await h.close();
   });
 
-  for (const path of FORMS_ROUTES) {
-    const route = path.replace('demo_note/1', '{key}/{version}');
+  checksMembership(
+    FORMS_ROUTES.map((path) => ({ path, route: path.replace('demo_note/1', '{key}/{version}') })),
+    () => ({ h, teamId, otherTeamId }),
+  );
+});
 
-    it(`GET ${route} lets every role past, one with no permission included, and refuses none`, async () => {
-      const roles = [...vectors.cases, { name: 'no permission', permissions: [] }];
-      for (const c of roles) {
-        const member = await memberWith(h, teamId, c.permissions as Permission[]);
-        const mark = await auditMark(h);
-        const res = await h.request(path, { token: member.token, teamId });
-        expect(res.status, c.name).not.toBe(403);
-        expect(res.status, c.name).not.toBe(422);
-        const denied = await h.scratch.owner`
-          select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
-        expect(denied, c.name).toHaveLength(0);
-      }
-    });
+/**
+ * Phase 5's admin preset routes (phase 5 design 7): team.manage_presets alone opens each, and no
+ * other key stands in for it, alone or with every other. The key is the same for every kind, so
+ * the rows name several. Their team is made in the database, so no installer ran and it holds no
+ * preset: an ID below is no preset's, so a role past the check gets 404, and a tier's whole order
+ * is the empty list.
+ */
+const MANAGE_PRESETS: Permission = 'team.manage_presets';
+const ALL_BUT_PRESETS = PERMISSION_KEYS.filter((k) => k !== MANAGE_PRESETS);
+const category = { name: 'Demo: Permissions category', behaviour: 'supply', sort: 50 };
 
-    it(`GET ${route} refuses a member of another team, and logs it`, async () => {
-      const outsider = await memberWith(h, otherTeamId, [...PERMISSION_KEYS]);
+const PRESET_ROUTES: RouteCase[] = [
+  {
+    method: 'GET',
+    path: '/v1/admin/presets/flag',
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: '/v1/admin/presets/order_category',
+    body: { body: category, reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'PUT',
+    path: `/v1/admin/presets/order_category/${id()}`,
+    body: { baseVersion: 1, body: { ...category, sort: 60 }, reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: `/v1/admin/presets/item/${id()}/archive`,
+    body: { baseVersion: 1, reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: `/v1/admin/presets/bundle/${id()}/restore`,
+    body: { reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: `/v1/admin/presets/flag/${id()}/take-update`,
+    body: { baseVersion: 1, reason: REASON, asNew: false },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'GET',
+    path: `/v1/admin/presets/bag/${id()}/history`,
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: '/v1/admin/preset-order/flag',
+    body: { tier: 'secondary', ids: [], reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+];
+
+/** The phone's copy of its team's presets: any member, whatever the role (PL-13). */
+const PULL = '/v1/presets';
+
+describe('phase 5 preset routes', () => {
+  let h: Harness;
+  let teamId: string;
+  let pullTeamId: string;
+  let otherTeamId: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    teamId = await createTeam(h, 'Presets Team (demo)');
+    pullTeamId = await createTeam(h, 'Presets Pull Team (demo)');
+    otherTeamId = await createTeam(h, 'Presets Other Team (demo)');
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  checksEach(PRESET_ROUTES, () => ({ h, teamId }));
+
+  // The pull runs the platform installer first (design 5.2), so it reads a team of its own and the
+  // admin rows' team stays empty.
+  checksMembership([{ path: PULL, route: PULL }], () => ({ h, teamId: pullTeamId, otherTeamId }));
+
+  // The reads ask no recent sign-in (design 7): a phone pulls on a sign-in hours old, and Team
+  // setup's pages are read without signing in again.
+  const reads = [
+    { path: PULL, permissions: [] as Permission[], team: () => pullTeamId },
+    ...PRESET_ROUTES.filter((r) => r.method === 'GET').map((r) => ({
+      path: r.path,
+      permissions: r.allowed,
+      team: () => teamId,
+    })),
+  ];
+  for (const read of reads) {
+    const route = read.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}');
+    it(`GET ${route} asks no recent sign-in`, async () => {
+      const member = await memberWith(h, read.team(), read.permissions);
+      const [user] = await h.scratch.owner<{ email: string }[]>`
+        select email from sineobex.users where id = ${member.userId}`;
+      const stale = await h.tokenFor(user!.email, {
+        authTime: new Date(h.clock.now.getTime() - 60 * 60_000),
+      });
       const mark = await auditMark(h);
-      const res = await h.request(path, { token: outsider.token, teamId });
+      const res = await h.request(read.path, { token: stale, teamId: read.team() });
+      expect(res.status).not.toBe(403);
+      expect(res.status).not.toBe(422);
+      const denied = await h.scratch.owner`
+        select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
+      expect(denied).toHaveLength(0);
+    });
+  }
+});
+
+/**
+ * Every preset write asks for a sign-in within RECENT_AUTH_MINUTES (design 7; PRD main 600), as
+ * every admin write does, and its refusal, 403 reauth_required, is logged nowhere (D98). Each
+ * request below is one a sign-in made just now carries out, on presets made for it in a team made
+ * as the owner console makes one, so a stale sign-in is refused for its age alone, and nothing is
+ * written: no head, version, event or audit row, and the same revision.
+ */
+describe('phase 5 preset writes, with a stale sign-in', () => {
+  let h: Harness;
+  let team: PresetsTeam;
+  let api: PresetsApi;
+  let make: ReturnType<typeof bodies>;
+  let unrelease: (() => void) | undefined;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    team = await presetsTeam(h, 'Permissions');
+    api = presetsApi(h, team.teamId, team.admin);
+    make = bodies(team);
+    // Two platform copies the team edited, then a newer platform version of each, which the
+    // installer can only offer (5.2): one to take in place, one as a new preset.
+    const otc = idOf(team, 'order_category.otc');
+    const frost = idOf(team, 'flag.frost_risk');
+    const flags = (await api.list('flag')).body as unknown as { id: string; body: Record<string, unknown> }[];
+    expect(
+      (await api.edit('order_category', otc, 1, { name: 'OTC', behaviour: 'medication', sort: 11 })).status,
+    ).toBe(200);
+    const frostBody = flags.find((f) => f.id === frost)!.body;
+    expect(
+      (await api.edit('flag', frost, 1, { ...frostBody, criteria: 'Demo: the team’s own criteria' })).status,
+    ).toBe(200);
+    unrelease = releasePlatform([
+      nextVersion('order_category.otc', (b) => ({ ...b, sort: 15 })),
+      nextVersion('flag.frost_risk', (b) => ({ ...b, criteria: 'Demo: the platform’s new criteria' })),
+    ]);
+    expect((await runInstaller(h, team.teamId)).offer).toEqual({ order_category: 1, flag: 1 });
+  });
+  afterAll(async () => {
+    unrelease?.();
+    await h?.close();
+  });
+
+  /** A write a sign-in made just now carries out: where it is sent, what, and the status it gets. */
+  interface Write {
+    method: 'POST' | 'PUT';
+    path: string;
+    body: unknown;
+    done: number;
+  }
+
+  const WRITES: [string, () => Promise<Write>][] = [
+    [
+      'POST /v1/admin/presets/{kind}',
+      async () => ({
+        method: 'POST',
+        path: '/v1/admin/presets/order_category',
+        body: { body: make.order_category(), reason: REASON },
+        done: 201,
+      }),
+    ],
+    [
+      'PUT /v1/admin/presets/{kind}/{id}',
+      async () => {
+        const body = make.order_category();
+        const { id } = await createdPreset(api, 'order_category', body);
+        return {
+          method: 'PUT',
+          path: `/v1/admin/presets/order_category/${id}`,
+          body: { baseVersion: 1, body: { ...body, sort: 61 }, reason: REASON },
+          done: 200,
+        };
+      },
+    ],
+    [
+      'POST /v1/admin/presets/{kind}/{id}/archive',
+      async () => {
+        const { id } = await createdPreset(api, 'order_category', make.order_category());
+        return {
+          method: 'POST',
+          path: `/v1/admin/presets/order_category/${id}/archive`,
+          body: { baseVersion: 1, reason: REASON },
+          done: 200,
+        };
+      },
+    ],
+    [
+      'POST /v1/admin/presets/{kind}/{id}/restore',
+      async () => {
+        const { id } = await createdPreset(api, 'order_category', make.order_category());
+        expect((await api.archive('order_category', id, 1)).status).toBe(200);
+        return {
+          method: 'POST',
+          path: `/v1/admin/presets/order_category/${id}/restore`,
+          body: { reason: REASON },
+          done: 200,
+        };
+      },
+    ],
+    [
+      'POST /v1/admin/presets/{kind}/{id}/take-update',
+      async () => ({
+        method: 'POST',
+        path: `/v1/admin/presets/order_category/${idOf(team, 'order_category.otc')}/take-update`,
+        body: { baseVersion: 2, reason: REASON, asNew: false },
+        done: 200,
+      }),
+    ],
+    [
+      'POST /v1/admin/presets/{kind}/{id}/take-update (as new)',
+      async () => ({
+        method: 'POST',
+        path: `/v1/admin/presets/flag/${idOf(team, 'flag.frost_risk')}/take-update`,
+        body: { baseVersion: 2, reason: REASON, asNew: true },
+        done: 200,
+      }),
+    ],
+    [
+      'POST /v1/admin/preset-order/flag',
+      async () => {
+        const rows = (await api.list('flag')).body as unknown as {
+          id: string;
+          state: string;
+          body: { tier: string; rank: number };
+        }[];
+        const tier = rows
+          .filter((r) => r.state === 'active' && r.body.tier === 'primary')
+          .sort((a, b) => a.body.rank - b.body.rank)
+          .map((r) => r.id);
+        return {
+          method: 'POST',
+          path: '/v1/admin/preset-order/flag',
+          body: { tier: 'primary', ids: tier.reverse(), reason: REASON },
+          done: 200,
+        };
+      },
+    ],
+  ];
+
+  for (const [name, prepare] of WRITES) {
+    it(`${name} refuses a stale sign-in: reauth_required, logged nowhere, nothing written`, async () => {
+      const write = await prepare();
+      const send = (token: string) =>
+        h.request(write.path, { method: write.method, token, teamId: team.teamId, json: write.body });
+      const before = await footprint(h, team.teamId);
+      const mark = await auditMark(h);
+      const res = await send(await tokenOf(h, team.admin, STALE_MINUTES));
       expect(res.status).toBe(403);
       expect(res.headers.get('cache-control')).toBe('no-store');
-      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_a_member');
-      const denied = await h.scratch.owner<{ teamId: string | null; details: Record<string, unknown> }[]>`
-        select team_id as "teamId", details from sineobex.audit_events
-        where action = 'access.denied' and actor_user_id = ${outsider.userId} and id > ${mark}::bigint`;
-      expect(denied).toEqual([
-        { teamId: null, details: { rule: 'not_a_member', route: expect.any(String), teamId } },
-      ]);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('reauth_required');
+      // In no chain: neither the team's nor the platform's.
+      expect(await auditAfter(h, mark)).toEqual([]);
+      await expectNothingWritten(h, team.teamId, before);
+      // A sign-in made just now carries the same request out, so its age alone refused it.
+      const done = await send(await tokenOf(h, team.admin));
+      const answer = await done.text();
+      expect(done.status, answer).toBe(write.done);
+      expect(await revisionOf(h, team.teamId)).toBe(before.revision + 1);
     });
   }
 });
