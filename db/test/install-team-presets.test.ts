@@ -778,15 +778,22 @@ describe('the seed', () => {
   afterAll(() => db.drop());
 
   it('gives both seeded teams every platform preset, and a second seed changes nothing', async () => {
-    // Keys in code-point order, as the sorted list below: CI's databases sort text by en_US rules, which pass over '_'.
+    // The platform's copies, keys in code-point order as the sorted list below: CI's databases sort
+    // text by en_US rules, which pass over '_'. The demo team's own presets come after them
+    // (demo-presets.test.ts).
     const snapshot = async (teamId: string) => ({
       heads: await db.owner<{ originKey: string; kind: string; currentVersion: number; revision: string }[]>`
         select origin_key as "originKey", kind, current_version as "currentVersion", revision::text as revision
-        from sineobex.team_presets where team_id = ${teamId} order by origin_key collate "C"`,
+        from sineobex.team_presets where team_id = ${teamId} and origin_key is not null
+        order by origin_key collate "C"`,
       versions: await db.owner<{ n: number }[]>`
-        select count(*)::int as n from sineobex.team_preset_versions where team_id = ${teamId}`,
+        select count(*)::int as n from sineobex.team_preset_versions v
+        join sineobex.team_presets p on p.team_id = v.team_id and p.id = v.preset_id
+        where v.team_id = ${teamId} and p.origin_key is not null`,
       events: await db.owner<{ n: number }[]>`
-        select count(*)::int as n from sineobex.team_preset_events where team_id = ${teamId}`,
+        select count(*)::int as n from sineobex.team_preset_events e
+        join sineobex.team_presets p on p.team_id = e.team_id and p.id = e.preset_id
+        where e.team_id = ${teamId} and p.origin_key is not null`,
       state: await db.owner<{ revision: string }[]>`
         select revision::text as revision from sineobex.team_preset_state where team_id = ${teamId}`,
     });
@@ -799,8 +806,9 @@ describe('the seed', () => {
       expect(team.heads.every((h) => h.currentVersion === 1 && h.revision === '1')).toBe(true);
       expect(team.versions).toEqual([{ n: newest.length }]);
       expect(team.events).toEqual([{ n: newest.length }]);
-      expect(team.state).toEqual([{ revision: '1' }]);
     }
+    // The install took one revision, which the neighbouring team, given nothing else, holds.
+    expect(first[1]!.state).toEqual([{ revision: '1' }]);
     await seed(db.owner);
     expect([await snapshot(DEMO_TEAM_ID), await snapshot(NEIGHBOUR_TEAM_ID)]).toEqual(first);
   });
