@@ -58,11 +58,9 @@ const PulledPreset = z
 
 export const PresetsPull = z
   .object({
-    reset: z
-      .boolean()
-      .openapi({
-        description: 'Replace the copy whole: the revision sent is above the team’s, or another epoch',
-      }),
+    reset: z.boolean().openapi({
+      description: 'Replace the copy whole: the revision sent is above the team’s, or another epoch',
+    }),
     revision: z
       .number()
       .int()
