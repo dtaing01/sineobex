@@ -35,7 +35,7 @@ String livingSituationText(({String kind, String? other})? s) {
 /// Preferred languages, common local ones first (11.1 #9), as BCP 47 tags.
 ///
 /// PLAN-OPEN: which languages lead the list (Brooke and Mercy): Detroit's most common languages
-/// after English, then the rest alphabetically; a team setting later.
+/// after English, then the rest in the order of their tags; a team setting later.
 const languageLabels = {
   'en': 'English',
   'es': 'Spanish',

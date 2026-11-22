@@ -229,6 +229,9 @@ class SyncController extends ChangeNotifier implements LocalData {
   /// in their profile) and data kept by people who signed out. Deleting the files needs no key;
   /// handing unsynced work to quarantine does, so that waits for an unlock ([_sweepDropped]).
   /// Runs one check at a time; the returned future completes when it is done.
+  ///
+  /// PLAN-OPEN (TM-19): what does a remote wipe do on a phone that is never unlocked again (plan
+  /// section 6, D20)? It deletes the team's database files from the lock screen.
   Future<void> checkDevices() => _checking ??= (() {
     checksStarted++;
     // Bounded, so one answer that never finishes can't block every later check.

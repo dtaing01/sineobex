@@ -56,10 +56,15 @@ export function visibleAnswers(
 ): Record<string, unknown> | null {
   const counted = effectiveAnswers(definition, answers);
   if (reader.actsAsAuthor) return counted;
+  // PLAN-OPEN (PL-4): do roles without encounters.chart or billing.view_codes read Medical notes
+  // (lifecycle 12.1 #21)? No, as D37 decided for the problem list: readsMedical needs one of them.
   if (!definition.kinds.includes('non_medical') && !reader.readsMedical) return null;
   if (definition.sensitivity === 'sensitive' && !reader.viewSensitive) return null;
 
   const seen = reader.viewSensitiveExams ? counted : withoutSensitiveExams(definition, counted);
+  // PLAN-OPEN (CO-1): who may read a substance use treatment record while counsel has not said
+  // whether 42 CFR Part 2 covers it (lifecycle 12.1 #20)? Its author, and holders of
+  // view_sensitive with a credential that charts Medical.
   const treatment = reader.viewSensitive && reader.chartsMedical;
   const hidden = reader.viewSensitive ? [] : sensitiveDiagnoses(definition, counted, reader.sensitiveCodes);
   return Object.fromEntries(

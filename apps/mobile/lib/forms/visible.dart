@@ -66,10 +66,15 @@ class NoteReader {
 Map<String, Object>? visibleAnswers(NoteTypeDef definition, Answers answers, NoteReader reader) {
   final counted = effectiveAnswers(definition, answers);
   if (reader.actsAsAuthor) return counted;
+  // PLAN-OPEN (PL-4): do roles without encounters.chart or billing.view_codes read Medical notes
+  // (lifecycle 12.1 #21)? No, as D37 decided for the problem list: readsMedical needs one of them.
   if (!definition.kinds.contains(NoteKind.nonMedical) && !reader.readsMedical) return null;
   if (definition.sensitivity == Sensitivity.sensitive && !reader.viewSensitive) return null;
 
   final seen = reader.viewSensitiveExams ? counted : withoutSensitiveExams(definition, counted);
+  // PLAN-OPEN (CO-1): who may read a substance use treatment record while counsel has not said
+  // whether 42 CFR Part 2 covers it (lifecycle 12.1 #20)? Its author, and holders of
+  // view_sensitive with a credential that charts Medical.
   final treatment = reader.viewSensitive && reader.chartsMedical;
   final hidden = reader.viewSensitive
       ? const <String>[]

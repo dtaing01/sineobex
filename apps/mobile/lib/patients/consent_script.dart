@@ -11,7 +11,7 @@
 /// come from the change entry; [consentScriptVersion] and the language say what was read.
 ///
 /// PLAN-OPEN: the consent wording, whether verbal consent suffices, minors, and what a later
-/// withdrawal means (design 14.1, #3; counsel, Brooke and Mercy).
+/// withdrawal means (design 14.1, #1; counsel, Brooke and Mercy).
 library;
 
 import '../sync/local_store.dart' show LocalValidationError;
