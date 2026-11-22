@@ -7,7 +7,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkDecisions, globMatch, markersIn, NOT_MARKERS, pathsIn, readRows } from '../decisions-check.mjs';
+import {
+  checkDecisions,
+  globMatch,
+  markersIn,
+  NOT_MARKERS,
+  pathsIn,
+  readRows,
+  wordsOf,
+} from '../decisions-check.mjs';
 
 const DOC = 'docs/decisions-for-review.md';
 const RULES_FILE = 'tools/decisions-check-rules.mjs';
@@ -68,11 +76,17 @@ const SOURCES = {
 };
 const NOTE_ACTIONS = 'apps/mobile/lib/encounters/note_actions.dart';
 const AUTH = 'apps/portal/src/lib/auth/index.ts';
-const RULES = [
-  ['BM-12', NOTE_ACTIONS, 1, /12\.1 #9\b/],
-  ['CO-5', NOTE_ACTIONS, 1, /12\.1 #10\b/],
-  ['BF-1', AUTH, 1],
-];
+// Each older marker's words, as the check cuts them.
+const BM12 = 'PLAN-OPEN: how is a wrong assessment fixed (lifecycle 12.1';
+const CO5 = 'PLAN-OPEN: what does an amendment request need (lifecycle';
+const BF1 = 'PLAN-OPEN (phase 12): Cognito hosted UI with authorization';
+const RULES = {
+  [NOTE_ACTIONS]: [
+    ['BM-12', BM12],
+    ['CO-5', CO5],
+  ],
+  [AUTH]: [['BF-1', BF1]],
+};
 const FILES = [...Object.keys(SOURCES), 'docs/setup.md'];
 
 function run({ doc = BASE, sources = SOURCES, rules = RULES, files = FILES } = {}) {
@@ -272,70 +286,110 @@ describe('the decisions document check', () => {
   });
 
   it('gives a marker with no row id to one rule only', () => {
-    const rules = [...RULES, ['TM-6', NOTE_ACTIONS, 1, /lifecycle 12\.1/]];
+    const rules = { ...RULES, [NOTE_ACTIONS]: [...RULES[NOTE_ACTIONS], ['TM-6', BM12]] };
     expect(check({ rules })).toEqual(
       expect.arrayContaining([
-        `${NOTE_ACTIONS}:1: the rules BM-12 /12\\.1 #9\\b/, TM-6 /lifecycle 12\\.1/ all take this marker, which belongs to one row: name it, as in "PLAN-OPEN (BM-12): …" ("PLAN-OPEN: how is a wrong assessment fixed (lifecycle 12.1 #9)? By an addendum.")`,
+        `${NOTE_ACTIONS}:1: the rules for BM-12, TM-6 all hold its words, and it belongs to one row: name it, as in "PLAN-OPEN (BM-12): …" ("PLAN-OPEN: how is a wrong assessment fixed (lifecycle 12.1 #9)? By an addendum.")`,
       ]),
     );
-    expect(check({ rules: [...RULES, ['TM-6', NOTE_ACTIONS, 1, /lifecycle 12\.1 #4\b/]] })).toEqual([
-      `${RULES_FILE}: the rule for TM-6 in ${NOTE_ACTIONS} (/lifecycle 12\\.1 #4\\b/) takes no marker any more: delete it`,
-    ]);
+    const other = 'PLAN-OPEN: how long does an untouched draft stay';
+    expect(check({ rules: { ...RULES, [NOTE_ACTIONS]: [...RULES[NOTE_ACTIONS], ['TM-6', other]] } })).toEqual(
+      [
+        `${RULES_FILE}: the rule for TM-6 in ${NOTE_ACTIONS} ("${other}") takes no marker any more: delete it`,
+      ],
+    );
   });
 
   it("takes a rule's marker only from a file its row's Where names", () => {
-    const rules = [RULES[0], RULES[1], ['TM-6', AUTH, 1]];
+    const rules = { ...RULES, [AUTH]: [['TM-6', BF1]] };
     expect(check({ rules })).toEqual([`${AUTH}:1: row TM-6's Where does not name ${AUTH}`]);
   });
 
   it('has every rule name a row of the document', () => {
-    const rules = [RULES[0], RULES[1], ['CO-99', AUTH, 1]];
+    const rules = { ...RULES, [AUTH]: [['CO-99', BF1]] };
     expect(check({ rules })).toEqual([
-      `${RULES_FILE}: the rule for CO-99 in ${AUTH} names a row that is not in ${DOC}`,
+      `${RULES_FILE}: the rule for CO-99 in ${AUTH} ("${BF1}") names a row that is not in ${DOC}`,
     ]);
   });
 
   it('deletes a rule that takes no marker, as when its marker names its row', () => {
-    expect(check({ rules: [...RULES, ['TM-6', 'apps/mobile/android/app/build.gradle.kts', 1]] })).toEqual([
-      `${RULES_FILE}: the rule for TM-6 in apps/mobile/android/app/build.gradle.kts takes no marker any more: delete it`,
+    const gradle = 'apps/mobile/android/app/build.gradle.kts';
+    const words = 'PLAN-OPEN: the public app name is not decided';
+    expect(check({ rules: { ...RULES, [gradle]: [['TM-6', words]] } })).toEqual([
+      `${RULES_FILE}: the rule for TM-6 in ${gradle} ("${words}") takes no marker any more: delete it`,
     ]);
     const sources = {
       ...SOURCES,
       [NOTE_ACTIONS]: SOURCES[NOTE_ACTIONS].replace('PLAN-OPEN: how', 'PLAN-OPEN (BM-12): how'),
     };
     expect(check({ sources })).toEqual([
-      `${RULES_FILE}: the rule for BM-12 in ${NOTE_ACTIONS} (/12\\.1 #9\\b/) takes no marker any more: delete it`,
+      `${RULES_FILE}: the rule for BM-12 in ${NOTE_ACTIONS} ("${BM12}") takes no marker any more: delete it`,
     ]);
-    expect(check({ sources, rules: RULES.slice(1) })).toEqual([]);
+    expect(check({ sources, rules: { ...RULES, [NOTE_ACTIONS]: [['CO-5', CO5]] } })).toEqual([]);
   });
 
-  it('holds a rule to its count, so that a marker added later names its row', () => {
-    const added = `${SOURCES[NOTE_ACTIONS]}/// PLAN-OPEN: is it fixed the same way offline (lifecycle 12.1 #9)?\n`;
+  it('holds a rule to its count, so that a marker added later saying the same names its row', () => {
+    const added = `${SOURCES[NOTE_ACTIONS]}/// PLAN-OPEN: how is a wrong assessment fixed (lifecycle 12.1 #9)? Offline too.\n`;
     expect(check({ sources: { ...SOURCES, [NOTE_ACTIONS]: added } })).toEqual([
-      `${RULES_FILE}: the rule for BM-12 in ${NOTE_ACTIONS} (/12\\.1 #9\\b/) takes 2 markers, not 1: a new marker names its row, as in "PLAN-OPEN (BM-12): …" (${NOTE_ACTIONS}:1, ${NOTE_ACTIONS}:4)`,
+      `${RULES_FILE}: the rule for BM-12 in ${NOTE_ACTIONS} ("${BM12}") takes 2 markers, not 1: a new marker names its row, as in "PLAN-OPEN (BM-12): …" (${NOTE_ACTIONS}:1, ${NOTE_ACTIONS}:4)`,
     ]);
-    const named = added.replace('PLAN-OPEN: is it', 'PLAN-OPEN (BM-12): is it');
+    const named = added.replace(
+      'PLAN-OPEN: how is a wrong assessment fixed (lifecycle 12.1 #9)? Offline',
+      'PLAN-OPEN (BM-12): how is a wrong assessment fixed (lifecycle 12.1 #9)? Offline',
+    );
     expect(check({ sources: { ...SOURCES, [NOTE_ACTIONS]: named } })).toEqual([]);
-    // When a rule's marker gains its row id, the count goes down with it: the rules only shrink.
-    const two = [['BM-12', NOTE_ACTIONS, 2, /12\.1 #9\b/], RULES[1], RULES[2]];
+    // Markers saying the same are one rule with their count, which goes down as each names its row.
+    const two = {
+      ...RULES,
+      [NOTE_ACTIONS]: [
+        ['BM-12', BM12, 2],
+        ['CO-5', CO5],
+      ],
+    };
+    expect(check({ sources: { ...SOURCES, [NOTE_ACTIONS]: added }, rules: two })).toEqual([]);
     expect(check({ sources: { ...SOURCES, [NOTE_ACTIONS]: named }, rules: two })).toEqual([
-      `${RULES_FILE}: the rule for BM-12 in ${NOTE_ACTIONS} (/12\\.1 #9\\b/) takes 1 marker, not 2: write 1, as a rule only shrinks`,
+      `${RULES_FILE}: the rule for BM-12 in ${NOTE_ACTIONS} ("${BM12}") takes 1 marker, not 2: write 1, as a rule only shrinks`,
     ]);
   });
 
-  it('reads a rule only as [row, file, count] or [row, file, count, pattern]', () => {
+  it("gives a new marker no older marker's place: once that one names its row, the new one names its own", () => {
+    const sources = {
+      ...SOURCES,
+      [NOTE_ACTIONS]: `${SOURCES[NOTE_ACTIONS].replace('PLAN-OPEN: how', 'PLAN-OPEN (BM-12): how')}/// PLAN-OPEN: may a draft's plan be fixed the same way (lifecycle 12.1 #9)?\n`,
+    };
+    expect(check({ sources })).toEqual([
+      `${NOTE_ACTIONS}:4: this marker has no row: name its row, as in "PLAN-OPEN (BM-12): …", and add that row to ${DOC} under its decider if it isn't there ("PLAN-OPEN: may a draft's plan be fixed the same way (lifecycle 12.1 #9)?")`,
+      `${RULES_FILE}: the rule for BM-12 in ${NOTE_ACTIONS} ("PLAN-OPEN: how is a wrong assessment fixed (lifecycle 12.1") takes no marker any more: delete it`,
+    ]);
+  });
+
+  it('takes a marker by its rule only while it says what it said, so a reworded one names its row', () => {
+    const sources = { ...SOURCES, [AUTH]: '    // PLAN-OPEN: which page the portal signs in on.\n' };
+    expect(check({ sources })).toEqual([
+      `${AUTH}:1: this marker has no row: name its row, as in "PLAN-OPEN (BM-12): …", and add that row to ${DOC} under its decider if it isn't there ("PLAN-OPEN: which page the portal signs in on.")`,
+      `${RULES_FILE}: the rule for BF-1 in ${AUTH} ("PLAN-OPEN (phase 12): Cognito hosted UI with authorization") takes no marker any more: delete it`,
+    ]);
+  });
+
+  it("reads a rule only as [row, words] or [row, words, count], with the words as the check cuts a marker's", () => {
     for (const bad of [
-      ['BF-1', AUTH],
-      ['BF-1', AUTH, /Cognito/],
-      ['BF-1', AUTH, 0],
-      ['BF1', AUTH, 1],
-      ['BF-1', AUTH, 1, /Cognito/g],
+      ['BF-1'],
+      ['BF1', BF1],
+      ['BF-1', /Cognito/],
+      ['BF-1', 'Cognito hosted UI with authorization'],
+      ['BF-1', `${BF1} code + PKCE.`],
+      ['BF-1', BF1.replace(' ', '  ')],
+      ['BF-1', BF1, 0],
+      ['BF-1', BF1, 1, 'more'],
     ]) {
-      expect(check({ rules: [RULES[0], RULES[1], bad] }), String(bad)).toContain(
-        `${RULES_FILE}: rule 3 is not [row, file, count] or [row, file, count, pattern]`,
+      expect(check({ rules: { ...RULES, [AUTH]: [bad] } }), String(bad)).toContain(
+        `${RULES_FILE}: rule 1 for ${AUTH} is not [row, words] or [row, words, count], with the words as the check cuts them`,
       );
     }
-    expect(check({ rules: [RULES[0], RULES[1], ['BF-1', AUTH, 1, /Cognito/]] })).toEqual([]);
+    expect(check({ rules: { ...RULES, [AUTH]: [['BF-1', BF1, 1]] } })).toEqual([]);
+    expect(check({ rules: Object.values(RULES).flat() })).toContain(
+      `${RULES_FILE}: RULES is not the files, each with its rules`,
+    );
   });
 
   it('reports a marker it cannot read, with where it is', () => {
@@ -511,6 +565,40 @@ describe('reading markers', () => {
     ]);
   });
 
+  it('holds of a marker what it says up to the next marker, cut at a word within 60 characters', () => {
+    const words = (file, text) => markersIn(file, text).map((m) => m.words);
+    expect(
+      words('apps/mobile/lib/x.dart', 'const searchMin = 0.50; // PLAN-OPEN: tune on pilot data\n'),
+    ).toEqual(['PLAN-OPEN: tune on pilot data']);
+    // Across the lines of its comment, as one text, and each marker up to the next.
+    expect(
+      words(
+        'services/api/src/x.ts',
+        "// The rule. PLAN-OPEN: who is told when someone keeps the\n//   server's value in a conflict? The author. PLAN-OPEN: b\n",
+      ),
+    ).toEqual(["PLAN-OPEN: who is told when someone keeps the server's value", 'PLAN-OPEN: b']);
+    expect(words('services/api/src/x.ts', '// PLAN-OPEN: a? Yes. PLAN-OPEN: b? No.\n')).toEqual([
+      'PLAN-OPEN: a? Yes.',
+      'PLAN-OPEN: b? No.',
+    ]);
+    expect(
+      words(
+        'packages/forms/definitions/spec/x.diff.json',
+        '{ "why": "PRD 1; PLAN-OPEN (forms 10.1 #1): the team\\u2019s \\"units\\", to confirm; PLAN-OPEN (BM-42): x" }',
+      ),
+    ).toEqual(['PLAN-OPEN (forms 10.1 #1): the team’s "units", to confirm;', 'PLAN-OPEN (BM-42): x']);
+    // A long word near the start is cut through, so the words keep more than the marker.
+    expect(words('services/api/src/x.ts', `// PLAN-OPEN: ${'a'.repeat(70)} b\n`)).toEqual([
+      `PLAN-OPEN: ${'a'.repeat(49)}`,
+    ]);
+    for (const w of [
+      ...Object.values(RULES)
+        .flat()
+        .map((r) => r[1]),
+    ])
+      expect(wordsOf(w)).toBe(w);
+  });
+
   it('refuses a marker it cannot place in a comment or a string, rather than guess', () => {
     expect(read('services/api/src/x.ts', 'const t = `multi\nline PLAN-OPEN: in a template\n`;\n')).toEqual([
       [2, "can't tell which comment or string holds this marker: write it in a comment"],
@@ -562,14 +650,7 @@ describe('the command', () => {
     };
     try {
       put('tools/decisions-check.mjs', readFileSync(CLI, 'utf8'));
-      put(
-        RULES_FILE,
-        'export const RULES = [\n' +
-          `  ['BM-12', '${NOTE_ACTIONS}', 1, /12\\.1 #9\\b/],\n` +
-          `  ['CO-5', '${NOTE_ACTIONS}', 1, /12\\.1 #10\\b/],\n` +
-          `  ['BF-1', '${AUTH}', 1],\n` +
-          '];\n',
-      );
+      put(RULES_FILE, `export const RULES = ${JSON.stringify(RULES, null, 2)};\n`);
       put(DOC, BASE);
       for (const [file, text] of Object.entries(SOURCES)) put(file, text);
       // None of these is a marker: Markdown is prose, and the checker's tests are its fixtures.
