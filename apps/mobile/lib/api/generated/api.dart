@@ -1117,6 +1117,23 @@ enum RejectReason {
   String toJson() => wire;
 }
 
+/// The risk level (primary) or the conditions (secondary)
+enum ReorderFlagsTier {
+  primary('primary'),
+  secondary('secondary'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const ReorderFlagsTier(this.wire);
+  final String wire;
+
+  static ReorderFlagsTier fromJson(String value) =>
+      ReorderFlagsTier.values.firstWhere((e) => e.wire == value, orElse: () => ReorderFlagsTier.unknown);
+
+  String toJson() => wire;
+}
+
 enum ReviewNeeds {
   patientsEdit('patients.edit'),
   patientsCorrectIdentity('patients.correct_identity'),
@@ -5512,6 +5529,50 @@ class RemoveMember {
       };
 }
 
+class ReorderFlags {
+  const ReorderFlags({
+    required this.ids,
+    required this.reason,
+    required this.tier,
+  });
+
+  /// Every active flag of the tier, each once, in the order its list shows them
+  final List<String> ids;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+  /// The risk level (primary) or the conditions (secondary)
+  final ReorderFlagsTier tier;
+
+  factory ReorderFlags.fromJson(Map<String, dynamic> json) => ReorderFlags(
+        ids: (json['ids'] as List<dynamic>).map((e) => e as String).toList(),
+        reason: json['reason'] as String,
+        tier: ReorderFlagsTier.fromJson(json['tier'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'ids': ids.map((e) => e).toList(),
+        'reason': reason,
+        'tier': tier.toJson(),
+      };
+}
+
+class ReorderFlagsResult {
+  const ReorderFlagsResult({
+    required this.changed,
+  });
+
+  /// How many flags moved, each to its next version: 0 when none did, and nothing is written
+  final int changed;
+
+  factory ReorderFlagsResult.fromJson(Map<String, dynamic> json) => ReorderFlagsResult(
+        changed: (json['changed'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changed': changed,
+      };
+}
+
 class RestorePreset {
   const RestorePreset({
     required this.reason,
@@ -7354,6 +7415,12 @@ class SineobexApi {
   Future<Member> removeMember({required String membershipId, required RemoveMember body}) async {
     final json = await _transport.send('POST', '/v1/team/members/${Uri.encodeComponent(membershipId)}/remove', body: body.toJson());
     return Member.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Put a tier’s active flags in the order sent, with a reason (recent sign-in)
+  Future<ReorderFlagsResult> reorderFlags({required ReorderFlags body}) async {
+    final json = await _transport.send('POST', '/v1/admin/preset-order/flag', body: body.toJson());
+    return ReorderFlagsResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Restore an archived preset at the version it is at, with a reason (recent sign-in)

@@ -4576,6 +4576,51 @@
         ],
         "type": "object"
       },
+      "ReorderFlags": {
+        "properties": {
+          "ids": {
+            "description": "Every active flag of the tier, each once, in the order its list shows them",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          },
+          "tier": {
+            "description": "The risk level (primary) or the conditions (secondary)",
+            "enum": [
+              "primary",
+              "secondary"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "ids",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ReorderFlagsResult": {
+        "properties": {
+          "changed": {
+            "description": "How many flags moved, each to its next version: 0 when none did, and nothing is written",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "type": "object"
+      },
       "RestorePreset": {
         "properties": {
           "reason": {
@@ -6062,6 +6107,72 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/admin/preset-order/flag": {
+      "post": {
+        "operationId": "reorderFlags",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderFlags"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorderFlagsResult"
+                }
+              }
+            },
+            "description": "How many flags moved"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Put a tier’s active flags in the order sent, with a reason (recent sign-in)",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
     "/v1/admin/presets/{kind}": {
       "get": {
         "operationId": "listPresets",
