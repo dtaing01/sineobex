@@ -428,6 +428,84 @@ describe('the preset installer', () => {
       plan(team, platform);
       expect({ team, platform }).toEqual(before);
     });
+
+    // An active preset's name is its own within its kind, ignoring case (0023's unique index): an
+    // entry that would take one is never written, since the head's insert would do nothing and its
+    // version and event nothing either, and an update renaming into one would fail the caller.
+    const own = (entry: PlatformEntry, n: number, over: Partial<HeldPreset> = {}): HeldPreset => ({
+      ...held(entry, n, over, { [CATEGORY.originKey]: id(1) }),
+      originKey: null,
+      originVersion: null,
+      platformLatest: null,
+    });
+    const nameTaken = { path: 'name', code: 'name_taken' };
+
+    it('skips an install whose name, ignoring case, an active preset of its kind holds', () => {
+      const category = held(CATEGORY, 1);
+      const ours = own({ ...GAUZE, body: { ...GAUZE.body, name: 'demo: GAUZE' } }, 2);
+      expect(plan([category, ours], [CATEGORY, GAUZE])).toEqual([
+        {
+          effect: 'skipped',
+          originKey: GAUZE.originKey,
+          kind: 'item',
+          platformVersion: 1,
+          problems: [nameTaken],
+        },
+      ]);
+      // An archived preset frees its name, and a preset of another kind never held it.
+      const archived = own(GAUZE, 2, { state: 'archived', customized: true });
+      const category2 = own({ ...MEDS, body: { ...MEDS.body, name: 'Demo: Gauze' } }, 3);
+      expect(effects(plan([category, archived, category2], [CATEGORY, GAUZE]))).toEqual([
+        'item.demo_gauze install',
+      ]);
+    });
+
+    it('skips an update that renames a copy into a name another active preset holds; its own name is its own', () => {
+      const category = held(CATEGORY, 1);
+      const ours = own({ ...CATEGORY, body: { ...CATEGORY.body, name: 'Demo: Supplies and kits' } }, 2);
+      expect(plan([category, ours], [v2(CATEGORY, { name: 'Demo: SUPPLIES and kits' })])).toEqual([
+        {
+          effect: 'skipped',
+          originKey: CATEGORY.originKey,
+          kind: 'order_category',
+          platformVersion: 2,
+          problems: [nameTaken],
+        },
+      ]);
+      expect(effects(plan([category, ours], [v2(CATEGORY, { name: 'demo: supplies', sort: 12 })]))).toEqual([
+        'order_category.demo_supplies update',
+      ]);
+    });
+
+    it('keeps a name taken for the rest of the run once a step gives it, or a copy leaves it', () => {
+      const socks = { ...GAUZE, originKey: 'item.demo_socks' };
+      // A copy renamed away from a name: an install of that name waits for the next run.
+      const category = held(CATEGORY, 1);
+      const gauze = held(GAUZE, 2, {}, { [CATEGORY.originKey]: id(1) });
+      expect(effects(plan([category, gauze], [v2(GAUZE, { name: 'Demo: Gauze pads' }), socks]))).toEqual([
+        'item.demo_gauze update',
+        'item.demo_socks skipped',
+      ]);
+      // Two entries of one name in one run: the first is installed.
+      expect(effects(plan([], [CATEGORY, GAUZE, socks]))).toEqual([
+        'order_category.demo_supplies install',
+        'item.demo_gauze install',
+        'item.demo_socks skipped',
+      ]);
+    });
+
+    it('never writes a body under a copy of another kind', () => {
+      const wrong: HeldPreset = { ...held(CATEGORY, 1), originKey: FLAG.originKey };
+      expect(plan([wrong], [v2(FLAG, { criteria: 'Demo: newer.' })])).toEqual([
+        {
+          effect: 'skipped',
+          originKey: FLAG.originKey,
+          kind: 'flag',
+          platformVersion: 2,
+          problems: [{ path: 'kind', code: 'wrong_kind' }],
+        },
+      ]);
+    });
   });
 
   describe('on a stand-in for the caller’s transaction', () => {
@@ -514,6 +592,46 @@ describe('the preset installer', () => {
         expect(kinds, k).toContain(k);
       // Nothing after the run's last write is a lock or a revision.
       expect(kinds.slice(Math.max(...writes)).filter((k) => k === 'lock' || k === 'revision')).toEqual([]);
+    });
+
+    it('reads a note type only when a map that names it may be written', async () => {
+      // A team that holds what it reads back; no note type is there to read.
+      const asked: { text: string; parameters: readonly (string | number)[] }[] = [];
+      const holding =
+        (team: HeldPreset[]): InstallSql =>
+        async (template, ...parameters) => {
+          const text = template.join('?').replace(/\s+/g, ' ');
+          asked.push({ text, parameters });
+          if (/team_preset_state/.test(text)) return [{ revision: '7' }] as never;
+          return (/from sineobex\.team_presets p\b/.test(text) ? team : []) as never;
+        };
+      const readsOf = () => asked.filter((a) => /note_type/.test(a.text));
+      const ids = { [CATEGORY.originKey]: id(1), [GAUZE.originKey]: id(2) };
+      const settled = [held(CATEGORY, 1), held(GAUZE, 2, {}, ids), held(MAP, 3, {}, ids)];
+      const newer = v2(MAP, { name: 'Demo: Dressing on' });
+
+      // Settled, or a newer map only offered (the team edited it): no body to check, nothing read.
+      expect(await installTeamPresets(holding(settled), TEAM, { platform: [CATEGORY, GAUZE, MAP] })).toEqual({
+        install: {},
+        update: {},
+        offer: {},
+        skipped: {},
+      });
+      const edited = [...settled.slice(0, 2), held(MAP, 3, { customized: true, currentVersion: 2 }, ids)];
+      await installTeamPresets(holding(edited), TEAM, { platform: [CATEGORY, GAUZE, newer] });
+      expect(readsOf()).toEqual([]);
+
+      // A newer map the team never edited is checked against its note type, which is read; the
+      // stand-in holds none, so the update is skipped, and nothing is locked or written.
+      expect(
+        await installTeamPresets(holding(settled), TEAM, { platform: [CATEGORY, GAUZE, newer] }),
+      ).toEqual({
+        install: {},
+        update: {},
+        offer: {},
+        skipped: { field_supply_map: 1 },
+      });
+      expect(readsOf().map((a) => a.parameters)).toEqual([[TEAM, JSON.stringify(['wound_care'])]]);
     });
   });
 });

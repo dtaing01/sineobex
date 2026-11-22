@@ -14,3 +14,6 @@ export * from './validate.ts';
 export * from './rules.ts';
 // What a note suggests, and what a bundle applies (5.3).
 export * from './supplies.ts';
+// The platform's presets, and the installer that gives them to a team (4.6, 5.2): the API and the
+// seed hand it their own transaction.
+export * from './install.ts';
