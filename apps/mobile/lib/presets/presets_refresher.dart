@@ -14,7 +14,8 @@ import 'preset_store.dart';
 /// Pulls the presets changed since the revision [presets] holds, under the epoch it holds (neither
 /// sent when none is held), and writes the answer with [PresetStore.apply]. A 403 clears the copy
 /// ([PresetStore.clear]); any other failure leaves it as it was, for the next run to ask again.
-/// Nothing is asked while the store is frozen.
+/// Nothing is asked while the store is frozen. An answer that is no reset is written only over the
+/// copy it was asked from: the revision and the epoch held still those the pull sent.
 ///
 /// An answer, a 403 included, is written only into [presets]' own store, and only while [current]
 /// says that store is still the one the controller holds open, for the same sign-in, and it is not
@@ -37,9 +38,11 @@ class PresetsRefresher implements AfterSyncRefresher {
   @override
   Future<void> refresh(RefreshReason reason) async {
     if (!_writable) return;
+    final since = presets.revision;
+    final epoch = presets.epoch;
     final PresetsPull answer;
     try {
-      answer = await api.pullPresets(since: presets.revision?.toString(), epoch: presets.epoch);
+      answer = await api.pullPresets(since: since?.toString(), epoch: epoch);
     } on ApiException catch (e) {
       // No longer a member of the team: its presets go, and the next pull asks for everything.
       // Any other refusal (a sign-in to renew, a fault) keeps the copy for the next run.
@@ -48,7 +51,13 @@ class PresetsRefresher implements AfterSyncRefresher {
     }
     // Answered after a sign-out, a lock, a switch of team, a freeze or a sign-in again, it goes
     // nowhere.
-    if (_writable) presets.apply(answer);
+    if (!_writable) return;
+    // An answer that is no reset holds only what changed since [since]. Over a copy that went
+    // meanwhile (a search found the team index too old and cleared every server copy), it would
+    // stand for the whole team under a revision no later pull goes back before: it is dropped, and
+    // the next pull asks from what the copy holds now.
+    if (!answer.reset && (presets.revision != since || presets.epoch != epoch)) return;
+    presets.apply(answer);
   }
 
   /// [presets]' database is the one the controller holds open for the sign-in that asked, and it

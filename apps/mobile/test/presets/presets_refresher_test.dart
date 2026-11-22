@@ -263,6 +263,29 @@ void main() {
       expect(copyIn(db.db), held);
     });
 
+    test('an answer that comes back once the copy went is written only when it is a reset', () async {
+      // A search finds the team index too old and clears every server copy, the presets included,
+      // while a pull is on its way.
+      await holdThree();
+      await answeredAfter(
+        pullAnswer(revision: 5, presets: [pulled(footCheckId, 'bundle', footCheck())]),
+        store.clearServerData,
+      );
+      expect(copyIn(db.db), noCopy);
+      expect(presets.downloaded, isFalse);
+      // The next pull asks for everything.
+      await holdThree();
+      expect(standIn.queriesOf(team).last, isEmpty);
+      // A reset holds everything, so one that comes back after a clear is written.
+      await answeredAfter(
+        pullAnswer(reset: true, epoch: epochB, revision: 9, presets: [pulled(frostRiskId, 'flag', frostRisk())]),
+        store.clearServerData,
+      );
+      expect(standIn.queriesOf(team).last, {'since': '3', 'epoch': epochA});
+      expect(presets.presets().map((p) => p.id), [frostRiskId]);
+      expect([presets.revision, presets.epoch], [9, epochB]);
+    });
+
     test('an answer that comes back once this is not the open database writes nothing, nor does a 403', () async {
       // Signed out, another team opened, or the same file opened again for a new sign-in: the
       // controller holds another store, or none.
