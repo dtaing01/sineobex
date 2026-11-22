@@ -1,4 +1,4 @@
-import { PLATFORM, type PlatformEntry } from '@sineobex/presets';
+import { PLATFORM, presetWriteEffect, type PlatformEntry, type PresetHeadAfter } from '@sineobex/presets';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TeamScope } from '../src/auth/context.ts';
 import { ApiError } from '../src/lib/errors.ts';
@@ -52,6 +52,13 @@ import {
 vi.mock('../../../packages/presets/data/platform.json', async (importOriginal) => {
   const real = (await importOriginal()) as { default: unknown[] };
   return { default: [...real.default] };
+});
+
+// presetWriteEffect is the real one, unless a case answers for it once: so a case can show that the
+// store writes what the effect answers (design 13.3), which no real answer tells apart.
+vi.mock('@sineobex/presets', async (importOriginal) => {
+  const real = (await importOriginal()) as { presetWriteEffect: typeof presetWriteEffect };
+  return { ...real, presetWriteEffect: vi.fn(real.presetWriteEffect) };
 });
 
 let h: Harness;
@@ -520,6 +527,65 @@ describe('the pull of a team the platform has given nothing yet (routes/presets.
     expect(second.epoch).toBe((await stateOf(h, teamId))!.epoch);
     expect(second.epoch).not.toBe(NO_EPOCH);
     expect(second.presets.length).toBeGreaterThan(0);
+  });
+});
+
+describe('a new preset, as presetWriteEffect answers it (design 5.1, 13.3)', () => {
+  // The effect is the one authority on what an act does: the store writes its answer, never a value
+  // of its own, so the store and the seed, the other writer of a team's own presets, never drift.
+  /** Answers once as the real effect would, its head after the act changed by `change`. */
+  const answerOnce = (change: (answer: PresetHeadAfter & { created?: PresetHeadAfter }) => object) => {
+    const effect = vi.mocked(presetWriteEffect);
+    const real = effect.getMockImplementation()!;
+    effect.mockImplementationOnce((input) => {
+      const answer = real(input);
+      return 'refuse' in answer ? answer : ({ ...answer, ...change(answer) } as typeof answer);
+    });
+  };
+
+  it('takes a created head’s state, version and customized from the effect', async () => {
+    // An answer no create gives today, so only a store that writes the effect's answer shows it.
+    answerOnce(() => ({ stateAfter: 'archived', customizedAfter: true }));
+    const made = await createPreset(admin(), { kind: 'flag', body: make.flag(), reason: REASON });
+    expect(made.version).toBe(1);
+    expect(await headOf(h, made.id)).toMatchObject({
+      state: 'archived',
+      currentVersion: 1,
+      customized: true,
+    });
+  });
+
+  it('takes the head of a preset an update makes as new from the effect’s `created`', async () => {
+    // Edited, so its next platform version is only offered; the order above may have moved it.
+    const id = idOf(team, 'flag.pregnancy');
+    const own = await currentBody(id);
+    const { version } = await editPreset(admin(), {
+      kind: 'flag',
+      id,
+      baseVersion: (await headOf(h, id))!.currentVersion,
+      body: { ...own, criteria: 'Demo: the team’s pregnancy criteria' },
+      reason: REASON,
+    });
+    const unrelease = releasePlatform([nextVersion('flag.pregnancy', (b) => ({ ...b, color: 'teal' }))]);
+    try {
+      await runInstaller(h, team.teamId);
+      answerOnce((answer) => ({ created: { ...answer.created!, customizedAfter: true } }));
+      const taken = await takePlatformUpdate(admin(), {
+        kind: 'flag',
+        id,
+        baseVersion: version,
+        asNew: true,
+        reason: REASON,
+      });
+      expect(await headOf(h, taken.id)).toMatchObject({
+        state: 'active',
+        currentVersion: 1,
+        customized: true,
+        originKey: 'flag.pregnancy',
+      });
+    } finally {
+      unrelease();
+    }
   });
 });
 

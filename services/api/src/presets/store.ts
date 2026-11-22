@@ -17,6 +17,7 @@ import {
   type PlatformEntry,
   type PresetAct,
   type PresetBody,
+  type PresetHeadAfter,
   type PresetKind,
   type PresetProblem,
   type PresetRef,
@@ -245,11 +246,12 @@ export function platformUpdateOf(team: TeamPresets, preset: HeldPreset): Platfor
 
 /** What one write changes, worked out before anything is written; `commit` writes it all at once. */
 interface Changes {
-  /** New heads, each a preset at version 1, made by the person. */
+  /** New heads, made by the person, each as presetWriteEffect answers its head after the act. */
   made: {
     id: string;
     kind: PresetKind;
     name: string;
+    head: PresetHeadAfter;
     originKey: string | null;
     originVersion: number | null;
     platformLatest: number | null;
@@ -344,23 +346,29 @@ async function commit(w: Write, changes: Changes, reason: string): Promise<numbe
       if (updated.length !== changes.changed.length)
         throw new Error('a preset write changed fewer heads than it worked out; undo the transaction');
     }
+    // A new head's state, version and `customized` are presetWriteEffect's, never a column's
+    // default, so the store and the seed, the other writer of a team's own presets, cannot drift.
     if (changes.made.length > 0)
       await tx`
         insert into sineobex.team_presets
-          (team_id, id, kind, name, current_version, origin_key, origin_version, platform_latest,
-           revision, created_by, updated_by)
-        select ${teamId}::uuid, h.id, h.kind, h.name, 1, h.origin_key, h.origin_version, h.platform_latest,
-               ${revision}::bigint, ${userId}::uuid, ${userId}::uuid
+          (team_id, id, kind, name, state, current_version, customized, origin_key, origin_version,
+           platform_latest, revision, created_by, updated_by)
+        select ${teamId}::uuid, h.id, h.kind, h.name, h.state, h.version, h.customized, h.origin_key,
+               h.origin_version, h.platform_latest, ${revision}::bigint, ${userId}::uuid, ${userId}::uuid
         from jsonb_to_recordset(${rows(
           changes.made.map((m) => ({
             id: m.id,
             kind: m.kind,
             name: m.name,
+            state: m.head.stateAfter,
+            version: m.head.versionAfter,
+            customized: m.head.customizedAfter,
             origin_key: m.originKey,
             origin_version: m.originVersion,
             platform_latest: m.platformLatest,
           })),
-        )}::text::jsonb) as h (id uuid, kind text, name text, origin_key text, origin_version integer,
+        )}::text::jsonb) as h (id uuid, kind text, name text, state text, version integer,
+                               customized boolean, origin_key text, origin_version integer,
                                platform_latest integer)`;
     if (changes.versions.length > 0)
       await tx`
@@ -554,15 +562,29 @@ export function createPreset(
     );
     if ('refuse' in effect) throw refusal(effect.refuse, { archived });
     const id = crypto.randomUUID();
+    // 5.1 starts every preset at version 1, which the contract answers as such.
+    const version = effect.versionAfter as 1;
     return {
       changes: {
-        made: [{ id, kind, name: body.name, originKey: null, originVersion: null, platformLatest: null }],
+        made: [
+          {
+            id,
+            kind,
+            name: body.name,
+            head: effect,
+            originKey: null,
+            originVersion: null,
+            platformLatest: null,
+          },
+        ],
         changed: [],
-        versions: [{ id, version: effect.versionAfter, body, source: 'team' }],
-        events: [{ id, act: 'created', version: effect.versionAfter }],
-        audits: (revision) => [presetAudit('preset.created', { id, kind }, 1, revision, fieldsOf(body))],
+        versions: [{ id, version, body, source: 'team' }],
+        events: [{ id, act: 'created', version }],
+        audits: (revision) => [
+          presetAudit('preset.created', { id, kind }, version, revision, fieldsOf(body)),
+        ],
       },
-      answer: (revision) => ({ id, version: 1 as const, revision }),
+      answer: (revision) => ({ id, version, revision }),
     };
   });
 }
@@ -773,6 +795,7 @@ export function takePlatformUpdate(
             id,
             kind,
             name: body.name,
+            head: created,
             originKey: preset.originKey,
             originVersion: entry.platformVersion,
             platformLatest: entry.platformVersion,
