@@ -4,7 +4,7 @@ What a person with the right accounts has to do once. Code and workflows are alr
 
 ## 1. GitHub repository settings
 
-- **Branch protection on `main`:** require a pull request with one approving review, require the CI checks (`Secret scan`, `PHI guard`, `TypeScript lint, types and unit tests`, `Migrations and API tests (Postgres 16)`, `Migrations and API tests (Postgres 17)`, `Contract drift`, `Flutter analyze and tests`, `Android debug build`, `Portal build and accessibility`, `Website build`, `Workflow and shell lint`), and block force pushes.
+- **Branch protection on `main`:** require a pull request with one approving review, require every job of `.github/workflows/ci.yml` as a CI check (`Secret scan`, `PHI guard`, `Task card check`, `Decisions document check`, `TypeScript lint, types and unit tests`, `Migrations and API tests (Postgres 16)`, `Migrations and API tests (Postgres 17)`, `Contract drift`, `Forms drift`, `Flutter analyze and tests`, `Phone sync against the real API`, `Android debug build`, `Portal end-to-end and accessibility`, `Website build`, `Workflow and shell lint`); a name here that no job reports blocks every merge, and a job left off doesn't block one, and block force pushes.
 - **Environments:** create `preview` (no reviewers) and, for phase 12, `staging` and `production` (production requires a reviewer).
 - **Secret scanning and Dependabot alerts:** turn both on under Settings → Code security.
 
