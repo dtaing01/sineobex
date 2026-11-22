@@ -12,7 +12,8 @@ import '../sync/sync_engine.dart' show AfterSyncRefresher, RefreshReason;
 import 'preset_store.dart';
 
 /// Pulls the presets changed since the revision [presets] holds, under the epoch it holds (neither
-/// sent when none is held), and writes the answer with [PresetStore.apply]. A 403 `not_a_member`
+/// sent when none is held, or when another version of the reader wrote the copy:
+/// [PresetStore.nextPull]), and writes the answer with [PresetStore.apply]. A 403 `not_a_member`
 /// clears the copy ([PresetStore.clear]); any other failure, another 403 included, leaves it as it
 /// was, for the next run to ask again. Nothing is asked while the store is frozen. An answer that
 /// is no reset is written only over the copy it was asked from: the revision and the epoch held
@@ -40,8 +41,7 @@ class PresetsRefresher implements AfterSyncRefresher {
   @override
   Future<void> refresh(RefreshReason reason) async {
     if (!_writable) return;
-    final since = presets.revision;
-    final epoch = presets.epoch;
+    final (:since, :epoch) = presets.nextPull;
     final PresetsPull answer;
     try {
       answer = await api.pullPresets(since: since?.toString(), epoch: epoch);

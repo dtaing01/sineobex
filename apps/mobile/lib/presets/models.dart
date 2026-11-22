@@ -74,6 +74,29 @@ enum CategoryBehaviour { supply, medication, lab }
 /// values.
 enum FlagTier { primary, secondary }
 
+/// Moved on by hand when [parsePreset] comes to read a body it refused before in a way
+/// [presetsReader]'s codes do not show: a bound widened, a `when` test or a result type added, a
+/// field read as another type. models_test.dart pins the preset-bodies.json it was last looked at
+/// for, and fails when that file changes.
+const presetsReaderRevision = 1;
+
+/// This version of [parsePreset], as a copy of the presets records it (`presets.reader`): its
+/// revision, then every code its enums know, so a kind, a state, a colour, a behaviour or a tier
+/// learnt moves it by itself. A copy another version wrote may lack the presets that version
+/// skipped or refused, which no pull since its revision sends again: it is pulled whole again
+/// (PresetsRefresher).
+final presetsReader = [
+  '$presetsReaderRevision',
+  for (final codes in [
+    [for (final k in PresetKind.values) k.code],
+    [for (final s in PresetState.values) s.name],
+    [for (final c in FlagColor.values) c.code],
+    [for (final b in CategoryBehaviour.values) b.name],
+    [for (final t in FlagTier.values) t.name],
+  ])
+    codes.join(','),
+].join(';');
+
 /// A body [parsePreset] refuses: the server's schema for its kind would refuse it. [path] names the
 /// field at fault as the vectors write one (its parts joined by dots, an array index as its number,
 /// '' for the body itself); [problem] says what is wrong in a few words. Neither ever holds what

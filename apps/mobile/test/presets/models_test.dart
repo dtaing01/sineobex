@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/presets/models.dart';
 
@@ -89,6 +90,38 @@ void main() {
         for (final c in cases(key)) c['name'],
     ];
     expect(names.toSet(), hasLength(names.length));
+  });
+
+  // A server change that widens a body changes these cases. An older phone skips a preset it can't
+  // read, and gets it back only when its copy is pulled whole again, which a copy written by another
+  // reader is (presetsReader). A new code of the reader's enums moves the reader by itself; any other
+  // widening has to move presetsReaderRevision, and this is where that is looked at.
+  test('are the cases the reader’s revision was last looked at for', () {
+    final cases = {...vectors}..remove('note');
+    expect(
+      {'revision': presetsReaderRevision, 'cases': sha256.convert(utf8.encode(jsonEncode(cases))).toString()},
+      {'revision': 1, 'cases': '61a9be2e7b3203df98ae11d0f0ea4cc7c81a6570a521765d109b8703f24d1666'},
+      reason:
+          'preset-bodies.json’s cases changed. If parsePreset now reads a body it refused before in a '
+          'way presetsReader’s codes do not show (a bound widened, a when test or a result type added), '
+          'move presetsReaderRevision on (models.dart), so every phone’s copy is pulled whole again '
+          'once its app is updated; either way, record the revision and the cases’ sha256 here.',
+    );
+  });
+
+  test('give the reader a key that holds its revision and moves with every code it knows', () {
+    final parts = presetsReader.split(';');
+    expect(parts.first, '$presetsReaderRevision');
+    expect(
+      [for (final p in parts.skip(1)) p.split(',')],
+      [
+        [for (final k in PresetKind.values) k.code],
+        [for (final s in PresetState.values) s.name],
+        [for (final c in FlagColor.values) c.code],
+        [for (final b in CategoryBehaviour.values) b.name],
+        [for (final t in FlagTier.values) t.name],
+      ],
+    );
   });
 
   group('a valid body reads as itself, its defaults filled in:', () {

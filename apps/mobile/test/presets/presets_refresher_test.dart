@@ -12,6 +12,7 @@ import 'package:sineobex_field/app_providers.dart' show appRefreshers;
 import 'package:sineobex_field/auth/session_controller.dart';
 import 'package:sineobex_field/patients/patient_providers.dart' show PatientServices;
 import 'package:sineobex_field/patients/team_index.dart' show IndexRemoval, TeamIndex;
+import 'package:sineobex_field/presets/models.dart' show presetsReader;
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/presets/presets_refresher.dart';
 import 'package:sineobex_field/security/key_vault.dart';
@@ -133,13 +134,48 @@ void main() {
     test('since and epoch are the kv keys as they stand', () async {
       store
         ..setKv('presets.revision', '41')
-        ..setKv('presets.epoch', epochB);
+        ..setKv('presets.epoch', epochB)
+        ..setKv('presets.reader', presetsReader);
       standIn.answers[team] = pullAnswer(revision: 41, epoch: epochB);
       await run();
       expect(standIn.queriesOf(team), [
         {'since': '41', 'epoch': epochB},
       ]);
     });
+
+    test(
+      'a copy another version of the reader wrote asks for everything, and gets back what that one skipped',
+      () async {
+        await holdThree();
+        // As an earlier version of the app left it, or one from before the reader was recorded: at the
+        // revision, without the foot check bundle, which that version could not read (a colour or a
+        // bound it did not know), and which no pull since the revision sends again.
+        for (final older in ['0;order_category,item;active,archived;red;supply;primary', null]) {
+          if (older == null) {
+            db.db.execute("DELETE FROM kv WHERE key = 'presets.reader'");
+          } else {
+            store.setKv('presets.reader', older);
+          }
+          db.db.execute('DELETE FROM presets WHERE id = ?', [footCheckId]);
+          standIn.answers[team] = pullAnswer(
+            reset: true,
+            revision: 3,
+            presets: [
+              pulled(labsId, 'order_category', labs()),
+              pulled(glucoseId, 'item', glucose()),
+              pulled(footCheckId, 'bundle', footCheck()),
+            ],
+          );
+          await run(RefreshReason.opened);
+          expect(standIn.queriesOf(team).last, <String, String>{}, reason: '$older');
+          expect(presets.preset(footCheckId), isNotNull, reason: '$older');
+          expect(store.kv('presets.reader'), presetsReader, reason: '$older');
+        }
+        standIn.answers[team] = pullAnswer(revision: 4);
+        await run(RefreshReason.afterSync);
+        expect(standIn.queriesOf(team).last, {'since': '3', 'epoch': epochA});
+      },
+    );
 
     test('it pulls at each open, after each sync that reached the server, and on pull to refresh', () async {
       final reasons = [RefreshReason.opened, RefreshReason.afterSync, RefreshReason.afterSync, RefreshReason.manual];

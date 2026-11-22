@@ -105,7 +105,7 @@ void main() {
     expect(presets.presets(), isEmpty);
   });
 
-  test('a first pull writes every row as the server sent it, its revision, its epoch and when', () {
+  test('a first pull writes every row as the server sent it, its revision, its epoch, its reader and when', () {
     holdPlatform();
     expect(rows(), {
       labsId: row('order_category', labs(), originKey: 'order_category.labs'),
@@ -114,9 +114,29 @@ void main() {
       highId: row('flag', high(), originKey: 'flag.high'),
       settingsId: row('settings', teamSettings(), originKey: 'settings.team'),
     });
-    expect(keys(), {'presets.revision': '12', 'presets.epoch': epochA, 'presets.updatedAt': now.toIso8601String()});
+    expect(keys(), {
+      'presets.revision': '12',
+      'presets.epoch': epochA,
+      'presets.reader': presetsReader,
+      'presets.updatedAt': now.toIso8601String(),
+    });
     expect([presets.revision, presets.epoch, presets.downloaded], [12, epochA, true]);
     expect(presets.updatedAt?.toUtc(), now);
+  });
+
+  test('the next pull asks from the revision and epoch held only under this app’s reader', () {
+    expect(presets.nextPull, (since: null, epoch: null));
+    holdPlatform();
+    expect(presets.nextPull, (since: 12, epoch: epochA));
+    // Written by an earlier version of the app, which may have skipped presets this one reads, or
+    // before the reader was recorded: asked for whole again, and shown as it is meanwhile.
+    store.setKv('presets.reader', '0;order_category,item;active,archived;red;supply;primary');
+    expect(presets.nextPull, (since: null, epoch: null));
+    db.db.execute("DELETE FROM kv WHERE key = 'presets.reader'");
+    expect(presets.nextPull, (since: null, epoch: null));
+    expect([presets.revision, presets.epoch, presets.downloaded, rows().length], [12, epochA, true, 5]);
+    presets.apply(answer(reset: true, revision: 12));
+    expect(presets.nextPull, (since: 12, epoch: epochA));
   });
 
   test('each preset held reads with its kind, state, version, origin and body', () {

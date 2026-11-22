@@ -53,6 +53,9 @@ class PresetStore {
   /// is under `presets.`, and goes with it.
   static const updatedAtKey = '${presetsKvPrefix}updatedAt';
 
+  /// The version of the reader that wrote the copy ([presetsReader]).
+  static const readerKey = '${presetsKvPrefix}reader';
+
   static const _columns = 'id, kind, version, state, origin_key, body_json';
 
   /// The revision held ([revisionKey]); null when none is, and the next pull sends no `since`.
@@ -60,6 +63,14 @@ class PresetStore {
 
   /// The epoch held ([epochKey]); null when none is, and the next pull sends no `epoch`.
   String? get epoch => store.kv(epochKey);
+
+  /// What the next pull asks from: the [revision] and [epoch] held, or neither, which the server
+  /// answers with a reset, when none is held or the copy was written by another version of the
+  /// reader than this app's ([presetsReader]). That version may have skipped or refused presets
+  /// this one reads (a later kind, colour or bound), and no pull since the revision it held sends
+  /// them again.
+  ({int? since, String? epoch}) get nextPull =>
+      store.kv(readerKey) == presetsReader ? (since: revision, epoch: epoch) : (since: null, epoch: null);
 
   /// A pull's answer was written since the copy last went. False is "Your team’s setup hasn’t
   /// downloaded yet. Connect to finish." (6.1), true even for a team that holds no preset.
@@ -84,8 +95,8 @@ class PresetStore {
     return row == null ? null : _held(row);
   }
 
-  /// Writes a pull's [answer]: its rows, its revision, its epoch and the time, in one local
-  /// transaction, so a write cut short leaves the copy as it was and the next pull asks again from
+  /// Writes a pull's [answer]: its rows, its revision, its epoch, this app's reader and the time, in
+  /// one local transaction, so a write cut short leaves the copy as it was and the next pull asks again from
   /// the same revision. A reset, or an answer under an epoch other than the one held, replaces every
   /// row; otherwise each row is put by its id. Archived rows are held. A row this phone can't read
   /// (a kind or a state it does not know, a body [parsePreset] refuses) is not held: one the table
@@ -116,6 +127,7 @@ class PresetStore {
     store
       ..setKv(revisionKey, '${answer.revision}')
       ..setKv(epochKey, answer.epoch)
+      ..setKv(readerKey, presetsReader)
       ..setKv(updatedAtKey, now().toUtc().toIso8601String());
   });
 

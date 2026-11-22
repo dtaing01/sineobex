@@ -699,7 +699,7 @@ void main() {
     int presetKeys() => count("SELECT count(*) FROM kv WHERE key LIKE 'presets.%'");
     int indexRows() => count('SELECT count(*) FROM team_index');
 
-    /// A copy as a pull leaves it: two rows, one archived, its revision, epoch and time.
+    /// A copy as a pull leaves it: two rows, one archived, its revision, epoch, reader and time.
     void holdPresets() {
       db.db
         ..execute(
@@ -717,6 +717,7 @@ void main() {
       store
         ..setKv('presets.revision', '12')
         ..setKv('presets.epoch', epoch)
+        ..setKv('presets.reader', '1;flag,item;active,archived;red;supply;primary')
         ..setKv('presets.updatedAt', '2026-10-20T15:00:00.000Z');
     }
 
@@ -754,7 +755,7 @@ void main() {
         holdPresets();
         db.db.execute("CREATE TRIGGER fail_clear $trigger BEGIN SELECT RAISE(ABORT, 'demo: the delete failed'); END");
         expect(() => store.clearServerData(), throwsA(isA<SqliteException>()), reason: part);
-        expect([presetRows(), presetKeys(), indexRows()], [2, 3, 1], reason: part);
+        expect([presetRows(), presetKeys(), indexRows()], [2, 4, 1], reason: part);
         db.db.execute('DROP TRIGGER fail_clear');
         store.clearServerData();
         expect([presetRows(), presetKeys(), indexRows()], [0, 0, 0], reason: part);
