@@ -638,6 +638,29 @@ describe('reading markers', () => {
     ]);
   });
 
+  it('reports a marker spelled otherwise, which no search for PLAN-OPEN finds', () => {
+    for (const spelled of [
+      'plan-open',
+      'Plan-Open',
+      'PLAN_OPEN',
+      'PLAN OPEN',
+      'PLANOPEN',
+      'PLAN‑OPEN',
+      'PLAN–OPEN',
+    ]) {
+      expect(read('apps/mobile/ios/Runner/x.txt', `// ${spelled}: the default\n`), spelled).toEqual([
+        [
+          1,
+          `"${spelled}" is not how a marker is written: write "PLAN-OPEN", which the check and a search find`,
+        ],
+      ]);
+    }
+    // Words that only look alike are not markers.
+    expect(read('services/api/src/x.ts', '// the care plan open date; isPlanOpen; plan_opener\n')).toEqual(
+      [],
+    );
+  });
+
   it('reads the paths of a Where cell: backticked, with a "/" or at the root, braces expanded', () => {
     expect(
       pathsIn(
@@ -704,6 +727,19 @@ describe('the command', () => {
       expect(r.stderr).toBe(
         'Decisions document check found 1 problem(s):\n' +
           `  apps/mobile/lib/encounters/close_sweep.dart:3: this marker has no row: name its row, as in "PLAN-OPEN (BM-12): …", and add that row to ${DOC} under its decider if it isn't there ("PLAN-OPEN: when is it released?")\n`,
+      );
+      expect(r.status).toBe(1);
+      // A file whose only marker is misspelled is read too.
+      put(
+        'apps/mobile/lib/encounters/close_sweep.dart',
+        SOURCES['apps/mobile/lib/encounters/close_sweep.dart'],
+      );
+      put('services/api/src/spelled.ts', '// Plan-Open: is it read?\n');
+      execFileSync('git', ['-C', dir, 'add', 'services/api/src/spelled.ts']);
+      r = cli();
+      expect(r.stderr).toBe(
+        'Decisions document check found 1 problem(s):\n' +
+          '  services/api/src/spelled.ts:1: "Plan-Open" is not how a marker is written: write "PLAN-OPEN", which the check and a search find\n',
       );
       expect(r.status).toBe(1);
     } finally {

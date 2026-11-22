@@ -27,6 +27,11 @@ export const NOT_MARKERS = [
 ];
 
 const MARK = 'PLAN-OPEN';
+// A marker spelled otherwise ("Plan-Open", "PLAN_OPEN", a typeset hyphen) is found by no search for
+// markers, so its default would go unlisted: the check reports it. NEAR is what git grep looks for,
+// wide enough to take in every spelling MISSPELT finds.
+const MISSPELT = [/\bplan[-_\u2010-\u2015\u2212]open\b/gi, /\bPLAN\s{0,3}OPEN\b/g];
+const NEAR = 'plan.{0,3}open';
 const ROW_ID = /^PLAN-OPEN \(((?:PL|BM|CO|TM)-\d+)\)/;
 // Meant as a row id but not one: another prefix or case, no space, or more inside the brackets.
 const LIKE_ROW_ID = /^PLAN-OPEN\s*\(\s*([A-Za-z]{2}\s*-\s*\d+[^)]*)\)/;
@@ -274,6 +279,15 @@ export function markersIn(file, text) {
           : null,
       });
     }
+    for (const m of MISSPELT.flatMap((re) => [...line.matchAll(re)]))
+      if (m[0] !== MARK)
+        found.push({
+          file,
+          line: n + 1,
+          id: null,
+          question: line.trim(),
+          problem: `"${m[0]}" is not how a marker is written: write "${MARK}", which the check and a search find`,
+        });
   });
   return found;
 }
@@ -523,7 +537,7 @@ function main(args) {
   const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', maxBuffer: 1 << 26 });
   let found = '';
   try {
-    found = git('grep', '-l', '-z', '-I', '-F', '-e', MARK, '--', '.', ':(exclude)*.md');
+    found = git('grep', '-l', '-z', '-I', '-i', '-E', '-e', NEAR, '--', '.', ':(exclude)*.md');
   } catch (e) {
     // git grep exits 1 when nothing matches.
     if (e.status !== 1) throw e;
