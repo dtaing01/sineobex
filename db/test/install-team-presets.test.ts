@@ -251,15 +251,16 @@ describe('installing the platform presets', () => {
     };
     return { conn, commit: () => end('commit'), rollback: () => end('rollback') };
   }
-  async function someoneWaitsForTheLock() {
+  /** Until a session waits on a lock: the team lock (advisory), or another transaction's row. */
+  async function someoneWaitsForTheLock(on: 'advisory' | 'transactionid' = 'advisory') {
     for (let i = 0; i < 500; i++) {
       const [row] = await db.owner<{ n: number }[]>`
         select count(*)::int as n from pg_stat_activity
-        where datname = current_database() and wait_event_type = 'Lock' and wait_event = 'advisory'`;
+        where datname = current_database() and wait_event_type = 'Lock' and wait_event = ${on}`;
       if (row!.n > 0) return;
       await new Promise((r) => setTimeout(r, 10));
     }
-    throw new Error('no installer waited for the team lock');
+    throw new Error(`no installer waited on a lock (${on})`);
   }
 
   beforeAll(async () => {
@@ -513,6 +514,120 @@ describe('installing the platform presets', () => {
         createdBy: null,
         updatedBy: null,
       });
+    });
+  });
+
+  // 0023's unique name compares lower(name), PostgreSQL's fold of the database's locale, which is
+  // not JS's: 'İ' folds to 'i' there and to 'i' and a combining dot in JS. The plan compares names
+  // as the database does, so it never plans a head the index refuses (review finding PS-1).
+  describe('names, as the database compares them', () => {
+    const KITS = 'DEMO: SUPPLİES AND KİTS';
+    /** A team's own category, as P1's create writes one: under the lock, at a revision, with a reason. */
+    const ownCategory = (teamId: string, name: string) =>
+      asTeam(teamId, async (tx) => {
+        const revision = await takeRevision(tx, teamId);
+        const [row] = await tx<{ id: string }[]>`
+          insert into sineobex.team_presets (team_id, kind, name, current_version, revision, created_by, updated_by)
+          values (${teamId}, 'order_category', ${name}, 1, ${revision}, ${user}, ${user}) returning id`;
+        await tx`
+          insert into sineobex.team_preset_versions (team_id, preset_id, version, body, source, created_by)
+          values (${teamId}, ${row!.id}, 1, ${tx.json({ name, behaviour: 'supply', sort: 50 })}, 'team', ${user})`;
+        await tx`
+          insert into sineobex.team_preset_events (team_id, preset_id, act, version, reason, created_by)
+          values (${teamId}, ${row!.id}, 'created', 1, 'Demo: our own list', ${user})`;
+        return row!.id;
+      });
+
+    it('rests on names this database folds together and JS does not', async () => {
+      const [row] = await db.owner<{ same: boolean }[]>`
+        select lower(${KITS}) = lower('Demo: Supplies and kits') and lower('DEMO: SUPPLİES') = lower('Demo: Supplies')
+          as same`;
+      expect(row!.same).toBe(true);
+      expect(KITS.toLowerCase()).not.toBe('demo: supplies and kits');
+    });
+
+    it('skips an install whose name a team’s own preset holds, writing nothing, at every run', async () => {
+      const team = await makeTeam(db.owner, 'Install Presets Folded Name Team');
+      const own = await ownCategory(team, 'DEMO: SUPPLİES');
+      const before = await snapshot(team);
+      for (let run = 0; run < 2; run++) {
+        const counts = await asTeam(team, (tx) =>
+          installTeamPresets(tx, team, { platform: [CATEGORY, GAUZE] }),
+        );
+        // The item names the category, which is not given: it is skipped too, never stored naming
+        // a preset that is not there.
+        expect(counts).toEqual({
+          install: {},
+          update: {},
+          offer: {},
+          skipped: { order_category: 1, item: 1 },
+        });
+      }
+      expect(await snapshot(team)).toEqual(before);
+      expect((await headsOf(team)).map((h) => h.id)).toEqual([own]);
+    });
+
+    it('skips an update that would rename a copy into such a name, and never fails its caller', async () => {
+      const team = await makeTeam(db.owner, 'Install Presets Folded Rename Team');
+      await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }));
+      await ownCategory(team, KITS);
+      const before = await snapshot(team);
+      const counts = await asTeam(team, (tx) =>
+        installTeamPresets(tx, team, {
+          platform: [CATEGORY, next(CATEGORY, { name: 'Demo: Supplies and kits' })],
+        }),
+      );
+      expect(counts).toEqual({ install: {}, update: {}, offer: {}, skipped: { order_category: 1 } });
+      expect(await snapshot(team)).toEqual(before);
+    });
+
+    it('undoes its run when a writer that took no team lock holds the name first', async () => {
+      const team = await makeTeam(db.owner, 'Install Presets Unlocked Writer Team');
+      const writer = await openWriter(team);
+      let thrown: unknown = null;
+      try {
+        // A writer that never took the team lock, so neither plan saw its row.
+        await writer.conn`
+          insert into sineobex.team_presets (team_id, kind, name, current_version, revision, created_by, updated_by)
+          values (${team}, 'order_category', 'Demo: Supplies', 1, 1, ${user}, ${user})`;
+        const install = asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY, GAUZE] }));
+        await someoneWaitsForTheLock('transactionid');
+        await writer.commit();
+        thrown = await install.then(
+          () => null,
+          (e: unknown) => e,
+        );
+      } finally {
+        await writer.rollback();
+      }
+      // Its item would have named a category that is not there: nothing of the run is kept.
+      expect(thrown).toBeInstanceOf(Error);
+      expect(await headsOf(team)).toMatchObject([{ kind: 'order_category', originKey: null }]);
+      expect(await versionsOf(team)).toEqual([]);
+      expect(await eventsOf(team)).toEqual([]);
+      expect(await revisionOf(team)).toBeNull();
+    });
+  });
+
+  // The database does not hold that a head's current version is there (phase 5 design 4.2): the
+  // writers do. A head whose version cannot be read is held all the same (review finding PS-2).
+  describe('a head whose current version cannot be read', () => {
+    it('is held: never installed again, nothing written over it, no revision taken', async () => {
+      const team = await makeTeam(db.owner, 'Install Presets Unread Head Team');
+      await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }));
+      await db.owner`update sineobex.team_presets set current_version = 2 where team_id = ${team}`;
+      const before = await snapshot(team);
+      for (let run = 0; run < 2; run++)
+        expect(await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }))).toEqual(
+          NONE,
+        );
+      // A newer version cannot be checked against it: skipped and counted, nothing written.
+      expect(
+        await asTeam(team, (tx) =>
+          installTeamPresets(tx, team, { platform: [CATEGORY, next(CATEGORY, { sort: 11 })] }),
+        ),
+      ).toEqual({ install: {}, update: {}, offer: {}, skipped: { order_category: 1 } });
+      expect(await snapshot(team)).toEqual(before);
     });
   });
 
