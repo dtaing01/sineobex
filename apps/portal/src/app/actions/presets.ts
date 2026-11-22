@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { PortalApiError } from '@/lib/api';
 import type { ActionState } from '@/lib/forms';
 import {
   archivePreset,
@@ -12,11 +13,12 @@ import {
   presetPage,
   restorePreset,
   sentValues,
+  takePresetUpdate,
 } from '@/lib/presets';
 
 /**
- * The acts every preset page shares (phase 5 design 5.1, 8.1): Remove and Restore, each with a
- * reason. Each asks the API, which takes the team lock, refuses by its rules and audits; a refusal
+ * The acts every preset page shares (phase 5 design 5.1, 8.1): Remove, Restore and taking
+ * Sineobex's update, each with a reason. Each asks the API, which takes the team lock, refuses by its rules and audits; a refusal
  * comes back to the form with its sentence (lib/refusals.ts) and what was typed, and a stale
  * sign-in goes to /reauth and back to the page (unwrap). A done act sends the browser back to the
  * page, which says what was done (PresetNotice): the form has left with the preset's old place.
@@ -57,4 +59,41 @@ export async function restorePresetAction(_: ActionState, form: FormData): Promi
   const page = await landing(values);
   revalidatePath(page);
   redirect(donePath(page, 'restored', preset.id));
+}
+
+/**
+ * Takes the update on offer, in place or as a new preset (5.1), sending back the version shown and
+ * the platform version offered, so only what was reviewed is taken. A take refused stale means the
+ * copy changed, or a newer version came on offer, since the page was read: the page is read again,
+ * so the review shows what is on offer now (8.1), and the form says why.
+ */
+export async function takePresetUpdateAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const values = sentValues(form);
+  const preset = namedPreset(values);
+  const platformVersion = Number(values.platformVersion);
+  if (
+    !preset ||
+    preset.baseVersion === null ||
+    !(Number.isSafeInteger(platformVersion) && platformVersion >= 1) ||
+    (values.asNew !== 'true' && values.asNew !== 'false')
+  )
+    return { error: LOST, values };
+  const asNew = values.asNew === 'true';
+  let taken: { id: string };
+  try {
+    taken = await takePresetUpdate(preset.kind, preset.id, {
+      baseVersion: preset.baseVersion,
+      platformVersion,
+      asNew,
+      reason: values.reason ?? '',
+    });
+  } catch (err) {
+    const refused = presetFailure(err, values, { kind: preset.kind, act: 'take' });
+    if (err instanceof PortalApiError && err.code === 'stale') revalidatePath(await landing(values));
+    return refused;
+  }
+  const page = await landing(values);
+  revalidatePath(page);
+  // As new, the update is a preset of its own, and the old one is removed: the notice names the new.
+  redirect(donePath(page, asNew ? 'added' : 'updated', taken.id));
 }
