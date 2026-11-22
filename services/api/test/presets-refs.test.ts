@@ -268,6 +268,32 @@ describe('an archive while an active preset names it (design 5.1)', () => {
     expect((await api.archive('order_category', category, 1)).status).toBe(200);
   });
 
+  it('counts a map once however many of its lines name the item, in a refusal and in the list', async () => {
+    // Neither map names each item once (only a bundle and a bag do), so one map may name an item in
+    // two lines: it is still one preset to change before the item can go.
+    const item = await fresh('item');
+    const conditionMap = make.condition_supply_map({
+      lines: [
+        { itemId: item, qtyPerPatient: 1 },
+        { itemId: item, qtyPerPatient: 2 },
+      ],
+    });
+    const fieldMap = make.field_supply_map({
+      lines: [
+        { itemId: item, qty: 1 },
+        { itemId: item, qty: 2 },
+      ],
+    });
+    expect((await api.create('condition_supply_map', conditionMap)).status).toBe(201);
+    expect((await api.create('field_supply_map', fieldMap)).status).toBe(201);
+    const counts = { condition_supply_map: 1, field_supply_map: 1 };
+    expect((await referencesOf(h, team.teamId)).get(item)).toEqual(counts);
+    const details = await refusedUnwritten(() => api.archive('item', item, 1), 409, 'referenced');
+    expect(details.referencedBy).toEqual(counts);
+    const rows = (await api.list('item')).body as unknown as Record<string, unknown>[];
+    expect(rows.find((r) => r.id === item)!.referencedBy).toEqual(counts);
+  });
+
   it('is never refused for what nothing can name: a flag, a bundle, a map, a bag', async () => {
     for (const kind of ['flag', 'bundle', 'field_supply_map', 'condition_supply_map', 'bag'] as const) {
       const id = await fresh(kind);
