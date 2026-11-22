@@ -42,9 +42,9 @@ enum PresetState {
   static PresetState? byCode(String code) => values.asNameMap()[code];
 }
 
-/// The eight colours a flag may have, in the palette's order (PLAN-OPEN TM-36 in schemas.ts). A
-/// flag is never shown by its colour alone: a pill reads the colour's plain name, then the flag's
-/// ("Red · High").
+/// The eight colours a flag may have, in the palette's order: schemas.ts' FLAG_COLORS, row TM-36 of
+/// docs/decisions-for-review.md. A flag is never shown by its colour alone: a pill reads the
+/// colour's plain name, then the flag's ("Red · High").
 enum FlagColor {
   red('Red'),
   orange('Orange'),
@@ -154,7 +154,7 @@ final class ItemBody extends PresetBody {
   };
 }
 
-/// What a lab test records (PLAN-OPEN BM-66 in schemas.ts).
+/// What a lab test records: schemas.ts' LabResult, row BM-66 of docs/decisions-for-review.md.
 sealed class LabResult {
   const LabResult();
 
@@ -503,7 +503,7 @@ PresetBody? parsePreset(String kind, Object? json) {
       name: body.value('name') == _settingsName ? _settingsName : throw body.refused('name', 'not the settings name'),
       bagMinimumsOn: body.boolean('bagMinimumsOn'),
       newBagMinimums: _minimums(body, 'newBagMinimums'),
-      // PLAN-OPEN (BM-76) in schemas.ts: 7 to 365 days.
+      // 7 to 365 days: row BM-76 of docs/decisions-for-review.md.
       problemCheckDays: body.whole('problemCheckDays', 7, 365),
     ),
   };
