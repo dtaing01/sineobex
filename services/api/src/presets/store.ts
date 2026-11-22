@@ -659,6 +659,8 @@ export function restorePreset(
         act: 'restore',
         kind: preset.kind,
         state: preset.state,
+        // It is restored at the version it is at, so the effect reads it from there.
+        currentVersion: preset.currentVersion,
         archivedRefs: archived.length,
         nameTaken: await nameHeld(w, preset.kind, preset.name, [preset.id]),
       }),
