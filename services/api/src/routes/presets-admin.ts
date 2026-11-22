@@ -1,6 +1,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { PRESET_KINDS, type HeldPreset, type PresetKind } from '@sineobex/presets';
 import type { TeamScope } from '../auth/context.ts';
+import { notFound } from '../lib/errors.ts';
 import {
   archivePreset,
   createPreset,
@@ -12,10 +13,11 @@ import {
   PresetReason,
   referencedBy,
   restorePreset,
+  takePlatformUpdate,
   type TeamPresets,
 } from '../presets/store.ts';
 import type { App } from '../app.ts';
-import { MAX_VERSION } from '../sync/schemas.ts';
+import { DateTime, MAX_VERSION, UserRef } from '../sync/schemas.ts';
 import type { Deps } from '../types.ts';
 import { errors, Uuid } from './schemas.ts';
 
@@ -79,6 +81,63 @@ const RestorePreset = z.object({ reason: PresetReason }).openapi('RestorePreset'
 
 /** What an archive or a restore answers: it stays at the version it is at, so only the revision moves. */
 const PresetRevision = z.object({ revision: Revision }).openapi('PresetRevision');
+
+const TakePresetUpdate = z
+  .object({
+    baseVersion: BaseVersion,
+    reason: PresetReason,
+    asNew: z.boolean().openapi({
+      description:
+        'Take it as a new preset: this one is archived and kept in the history. The only way to take an update that changes a field fixed at creation',
+    }),
+  })
+  .openapi('TakePresetUpdate');
+
+const TakePresetUpdateResult = z
+  .object({
+    id: Uuid.openapi({ description: 'The preset that now holds the update: this one, or the new one' }),
+    version: z.number().int().min(1).openapi({ description: 'Its version now: 1 for a new preset' }),
+    revision: Revision,
+  })
+  .openapi('TakePresetUpdateResult');
+
+/** The acts team_preset_events keeps for a preset (0023): a person's, or the platform installer's. */
+const PRESET_ACTS = [
+  'created',
+  'updated',
+  'archived',
+  'restored',
+  'update_taken',
+  'reordered',
+  'installed',
+  'platform_updated',
+] as const;
+
+const PresetEvent = z
+  .object({
+    act: z.enum(PRESET_ACTS).openapi({
+      description:
+        'installed and platform_updated are the platform installer’s; every other act is a person’s',
+    }),
+    version: z
+      .number()
+      .int()
+      .min(1)
+      .openapi({ description: 'The version the act made, or stood on: an archive and a restore make none' }),
+    source: z.enum(['team', 'platform']).openapi({
+      description: 'Whose version it is: the team’s, or the platform’s, installed or taken by a person',
+    }),
+    by: z.union([UserRef, z.null()]).openapi({ description: 'Who acted; null for the platform installer' }),
+    at: DateTime,
+    reason: z
+      .string()
+      .nullable()
+      .openapi({ description: 'Why, as the person gave it; null for the platform installer' }),
+    body: z
+      .record(z.string(), z.unknown())
+      .openapi({ description: 'That version’s body, in the shape of @sineobex/presets for its kind' }),
+  })
+  .openapi('PresetEvent');
 
 const PresetView = z
   .object({
@@ -172,6 +231,38 @@ const restorePresetRoute = createRoute({
   },
 });
 
+const takeUpdateRoute = createRoute({
+  method: 'post',
+  path: '/v1/admin/presets/{kind}/{id}/take-update',
+  operationId: 'takePresetUpdate',
+  tags: ['presets'],
+  summary:
+    'Take the platform’s newer version of a preset, in place or as a new preset, with a reason (recent sign-in)',
+  security: [{ bearer: [] }],
+  request: { params: presetParam, body: { required: true, ...json(TakePresetUpdate) } },
+  responses: {
+    200: {
+      description: 'The preset that holds the update, at its version now',
+      ...json(TakePresetUpdateResult),
+    },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const historyRoute = createRoute({
+  method: 'get',
+  path: '/v1/admin/presets/{kind}/{id}/history',
+  operationId: 'getPresetHistory',
+  tags: ['presets'],
+  summary: 'Every act on a preset, oldest first, with who, when and why, and the body of its version',
+  security: [{ bearer: [] }],
+  request: { params: presetParam },
+  responses: {
+    200: { description: 'Its history', ...json(z.array(PresetEvent)) },
+    ...errors(401, 403, 404, 422),
+  },
+});
+
 /**
  * The preset an address names, as the store reads IDs: in lowercase, as the database writes a UUID,
  * so one sent in capitals still names its preset.
@@ -215,6 +306,54 @@ function listPresets(scope: TeamScope, kind: PresetKind) {
   });
 }
 
+/**
+ * Every act on one of the team's presets of the kind, oldest first, each with the version it made
+ * or stood on. By version before time: versions are made one after another under the team lock,
+ * while an act's time is when its transaction began, so a phone's pull that began before an admin
+ * took an update and installed a newer one after it (5.2) would otherwise come first.
+ */
+function presetHistory(scope: TeamScope, kind: PresetKind, id: string) {
+  const { teamId } = scope.team;
+  return scope.tx(async (tx) => {
+    const [head] = await tx`
+      select 1 from sineobex.team_presets where team_id = ${teamId} and id = ${id} and kind = ${kind}`;
+    if (!head) throw notFound('preset');
+    const rows = await tx<
+      {
+        act: (typeof PRESET_ACTS)[number];
+        version: number;
+        source: 'team' | 'platform' | null;
+        byId: string | null;
+        byName: string | null;
+        at: Date;
+        reason: string | null;
+        body: Record<string, unknown> | null;
+      }[]
+    >`
+      select e.act, e.version, v.source, e.created_by as by_id, u.display_name as by_name,
+             e.created_at as at, e.reason, v.body
+      from sineobex.team_preset_events e
+      left join sineobex.team_preset_versions v
+        on v.team_id = e.team_id and v.preset_id = e.preset_id and v.version = e.version
+      left join sineobex.users u on u.id = e.created_by
+      where e.team_id = ${teamId} and e.preset_id = ${id}
+      order by e.version, e.created_at, e.id`;
+    return rows.map((r) => {
+      // Every act names a version its preset holds (store.ts, the installer); 0023 cannot hold it.
+      if (r.source === null || r.body === null) throw new Error('a preset event’s version is missing');
+      return {
+        act: r.act,
+        version: r.version,
+        source: r.source,
+        by: r.byId === null ? null : { userId: r.byId, displayName: r.byName ?? '' },
+        at: r.at.toISOString(),
+        reason: r.reason,
+        body: r.body,
+      };
+    });
+  });
+}
+
 export function registerPresetAdminRoutes(app: App, deps: Deps): void {
   // PLAN-OPEN (PL-13): is reading the team's presets audited? No: presets hold no patient data
   // (PRD main 621 logs access to patient data). This list asks for team.manage_presets, as it is
@@ -254,5 +393,23 @@ export function registerPresetAdminRoutes(app: App, deps: Deps): void {
     const { reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
     return c.json(await restorePreset(scope, { kind, id, reason }), 200);
+  });
+
+  // PLAN-OPEN (PL-20): may a platform update change a field fixed at creation? Only as a new
+  // preset (asNew), the old one archived, so what its counts, ranks and readers meant stays; in
+  // place, such an update is refused fixed_field.
+  app.openapi(takeUpdateRoute, async (c) => {
+    const { kind, id } = presetIn(c.req.valid('param'));
+    const { baseVersion, asNew, reason } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    return c.json(await takePlatformUpdate(scope, { kind, id, baseVersion, asNew, reason }), 200);
+  });
+
+  // PLAN-OPEN (PL-13): is reading the team's presets audited? No, nor their history: it holds the
+  // admins' reasons and bodies, no patient data.
+  app.openapi(historyRoute, async (c) => {
+    const { kind, id } = presetIn(c.req.valid('param'));
+    const scope = await presetReadScope(c, deps);
+    return c.json(await presetHistory(scope, kind, id), 200);
   });
 }

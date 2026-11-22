@@ -885,6 +885,46 @@ enum Permission {
   String toJson() => wire;
 }
 
+/// installed and platform_updated are the platform installer’s; every other act is a person’s
+enum PresetEventAct {
+  created('created'),
+  updated('updated'),
+  archived('archived'),
+  restored('restored'),
+  updateTaken('update_taken'),
+  reordered('reordered'),
+  installed('installed'),
+  platformUpdated('platform_updated'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const PresetEventAct(this.wire);
+  final String wire;
+
+  static PresetEventAct fromJson(String value) =>
+      PresetEventAct.values.firstWhere((e) => e.wire == value, orElse: () => PresetEventAct.unknown);
+
+  String toJson() => wire;
+}
+
+/// Whose version it is: the team’s, or the platform’s, installed or taken by a person
+enum PresetEventSource {
+  team('team'),
+  platform('platform'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const PresetEventSource(this.wire);
+  final String wire;
+
+  static PresetEventSource fromJson(String value) =>
+      PresetEventSource.values.firstWhere((e) => e.wire == value, orElse: () => PresetEventSource.unknown);
+
+  String toJson() => wire;
+}
+
 /// An archived preset is offered for no new work
 enum PresetViewState {
   active('active'),
@@ -4595,6 +4635,52 @@ class PermissionInfo {
       };
 }
 
+class PresetEvent {
+  const PresetEvent({
+    required this.act,
+    required this.at,
+    required this.body,
+    required this.by,
+    required this.reason,
+    required this.source,
+    required this.version,
+  });
+
+  /// installed and platform_updated are the platform installer’s; every other act is a person’s
+  final PresetEventAct act;
+  final DateTime at;
+  /// That version’s body, in the shape of @sineobex/presets for its kind
+  final Map<String, Object?> body;
+  /// Who acted; null for the platform installer
+  final UserRef? by;
+  /// Why, as the person gave it; null for the platform installer
+  final String? reason;
+  /// Whose version it is: the team’s, or the platform’s, installed or taken by a person
+  final PresetEventSource source;
+  /// The version the act made, or stood on: an archive and a restore make none
+  final int version;
+
+  factory PresetEvent.fromJson(Map<String, dynamic> json) => PresetEvent(
+        act: PresetEventAct.fromJson(json['act'] as String),
+        at: DateTime.parse(json['at'] as String),
+        body: Map<String, Object?>.from(json['body'] as Map),
+        by: json['by'] == null ? null : UserRef.fromJson(json['by'] as Map<String, dynamic>),
+        reason: json['reason'] == null ? null : json['reason'] as String,
+        source: PresetEventSource.fromJson(json['source'] as String),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'act': act.toJson(),
+        'at': at.toUtc().toIso8601String(),
+        'body': body,
+        'by': by == null ? null : by!.toJson(),
+        'reason': reason == null ? null : reason!,
+        'source': source.toJson(),
+        'version': version,
+      };
+}
+
 class PresetRevision {
   const PresetRevision({
     required this.revision,
@@ -6131,6 +6217,60 @@ class SyncResult {
       };
 }
 
+class TakePresetUpdate {
+  const TakePresetUpdate({
+    required this.asNew,
+    required this.baseVersion,
+    required this.reason,
+  });
+
+  /// Take it as a new preset: this one is archived and kept in the history. The only way to take an update that changes a field fixed at creation
+  final bool asNew;
+  /// The version you opened: any other is refused as stale, with the current one
+  final int baseVersion;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory TakePresetUpdate.fromJson(Map<String, dynamic> json) => TakePresetUpdate(
+        asNew: json['asNew'] as bool,
+        baseVersion: (json['baseVersion'] as num).toInt(),
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'asNew': asNew,
+        'baseVersion': baseVersion,
+        'reason': reason,
+      };
+}
+
+class TakePresetUpdateResult {
+  const TakePresetUpdateResult({
+    required this.id,
+    required this.revision,
+    required this.version,
+  });
+
+  /// The preset that now holds the update: this one, or the new one
+  final String id;
+  /// The team’s revision this write took: a phone’s next pull gets the change
+  final int revision;
+  /// Its version now: 1 for a new preset
+  final int version;
+
+  factory TakePresetUpdateResult.fromJson(Map<String, dynamic> json) => TakePresetUpdateResult(
+        id: json['id'] as String,
+        revision: (json['revision'] as num).toInt(),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'revision': revision,
+        'version': version,
+      };
+}
+
 class TeamDevice {
   const TeamDevice({
     required this.appVersion,
@@ -7055,6 +7195,12 @@ class SineobexApi {
     return TimelinePage.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Every act on a preset, oldest first, with who, when and why, and the body of its version
+  Future<List<PresetEvent>> getPresetHistory({required String kind, required String id}) async {
+    final json = await _transport.send('GET', '/v1/admin/presets/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/history');
+    return (json as List<dynamic>).map((e) => PresetEvent.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// Server time, used by the phone to measure its clock offset (module 9)
   Future<ServerTime> getServerTime() async {
     final json = await _transport.send('GET', '/v1/time');
@@ -7238,6 +7384,12 @@ class SineobexApi {
   Future<SyncPushResult> syncPush({required SyncPush body}) async {
     final json = await _transport.send('POST', '/v1/sync/push', body: body.toJson());
     return SyncPushResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Take the platform’s newer version of a preset, in place or as a new preset, with a reason (recent sign-in)
+  Future<TakePresetUpdateResult> takePresetUpdate({required String kind, required String id, required TakePresetUpdate body}) async {
+    final json = await _transport.send('POST', '/v1/admin/presets/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/take-update', body: body.toJson());
+    return TakePresetUpdateResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Undo a merge, with a comment. Each chart gets its own ID cards back.
