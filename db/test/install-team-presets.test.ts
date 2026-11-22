@@ -16,8 +16,9 @@ import { asApp, makeTeam, makeUser } from './helpers.ts';
 // updated, and an edited or archived copy, or one whose fixed field the platform changes, is only
 // offered. Each install and update writes its team_preset_events row with no reason and no author;
 // an offer writes none. A run takes one revision, plans again under the team lock, writes nothing
-// a second time, leaves other teams alone, and skips and counts what validatePreset refuses. The
-// plan itself is held in packages/presets/test/install.test.ts. Made-up teams, people and presets.
+// a second time, leaves other teams alone, and skips and counts what validatePreset refuses. A map
+// is checked against the note types the team offers, each at its current version. The plan itself
+// is held in packages/presets/test/install.test.ts. Made-up teams, people and presets.
 //
 // The signature these tests call (P0-install), from '@sineobex/presets':
 //
@@ -493,6 +494,63 @@ describe('installing the platform presets', () => {
       expect(counts).toEqual({ install: { item: 1 }, update: {}, offer: {}, skipped: { bundle: 1 } });
       expect(await revisionOf(team)).toBe(revision + 1);
       expect((await byOrigin(team)).has(BUNDLE.originKey)).toBe(false);
+    });
+  });
+
+  describe('the note types a map is checked against', () => {
+    const mapsOn = (key: string) =>
+      newestOf(PLATFORM).filter(
+        (e) => e.kind === 'field_supply_map' && (e.body as { noteTypeKey: string }).noteTypeKey === key,
+      );
+    const installedMaps = async (teamId: string) =>
+      (await headsOf(teamId))
+        .filter((h) => h.kind === 'field_supply_map')
+        .map((h) => h.originKey)
+        .sort();
+
+    it('installs no map on a note type the team archived', async () => {
+      const team = await makeTeam(db.owner, 'Install Presets Archived Note Type Team');
+      await asPlatform((tx) => installPresets(tx, team));
+      await db.owner`
+        insert into sineobex.note_types (team_id, key, title, state, current_version, revision)
+        values (${team}, 'wound_care', 'Wound care', 'archived', 1, 0)`;
+      const counts = await asPlatform((tx) => installTeamPresets(tx, team));
+      expect(counts.skipped).toEqual({ field_supply_map: mapsOn('wound_care').length });
+      const expected = newestOf(PLATFORM)
+        .filter((e) => e.kind === 'field_supply_map' && !mapsOn('wound_care').includes(e))
+        .map((e) => e.originKey)
+        .sort();
+      expect(await installedMaps(team)).toEqual(expected);
+    });
+
+    it('reads its head’s current version, and for a key with no head its newest', async () => {
+      const team = await makeTeam(db.owner, 'Install Presets Note Type Version Team');
+      await asPlatform((tx) => installPresets(tx, team));
+      // A version 2 with no sections, newer than the version the maps name fields of.
+      await db.owner`
+        insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
+        select team_id, key, 2, jsonb_set(definition, '{sections}', '[]') || '{"version": 2}', repeat('0', 64), 'team'
+        from sineobex.note_type_versions where team_id = ${team} and key = 'wound_care' and version = 1`;
+      expect((await asPlatform((tx) => installTeamPresets(tx, team))).skipped).toEqual({
+        field_supply_map: mapsOn('wound_care').length,
+      });
+      // The team's head says version 1 is current: the maps are checked against it, and installed.
+      await db.owner`
+        insert into sineobex.note_types (team_id, key, title, state, current_version, revision)
+        values (${team}, 'wound_care', 'Wound care', 'active', 1, 0)`;
+      const counts = await asPlatform((tx) => installTeamPresets(tx, team));
+      expect(counts).toEqual({
+        install: { field_supply_map: mapsOn('wound_care').length },
+        update: {},
+        offer: {},
+        skipped: {},
+      });
+      expect(await installedMaps(team)).toEqual(
+        newestOf(PLATFORM)
+          .filter((e) => e.kind === 'field_supply_map')
+          .map((e) => e.originKey)
+          .sort(),
+      );
     });
   });
 
