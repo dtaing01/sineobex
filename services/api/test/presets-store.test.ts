@@ -1,3 +1,4 @@
+import { PLATFORM, type PlatformEntry } from '@sineobex/presets';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TeamScope } from '../src/auth/context.ts';
 import { ApiError } from '../src/lib/errors.ts';
@@ -13,7 +14,7 @@ import {
 } from '../src/presets/store.ts';
 import type { Deps } from '../src/types.ts';
 import { createHarness, TEST_ISSUER, type Harness } from './harness.ts';
-import { expectAuditClean } from './patient-fixtures.ts';
+import { createTeam, expectAuditClean } from './patient-fixtures.ts';
 import {
   auditAfter,
   auditMark,
@@ -23,13 +24,17 @@ import {
   footprint,
   headOf,
   idOf,
+  memberOf,
   nextVersion,
+  presetsApi,
   presetsTeam,
   releasePlatform,
   revisionOf,
   runInstaller,
+  stateOf,
   versionsOf,
   whileLocked,
+  type Answer,
   type Body,
   type Person,
   type PresetsTeam,
@@ -39,9 +44,11 @@ import {
 // itself, so they hold whichever route calls it: presets-routes, presets-revision, presets-audit and
 // presets-refs hold the same through the routes. The store is called here with a team scope made
 // by hand, as teamScope makes one for a member whose role holds team.manage_presets, signed in
-// `minutesAgo` before the harness clock.
+// `minutesAgo` before the harness clock. Its last case holds the pull (card P1-pull) of a team the
+// platform has given nothing, which presets-pull.test.ts, holding the real platform, cannot reach.
 
-// This file's platform is its own copy, so a platform update can be released into it.
+// This file's platform is its own copy, so a platform update can be released into it, or the
+// platform emptied.
 vi.mock('../../../packages/presets/data/platform.json', async (importOriginal) => {
   const real = (await importOriginal()) as { default: unknown[] };
   return { default: [...real.default] };
@@ -481,6 +488,38 @@ describe('a tier’s flag order (design 5.1)', () => {
       changed: 0,
     });
     await expectNothingWritten(h, team.teamId, before);
+  });
+});
+
+describe('the pull of a team the platform has given nothing yet (routes/presets.ts)', () => {
+  // A team with no state row has taken no revision, so it holds no preset and has no epoch of its
+  // own; the pull reads, never writes one, and answers a fixed epoch that its first revision's
+  // replaces, so the phone then starts over.
+  const NO_EPOCH = '00000000-0000-0000-0000-000000000000';
+  const pulled = (r: Answer) => {
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return r.body as unknown as { reset: boolean; revision: number; epoch: string; presets: unknown[] };
+  };
+
+  it('answers no preset at revision 0 under a fixed epoch, then a reset under the team’s own', async () => {
+    const teamId = await createTeam(h, 'Demo Store Unwritten Team');
+    const api = presetsApi(h, teamId, await memberOf(h, teamId, [], 'Store Unwritten'));
+    const platform = PLATFORM as PlatformEntry[];
+    const held = platform.splice(0);
+    let first: ReturnType<typeof pulled>;
+    try {
+      first = pulled(await api.pull());
+      expect(first).toEqual({ reset: false, revision: 0, epoch: NO_EPOCH, presets: [] });
+      expect(pulled(await api.pull({ since: 0, epoch: NO_EPOCH }))).toEqual(first);
+      expect(await stateOf(h, teamId)).toBeNull();
+    } finally {
+      platform.push(...held);
+    }
+    const second = pulled(await api.pull({ since: 0, epoch: NO_EPOCH }));
+    expect(second.reset).toBe(true);
+    expect(second.epoch).toBe((await stateOf(h, teamId))!.epoch);
+    expect(second.epoch).not.toBe(NO_EPOCH);
+    expect(second.presets.length).toBeGreaterThan(0);
   });
 });
 
