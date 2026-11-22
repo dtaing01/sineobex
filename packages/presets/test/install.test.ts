@@ -683,6 +683,79 @@ describe('the preset installer', () => {
         { path: 'medical', code: 'bundle_not_medical' },
       ]);
     });
+
+    describe('an item the platform moves into a medication category (design 4.4)', () => {
+      // A bundle holding a medication is Medical (PRD main 447), and only a bundle's own check reads
+      // that: an update in place of the item would leave a Non-Medical bundle the team holds holding
+      // one. So the item waits, skipped and counted, until no active Non-Medical bundle names it.
+      const supplies = held(CATEGORY, 1);
+      const otc = held(MEDS, 2);
+      const gauze = held(GAUZE, 3, {}, { [CATEGORY.originKey]: id(1) });
+      const bundle = (over: Partial<HeldPreset> = {}) => held(BUNDLE, 4, over, { [GAUZE.originKey]: id(3) });
+      const moved = v2(GAUZE, { categoryId: MEDS.originKey, medical: true });
+      const tagged = v2(BUNDLE, { medical: true });
+
+      it('skips the item while a Non-Medical bundle the team edited names it, and only offers the bundle its tag', () => {
+        const steps = plan(
+          [supplies, otc, gauze, bundle({ customized: true })],
+          [CATEGORY, MEDS, moved, tagged],
+        );
+        expect(steps).toEqual([
+          {
+            effect: 'skipped',
+            originKey: GAUZE.originKey,
+            kind: 'item',
+            platformVersion: 2,
+            problems: [{ path: 'categoryId', code: 'bundle_not_medical' }],
+          },
+          { effect: 'offer', originKey: BUNDLE.originKey, kind: 'bundle', platformVersion: 2, id: id(4) },
+        ]);
+      });
+
+      it('moves the item at the next run once the bundle is Medical, and the bundle the platform tags then', () => {
+        // The team never edited its bundle: this run tags it Medical and skips the item, the next
+        // run moves the item, since no Non-Medical bundle names it any more.
+        const first = plan([supplies, otc, gauze, bundle()], [CATEGORY, MEDS, moved, tagged]);
+        expect(effects(first)).toEqual(['item.demo_gauze skipped', 'bundle.demo_wound update']);
+        const taggedBody = (first[1] as Extract<PlanStep, { effect: 'update' }>).body;
+        const after = bundle({ originVersion: 2, platformLatest: 2, currentVersion: 2, body: taggedBody });
+        const second = plan([supplies, otc, gauze, after], [CATEGORY, MEDS, moved, tagged]);
+        expect(effects(second)).toEqual(['item.demo_gauze update']);
+      });
+
+      it('updates an item that stays where it is, whatever a bundle holding it breaks already', () => {
+        // A Non-Medical bundle already holding a medication (a writer before this rule) breaks it by
+        // another item: renaming that item moves nothing, so it is not held back for the bundle.
+        const pain = held(PAIN, 5, {}, { [MEDS.originKey]: id(2) });
+        const broken = bundle({
+          customized: true,
+          body: {
+            ...bundle().body!,
+            lines: [
+              { itemId: id(3), qty: 1, core: true },
+              { itemId: id(5), qty: 1, core: true },
+            ],
+          } as PresetBody,
+        });
+        const renamed = v2(PAIN, { name: 'Demo: Pain tablets' });
+        expect(effects(plan([supplies, otc, gauze, pain, broken], [CATEGORY, MEDS, GAUZE, renamed]))).toEqual(
+          ['item.demo_pain update'],
+        );
+      });
+
+      it('moves the item when the bundle naming it is archived, or Medical already', () => {
+        for (const over of [{ state: 'archived' as const, customized: true }, { customized: true }]) {
+          const held4 =
+            over.state === 'archived'
+              ? bundle(over)
+              : bundle({ ...over, body: { ...bundle().body!, medical: true } as PresetBody });
+          expect(
+            effects(plan([supplies, otc, gauze, held4], [CATEGORY, MEDS, moved])),
+            JSON.stringify(over),
+          ).toEqual(['item.demo_gauze update']);
+        }
+      });
+    });
   });
 
   describe('on a stand-in for the caller’s transaction', () => {
