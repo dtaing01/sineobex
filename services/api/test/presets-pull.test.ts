@@ -44,7 +44,10 @@ import {
 //   - reset: true exactly when `since` is left out, or is above the team's revision, or `epoch` is
 //     not the team's (left out included), and `presets` then holds every head, which the phone puts
 //     in place of its copy; false otherwise.
-//   `since` is a whole number from 0 and `epoch` a UUID: anything else is 422 validation_failed.
+//   `since` is a whole number from 0 and `epoch` a UUID: anything else is 422 validation_failed,
+//   naming each field at fault, whoever asks (the query is read before the team). `epoch` is read
+//   as a UUID, whatever its case; a `since` past what a JavaScript number holds exactly is read as
+//   one never sent. The phone's test server holds the same lines (fake_parity_test.dart).
 // It runs the preset installer first, in the same transaction (design 5.2). When the installer
 // wrote (an install, an update or an offer) the pull audits preset.platform_installed: entity team,
 // entity ID the team, the asking member as actor, details the installer's counts by kind,
@@ -255,6 +258,8 @@ describe('the phone’s presets pull (phase 5 design 6.1)', () => {
     const none = pulled(await asStaff().pull({ since: revision }));
     expect(none).toMatchObject({ reset: true, epoch });
     expect(byId(none.presets)).toEqual(everything);
+    // The epoch is read as a UUID, so one in capitals is the team's.
+    expect(pulled(await asStaff().pull({ since: revision, epoch: epoch.toUpperCase() })).reset).toBe(false);
 
     // A database restore renews the epoch (docs/setup.md): a phone holding the old one starts over.
     await h.scratch
@@ -286,21 +291,45 @@ describe('the phone’s presets pull (phase 5 design 6.1)', () => {
   });
 
   it('refuses a revision that is not a whole number from 0, and an epoch that is not a UUID', async () => {
-    const { epoch } = (await stateOf(h, team.teamId))!;
-    for (const query of [
-      { since: -1, epoch },
-      { since: 1.5, epoch },
-      { since: 'abc', epoch },
-      { since: 1, epoch: 'not-an-epoch' },
-    ]) {
-      const r = await asStaff().pull(query);
-      expect(r.status, JSON.stringify(query)).toBe(422);
+    const { epoch, revision } = (await stateOf(h, team.teamId))!;
+    const fieldsOf = (r: Answer) =>
+      (errorOf(r).details as { fields: { path: string }[] }).fields.map((f) => f.path);
+    for (const [since, sent, paths] of [
+      [-1, epoch, ['since']],
+      [1.5, epoch, ['since']],
+      ['abc', epoch, ['since']],
+      ['12345678901234567890', epoch, ['since']],
+      [1, 'not-an-epoch', ['epoch']],
+      // zod's uuid() takes versions 1 to 8 only.
+      [1, '5a1f0c2e-8b7d-0e6a-9c3b-1d2e3f4a5b6c', ['epoch']],
+      ['x', 'y', ['since', 'epoch']],
+    ] as const) {
+      const r = await asStaff().pull({ since, epoch: sent });
+      expect(r.status, `${since} ${sent}`).toBe(422);
       expect(errorOf(r).code).toBe('validation_failed');
+      expect(fieldsOf(r), `${since} ${sent}`).toEqual(paths);
     }
-    // A number no revision can be is refused or answered as a reset, never a 500.
-    const huge = await asStaff().pull({ since: '9223372036854775808', epoch });
-    if (huge.status === 200) expect(pulled(huge).reset).toBe(true);
-    else expect(huge.status).toBe(422);
+    // The query is read before the team: one malformed is 422 to someone who is not a member too.
+    const outsider = await memberOf(h, other.teamId, [...PERMISSION_KEYS], 'Pull Outsider Unread');
+    const unread = await presetsApi(h, team.teamId, outsider).pull({ since: 'abc', epoch });
+    expect([unread.status, errorOf(unread).code, fieldsOf(unread)]).toEqual([
+      422,
+      'validation_failed',
+      ['since'],
+    ]);
+    // A number no revision can be is refused or answered as a reset, never a 500. Up to 19 digits
+    // it is read, and past what a JavaScript number holds exactly it is one never sent.
+    for (const huge of ['9223372036854775808', '9999999999999999999', '9007199254740992']) {
+      const answer = pulled(await asStaff().pull({ since: huge, epoch }));
+      expect(answer.reset, huge).toBe(true);
+      expect(byId(answer.presets), huge).toEqual(await heldAbove(h, team.teamId));
+    }
+    // A revision written with leading zeros is read as its number, and the nil UUID is a UUID:
+    // here another epoch than the team's, so a reset.
+    expect(pulled(await asStaff().pull({ since: `0${revision}`, epoch })).reset).toBe(false);
+    expect(
+      pulled(await asStaff().pull({ since: 0, epoch: '00000000-0000-0000-0000-000000000000' })).reset,
+    ).toBe(true);
   });
 
   it('gives every member every preset, sensitive flags included, whatever the role, and logs no refusal', async () => {
@@ -486,6 +515,25 @@ describe('the pull and a kind the phone does not read (design 6.1)', () => {
     const reset = pulled(await api.pull({ since: r0 + 5, epoch }));
     expect(reset.reset).toBe(true);
     expect(reset.presets.some((p) => p.id === billing.id)).toBe(false);
+
+    // Nor is one of its heads a fault when it is broken (moved on with no version, at a revision of
+    // its own): the pull answers only the eight kinds, so only theirs can be.
+    await asWriter(h, team.teamId, async (tx, revision) => {
+      await tx`
+        update sineobex.team_presets
+        set current_version = current_version + 1, customized = true, revision = ${revision}
+        where id = ${billing.id}`;
+    });
+    expect(await revisionOf(h, team.teamId)).toBe(r0 + 2);
+    expect(pulled(await api.pull({ since: r0, epoch }))).toEqual({
+      reset: false,
+      revision: r0,
+      epoch,
+      presets: [],
+    });
+    const again = pulled(await api.pull());
+    expect([again.reset, again.revision]).toEqual([true, r0]);
+    expect(again.presets.some((p) => p.id === billing.id)).toBe(false);
   });
 });
 
@@ -509,7 +557,9 @@ describe('the pull and a head whose current version is missing (design 4.1, 6.1)
     // A writer that moves a head on and writes no version for it, then an ordinary write after it.
     const broken = idOf(team, 'item.handwarmers');
     const [held] = (await heldAbove(h, team.teamId)).filter((p) => p.id === broken);
+    let taken = -1;
     await asWriter(h, team.teamId, async (tx, revision) => {
+      taken = Number(revision);
       await tx`
         update sineobex.team_presets
         set current_version = current_version + 1, customized = true, revision = ${revision}
@@ -522,7 +572,7 @@ describe('the pull and a head whose current version is missing (design 4.1, 6.1)
       flagBody('Demo: pulled after'),
       team.admin.userId,
     );
-    expect(after.revision).toBe(r0 + 2);
+    expect([taken, after.revision]).toEqual([r0 + 1, r0 + 2]);
 
     for (const query of [{ since: r0, epoch }, {}]) {
       const mark = await auditMark(h);
@@ -535,6 +585,11 @@ describe('the pull and a head whose current version is missing (design 4.1, 6.1)
     const faults = spy.lines.filter((l) => (JSON.parse(l) as { event: string }).event === 'unhandled_error');
     expect(faults).toHaveLength(2);
     spy.expectClean(['Handwarmers', 'item.handwarmers', 'Demo: pulled after', 'version is missing']);
+    // Only a head the pull would answer is a fault: a pull since the broken head's own revision
+    // answers the later one alone.
+    const past = pulled(await api.pull({ since: taken, epoch }));
+    expect([past.reset, past.revision, past.epoch]).toEqual([false, r0 + 2, epoch]);
+    expect(past.presets.map((p) => p.id)).toEqual([after.id]);
 
     // Repaired: the version written. The next pull since what the phone holds brings the head.
     await h.scratch.owner`
