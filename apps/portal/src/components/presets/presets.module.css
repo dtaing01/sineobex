@@ -119,3 +119,10 @@
   gap: var(--space-2);
   font-weight: 700;
 }
+/* A select of its own in a form, such as an item's Category: a percentage width keeps its longest
+   option from widening the page at 320 px (a box sized to its content would push the column wider
+   than a phone held upright), and its cap keeps it from spanning a desktop's form. */
+.choose {
+  width: 100%;
+  max-width: 24rem;
+}
