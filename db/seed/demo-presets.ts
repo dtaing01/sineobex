@@ -1,12 +1,14 @@
 import { lockTeam, takeRevision } from '@sineobex/forms';
 import {
   BODY_SCHEMAS,
+  heldBy,
+  presetRefs,
   presetWriteEffect,
   validatePreset,
+  type HeldPreset,
   type PresetBody,
   type PresetHeadAfter,
   type PresetKind,
-  type PresetRef,
 } from '@sineobex/presets';
 import type { TransactionSql } from 'postgres';
 import { demoId } from './demo-patients.ts';
@@ -130,14 +132,22 @@ export async function seedDemoPresets(
 
   const platform = await platformIds(tx, teamId);
   if (!platform) return { presets: 0, skipped: 'the team does not hold every platform preset they name' };
-  const refs = await refsOf(tx, teamId);
+  // The team's presets as the installer and the API's writes read them, each planned one joining
+  // them, so the next body may name it as the routes' next create would find it.
+  const presets: Pick<HeldPreset, 'id' | 'kind' | 'state' | 'body'>[] = await heldBy(tx, teamId);
   const planned: Planned[] = [];
   for (const p of missing) {
     const id = demoPresetId(p.n);
     const parsed = BODY_SCHEMAS[p.kind].safeParse(p.body(platform));
     if (!parsed.success) throw new Error(`demo preset ${p.n}: its ${p.kind} body fails its schema`);
     const body = parsed.data as PresetBody;
-    const problems = validatePreset({ kind: p.kind, body, refs, definitions: {}, id: null });
+    const problems = validatePreset({
+      kind: p.kind,
+      body,
+      refs: presetRefs(presets),
+      definitions: {},
+      id: null,
+    });
     // An archived preset named is the act's refusal (presetWriteEffect's), as for the routes.
     const archivedRefs = problems.filter((x) => x.code === 'reference_archived').length;
     if (problems.length > archivedRefs) {
@@ -163,9 +173,7 @@ export async function seedDemoPresets(
     });
     if ('refuse' in effect)
       return { presets: 0, skipped: `the ${p.kind} would be refused (${effect.refuse})` };
-    // So the next body may name it, as the routes' next create would find it.
-    const ref = refOf(refs, p.kind, effect.stateAfter, body);
-    if (ref) refs[id] = ref;
+    presets.push({ id, kind: p.kind, state: effect.stateAfter, body });
     planned.push({ id, kind: p.kind, body, reason: p.reason, head: effect });
   }
 
@@ -204,46 +212,4 @@ async function nameTaken(tx: TransactionSql, teamId: string, kind: PresetKind, n
       where team_id = ${teamId} and kind = ${kind} and state = 'active' and lower(name) = lower(${name})
     ) as taken`;
   return row!.taken;
-}
-
-/**
- * The team's presets as validatePreset reads them, as the preset installer reads them
- * (planTeamPresets): a category with its behaviour, an item with its category's, read first; any
- * other kind with its kind and state. A preset whose current version cannot be read is left out, so
- * whatever names it is refused, never checked against a guess.
- */
-async function refsOf(tx: TransactionSql, teamId: string): Promise<Record<string, PresetRef>> {
-  const rows = await tx<
-    { id: string; kind: PresetKind; state: 'active' | 'archived'; body: PresetBody | null }[]
-  >`
-    select p.id, p.kind, p.state, v.body
-    from sineobex.team_presets p
-    left join sineobex.team_preset_versions v
-      on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
-    where p.team_id = ${teamId}`;
-  const refs: Record<string, PresetRef> = {};
-  const add = (r: (typeof rows)[number]) => {
-    const ref = r.body === null ? null : refOf(refs, r.kind, r.state, r.body);
-    if (ref) refs[r.id] = ref;
-  };
-  for (const r of rows) if (r.kind === 'order_category') add(r);
-  for (const r of rows) if (r.kind !== 'order_category') add(r);
-  return refs;
-}
-
-type Behaviour = Extract<PresetRef, { behaviour: unknown }>['behaviour'];
-
-/** One preset among the team's; null for an item whose category is not among them. */
-function refOf(
-  refs: Readonly<Record<string, PresetRef>>,
-  kind: PresetKind,
-  state: 'active' | 'archived',
-  body: PresetBody,
-): PresetRef | null {
-  if (kind === 'order_category')
-    return { kind, state, behaviour: (body as { behaviour: Behaviour }).behaviour };
-  if (kind !== 'item') return { kind, state };
-  const categoryId = (body as { categoryId: string }).categoryId;
-  const category = Object.hasOwn(refs, categoryId) ? refs[categoryId] : undefined;
-  return category?.kind === 'order_category' ? { kind, state, behaviour: category.behaviour } : null;
 }
