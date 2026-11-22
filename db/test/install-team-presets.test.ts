@@ -498,6 +498,22 @@ describe('installing the platform presets', () => {
       expect(await revisionOf(team)).toBe(revision + 1);
       expect((await byOrigin(team)).has(BUNDLE.originKey)).toBe(false);
     });
+
+    it('writes an update as the platform’s: its head names no person as its last writer', async () => {
+      const team = await makeTeam(db.owner, 'Install Presets Update Writer Team');
+      await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }));
+      // As an admin's take of an earlier update leaves a copy: the platform's again, by a person.
+      await db.owner`update sineobex.team_presets set updated_by = ${user} where team_id = ${team}`;
+      await asTeam(team, (tx) =>
+        installTeamPresets(tx, team, { platform: [CATEGORY, next(CATEGORY, { sort: 11 })] }),
+      );
+      expect((await headsOf(team))[0]).toMatchObject({
+        currentVersion: 2,
+        customized: false,
+        createdBy: null,
+        updatedBy: null,
+      });
+    });
   });
 
   describe('the note types a map is checked against', () => {

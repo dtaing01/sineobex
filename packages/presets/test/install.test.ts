@@ -506,6 +506,39 @@ describe('the preset installer', () => {
         },
       ]);
     });
+
+    it('reads an item’s behaviour from its category, whatever order the team’s presets come in', () => {
+      const otc = held(MEDS, 2);
+      const pain = held(PAIN, 3, {}, { [MEDS.originKey]: id(2) });
+      const painBundle = {
+        ...BUNDLE,
+        body: { ...BUNDLE.body, lines: [{ itemId: PAIN.originKey, qty: 1, core: true }] },
+      };
+      // The item before its category, as a database may answer them: the bundle holds a medication.
+      expect(plan([pain, otc], [MEDS, PAIN, painBundle])).toEqual([
+        {
+          effect: 'skipped',
+          originKey: BUNDLE.originKey,
+          kind: 'bundle',
+          platformVersion: 1,
+          problems: [{ path: 'medical', code: 'bundle_not_medical' }],
+        },
+      ]);
+    });
+
+    it('checks what follows an update against the body the update gives', () => {
+      // The platform moves the team's Gauze from Supplies into OTC: a new Non-Medical bundle holding
+      // it now holds a medication, and is refused as an admin's would be.
+      const supplies = held(CATEGORY, 1);
+      const otc = held(MEDS, 2);
+      const gauze = held(GAUZE, 3, {}, { [CATEGORY.originKey]: id(1) });
+      const moved = v2(GAUZE, { categoryId: MEDS.originKey, medical: true });
+      const steps = plan([supplies, otc, gauze], [CATEGORY, MEDS, moved, BUNDLE]);
+      expect(effects(steps)).toEqual(['item.demo_gauze update', 'bundle.demo_wound skipped']);
+      expect((steps[1] as Extract<PlanStep, { effect: 'skipped' }>).problems).toEqual([
+        { path: 'medical', code: 'bundle_not_medical' },
+      ]);
+    });
   });
 
   describe('on a stand-in for the caller’s transaction', () => {
