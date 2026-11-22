@@ -108,6 +108,11 @@ async function loadRole(tx: Tx, teamId: string, roleId: string) {
   return role;
 }
 
+// PLAN-OPEN (PL-1): who may change a Program Admin's credential after appointment, and may a
+// platform owner appoint themselves a team's Program Admin (lifecycle 12.2 #6)? Only an owner
+// appoints, removes or changes the credential of one (owner_only), the credential only through the
+// team's own route, as a member with team.manage_users; an owner may appoint themselves in the
+// owner console, which is logged.
 function assertRoleAssignable(roleKey: string, actor: Actor): void {
   if (OWNER_ONLY_ROLE_KEYS.has(roleKey) && !actor.isOwner) {
     throw forbidden('Only platform owners can appoint or remove Program Admins.', 'owner_only');

@@ -125,6 +125,9 @@ export async function rematchPatient(
     const [a, b] = self < f.canonicalId ? [self, f.canonicalId] : [f.canonicalId, self];
     const before = carried.get(f.canonicalId);
     // A decided pair (keep separate, merged, superseded) is left as it is: the `where` returns no row.
+    // PLAN-OPEN (TM-34): does a corrected birth date bring back a pair kept separate (phase 3
+    // design 14.1 #14)? Never, whatever changed on either chart: the PRD's "so it isn't flagged
+    // again".
     const [row] = await tx<{ id: string; created: boolean; score: string; sources: string[] }[]>`
       insert into sineobex.duplicate_pairs as d
         (team_id, patient_a, patient_b, score, reasons, sources, creator_dismissed, note)

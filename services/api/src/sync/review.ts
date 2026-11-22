@@ -502,6 +502,9 @@ export async function decideQuarantine(
           throw err;
         });
       if (result.status !== 'accepted') {
+        // PLAN-OPEN (TM-9): is an admin's refused accept of a held change logged? Only for a held
+        // correction, or a held sign-off its note no longer matches, whose sender is told to act
+        // again; any other refusal rolls back and writes nothing.
         if (result.reason === 'stale_reference' && (await heldCreate(tx, actor, change)))
           throw waitingOnRecord();
         const problem = typeof result.details?.problem === 'string' ? result.details.problem : null;

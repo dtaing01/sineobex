@@ -232,6 +232,8 @@ export async function idLinkHandshake(
       insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
       values (${teamId}, ${won ? rival.issuedBy : input.issuedBy}, 'id_link_superseded', 'id_link', ${loser.id}),
              (${teamId}, ${won ? input.issuedBy : rival.issuedBy}, 'id_link_kept', 'id_link', ${winner.id})`;
+    // PLAN-OPEN (TM-35): who is "the admin" told of a link conflict (phase 3 design 14.1 #25)?
+    // Every active member with team.manage_users.
     await tx`
       insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id)
       select m.team_id, m.user_id, 'id_link_conflict', 'id_link', ${winner.id}::uuid

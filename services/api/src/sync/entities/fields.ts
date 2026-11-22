@@ -160,6 +160,10 @@ export async function keepInHistory(
 /**
  * "Two edits to the same field keep both values and flag the record for review" (module 9): the
  * field's open review, opened now or the one already open (one per field), on the patient record.
+ *
+ * PLAN-OPEN (TM-28): who decides a field review, and who marks an allergy entered in error (phase 3
+ * design 14.1 #13, #18)? patients.edit for ordinary fields, patients.correct_identity for identity
+ * fields; an allergy needs encounters.chart and a reason (allergy.ts).
  */
 async function openReview(s: SetContext, needs: 'patients.edit' | 'patients.correct_identity') {
   const [opened] = await s.tx<{ id: string }[]>`
@@ -180,6 +184,10 @@ async function openReview(s: SetContext, needs: 'patients.edit' | 'patients.corr
  * The person looked at both values and kept the server's. Their own value is kept in history,
  * never lost. Only the value they saw can be kept: if it changed again since, they choose again.
  * On a draft, its author is told when the kept value came from someone else.
+ *
+ * PLAN-OPEN (TM-20): who is told when someone keeps the server's value in a conflict (plan section
+ * 6)? The note's author, when the kept value came from someone else and the author isn't the one
+ * choosing.
  */
 export async function keepServer(s: SetContext, notifyAuthor: boolean): Promise<Outcome> {
   const { tx, actor, change: c, rec, field, cur } = s;

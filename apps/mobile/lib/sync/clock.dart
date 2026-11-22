@@ -46,6 +46,10 @@ enum ClockState {
   /// No server reference since the phone restarted (or ever). Times are saved as device time and
   /// flagged unverified; charting goes on (plan section 6: pausing would block care on every
   /// offline reboot).
+  ///
+  /// PLAN-OPEN (PL-6): does charting pause while the phone's clock is off, or is the time corrected
+  /// and flagged, and what happens after a restart offline (plan risk 1, section 6)? [off] pauses;
+  /// after a restart offline charting goes on here, unverified, until the next sync.
   unverified,
 
   /// More than [ClockSync.limit] off the server. Charting pauses until it is fixed.
