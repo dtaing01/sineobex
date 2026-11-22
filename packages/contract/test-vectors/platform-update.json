@@ -1,0 +1,90 @@
+{
+  "note": "Hand-written (phase 5 design 5.2; D133). What a platform update does to one team's copy of one platform entry: platformUpdateEffect(input) in packages/forms/src/platform-effect.ts answers install, skip, update or offer. Both installers decide every entry by it: the preset installer (packages/presets/src/install.ts) for each entry of packages/presets/data/platform.json, and the note type installer (packages/forms/src/install.ts) for each released note type key. The readers are packages/forms/test/platform-effect.test.ts and packages/presets/test/install.test.ts; the phone does not read this file. Each case's input is the function's one argument: exists (the team holds a row with this origin key: a head with this origin_key, or for a note type a version with origin preset), state and customized (the head's), originVersion (the platform version that copy was last taken from: origin_version, or for a note type the newest preset row's preset_version), platformVersion (the newest version the platform ships) and changesFixed (the new platform body changes a field fixed at creation, compared with the team's current body: an item's unit or result type, a category's behaviour, a flag's tier or sensitivity, a map's note type or path; for a note type its kinds, group, sensitivity, quick or auto). With no row, state is null, customized false and originVersion null. No row: install. A platform version no newer than the copy's: skip, whatever else is true. Newer, on an active copy the team never edited, changing no fixed field: update. Newer, on a copy the team edited or archived, or changing a fixed field: offer, which moves only platform_latest and leaves the body as it is.",
+  "cases": [
+    {
+      "name": "a team with no row of this entry gets it installed",
+      "input": { "exists": false, "state": null, "customized": false, "originVersion": null, "platformVersion": 1, "changesFixed": false },
+      "expected": "install"
+    },
+    {
+      "name": "a later platform version is installed as it is, not as an update, when the team has no row",
+      "input": { "exists": false, "state": null, "customized": false, "originVersion": null, "platformVersion": 4, "changesFixed": false },
+      "expected": "install"
+    },
+    {
+      "name": "no row: a fixed field has nothing to differ from, so it is still an install",
+      "input": { "exists": false, "state": null, "customized": false, "originVersion": null, "platformVersion": 2, "changesFixed": true },
+      "expected": "install"
+    },
+    {
+      "name": "an active copy taken from the version the platform ships now is skipped",
+      "input": { "exists": true, "state": "active", "customized": false, "originVersion": 1, "platformVersion": 1, "changesFixed": false },
+      "expected": "skip"
+    },
+    {
+      "name": "a platform version older than the copy's is skipped, never taken back",
+      "input": { "exists": true, "state": "active", "customized": false, "originVersion": 3, "platformVersion": 2, "changesFixed": false },
+      "expected": "skip"
+    },
+    {
+      "name": "an edited copy is skipped when the platform has nothing newer: nothing is offered",
+      "input": { "exists": true, "state": "active", "customized": true, "originVersion": 2, "platformVersion": 2, "changesFixed": false },
+      "expected": "skip"
+    },
+    {
+      "name": "an archived copy is skipped when the platform has nothing newer",
+      "input": { "exists": true, "state": "archived", "customized": true, "originVersion": 1, "platformVersion": 1, "changesFixed": false },
+      "expected": "skip"
+    },
+    {
+      "name": "a fixed field that differs changes nothing when the platform is not newer",
+      "input": { "exists": true, "state": "active", "customized": false, "originVersion": 2, "platformVersion": 2, "changesFixed": true },
+      "expected": "skip"
+    },
+    {
+      "name": "an archived copy whose fixed field differs is still skipped when the platform is not newer",
+      "input": { "exists": true, "state": "archived", "customized": true, "originVersion": 3, "platformVersion": 1, "changesFixed": true },
+      "expected": "skip"
+    },
+    {
+      "name": "an active copy the team never edited takes the next platform version",
+      "input": { "exists": true, "state": "active", "customized": false, "originVersion": 1, "platformVersion": 2, "changesFixed": false },
+      "expected": "update"
+    },
+    {
+      "name": "versions the copy missed are passed over: it takes the newest",
+      "input": { "exists": true, "state": "active", "customized": false, "originVersion": 1, "platformVersion": 5, "changesFixed": false },
+      "expected": "update"
+    },
+    {
+      "name": "an edited copy is never overwritten: the update is offered",
+      "input": { "exists": true, "state": "active", "customized": true, "originVersion": 1, "platformVersion": 2, "changesFixed": false },
+      "expected": "offer"
+    },
+    {
+      "name": "an archived copy stays archived: the update is offered",
+      "input": { "exists": true, "state": "archived", "customized": true, "originVersion": 1, "platformVersion": 2, "changesFixed": false },
+      "expected": "offer"
+    },
+    {
+      "name": "an archived copy marked not customized is still never brought back",
+      "input": { "exists": true, "state": "archived", "customized": false, "originVersion": 1, "platformVersion": 2, "changesFixed": false },
+      "expected": "offer"
+    },
+    {
+      "name": "a platform version that changes a fixed field is offered to a copy the team never edited",
+      "input": { "exists": true, "state": "active", "customized": false, "originVersion": 1, "platformVersion": 2, "changesFixed": true },
+      "expected": "offer"
+    },
+    {
+      "name": "a fixed field changed on an edited copy is offered",
+      "input": { "exists": true, "state": "active", "customized": true, "originVersion": 2, "platformVersion": 3, "changesFixed": true },
+      "expected": "offer"
+    },
+    {
+      "name": "a fixed field changed on an archived copy is offered",
+      "input": { "exists": true, "state": "archived", "customized": true, "originVersion": 1, "platformVersion": 3, "changesFixed": true },
+      "expected": "offer"
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "note": "Hand-written (phase 5 design 5.3; PRD main 476). When a problem is due a status check: problemCheckDue(problem, now, problemCheckDays) in packages/presets/src/problem-check.ts and apps/mobile/lib/presets/problem_check.dart; the readers are packages/presets/test/problem-check.test.ts and the phone's problem check test. True exactly when the problem is New or Ongoing, is not entered in error, and its status was last checked (statusCheckedAt: every status set moves it, a confirmation of the same status included) more than problemCheckDays days before now, a day being 24 hours of elapsed time: now minus statusCheckedAt is more than problemCheckDays times 86,400,000 milliseconds. Times are instants: one written with an offset is the same instant in UTC, and no calendar date or time zone is read. Exactly the window is not more than it, so it is not due. Never for a Resolved problem or one entered in error. A check time after now (a clock that ran ahead) is not due. A problem with no check time (statusCheckedAt null: one made on this phone that has not reached the server, which sets it when it is made) is not due. problemCheckDays is the settings preset's, a whole number from 7 to 365 (default 90).",
+  "cases": [
+    {
+      "name": "a New problem checked exactly the window ago is not due yet",
+      "problem": { "status": "new", "statusCheckedAt": "2026-01-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-04-01T00:00:00Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "a New problem checked a millisecond more than the window ago is due",
+      "problem": { "status": "new", "statusCheckedAt": "2026-01-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-04-01T00:00:00.001Z",
+      "problemCheckDays": 90,
+      "due": true
+    },
+    {
+      "name": "an Ongoing problem checked more than the window ago is due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2026-01-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-04-01T00:00:00.001Z",
+      "problemCheckDays": 90,
+      "due": true
+    },
+    {
+      "name": "an Ongoing problem checked a millisecond less than the window ago is not due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2026-01-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-03-31T23:59:59.999Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "an Ongoing problem checked yesterday is not due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2026-03-31T12:00:00Z", "enteredInError": false },
+      "now": "2026-04-01T12:00:00Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "a Resolved problem is never due, however long ago it was checked",
+      "problem": { "status": "resolved", "statusCheckedAt": "2024-01-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-04-01T00:00:00Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "a New problem entered in error is never due",
+      "problem": { "status": "new", "statusCheckedAt": "2024-01-01T00:00:00Z", "enteredInError": true },
+      "now": "2026-04-01T00:00:00Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "an Ongoing problem entered in error is never due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2024-01-01T00:00:00Z", "enteredInError": true },
+      "now": "2026-04-01T00:00:00Z",
+      "problemCheckDays": 7,
+      "due": false
+    },
+    {
+      "name": "a day is 24 hours: 90 days and half an hour is due though both times fall 90 calendar days apart",
+      "problem": { "status": "new", "statusCheckedAt": "2026-01-01T23:00:00Z", "enteredInError": false },
+      "now": "2026-04-01T23:30:00Z",
+      "problemCheckDays": 90,
+      "due": true
+    },
+    {
+      "name": "a day is 24 hours: 90 days and 22 hours is due though both times fall 90 calendar days apart",
+      "problem": { "status": "new", "statusCheckedAt": "2026-01-01T00:30:00Z", "enteredInError": false },
+      "now": "2026-04-01T22:30:00Z",
+      "problemCheckDays": 90,
+      "due": true
+    },
+    {
+      "name": "a check time written with an offset is the same instant: exactly the window is not due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2026-01-01T02:00:00+02:00", "enteredInError": false },
+      "now": "2026-04-01T00:00:00Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "a check time written with an offset is the same instant: a millisecond over is due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2026-01-01T02:00:00+02:00", "enteredInError": false },
+      "now": "2026-04-01T00:00:00.001Z",
+      "problemCheckDays": 90,
+      "due": true
+    },
+    {
+      "name": "the shortest window, 7 days: exactly 7 days is not due",
+      "problem": { "status": "new", "statusCheckedAt": "2026-03-01T08:00:00Z", "enteredInError": false },
+      "now": "2026-03-08T08:00:00Z",
+      "problemCheckDays": 7,
+      "due": false
+    },
+    {
+      "name": "the shortest window, 7 days: a millisecond more is due",
+      "problem": { "status": "new", "statusCheckedAt": "2026-03-01T08:00:00Z", "enteredInError": false },
+      "now": "2026-03-08T08:00:00.001Z",
+      "problemCheckDays": 7,
+      "due": true
+    },
+    {
+      "name": "the window is the team's: 30 days ago is due in a 7-day window",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2026-03-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-03-31T00:00:00Z",
+      "problemCheckDays": 7,
+      "due": true
+    },
+    {
+      "name": "the window is the team's: 30 days ago is not due in the default 90-day window",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2026-03-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-03-31T00:00:00Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "the longest window, 365 days: exactly 365 days is not due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2025-03-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-03-01T00:00:00Z",
+      "problemCheckDays": 365,
+      "due": false
+    },
+    {
+      "name": "the longest window, 365 days: a day more is due",
+      "problem": { "status": "ongoing", "statusCheckedAt": "2025-03-01T00:00:00Z", "enteredInError": false },
+      "now": "2026-03-02T00:00:00Z",
+      "problemCheckDays": 365,
+      "due": true
+    },
+    {
+      "name": "a leap day counts as a day: 2028-02-01 to 2028-05-01 is 90 days, so it is not due",
+      "problem": { "status": "new", "statusCheckedAt": "2028-02-01T00:00:00Z", "enteredInError": false },
+      "now": "2028-05-01T00:00:00Z",
+      "problemCheckDays": 90,
+      "due": false
+    },
+    {
+      "name": "a check time after now, from a clock that ran ahead, is not due",
+      "problem": { "status": "new", "statusCheckedAt": "2026-04-02T00:00:00Z", "enteredInError": false },
+      "now": "2026-04-01T00:00:00Z",
+      "problemCheckDays": 7,
+      "due": false
+    },
+    {
+      "name": "a problem with no check time yet, made on this phone, is not due",
+      "problem": { "status": "new", "statusCheckedAt": null, "enteredInError": false },
+      "now": "2026-04-01T00:00:00Z",
+      "problemCheckDays": 7,
+      "due": false
+    }
+  ]
+}
