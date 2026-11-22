@@ -1848,3 +1848,88 @@ describe('taking a platform update (design 5.1, 5.2, 7)', () => {
     return swap(entry.body) as Body;
   }
 });
+
+describe('taking a platform update: what it names and what it renames (design 4.1, 5.1; risk 12.1.1)', () => {
+  // A team of its own, each case releasing the version it takes, so no case leans on another's.
+  let v: PresetsTeam;
+  let a: PresetsApi;
+  let m: ReturnType<typeof bodies>;
+
+  beforeAll(async () => {
+    v = await presetsTeam(h, 'Routes Taken Bodies');
+    a = presetsApi(h, v.teamId, v.admin);
+    m = bodies(v);
+  });
+
+  /** Edits a platform copy, so its next platform version is only offered, and answers its version. */
+  async function edited(kind: PresetKind, id: string, change: (b: Body) => Body): Promise<number> {
+    const head = (await headOf(h, id))!;
+    const r = await a.edit(kind, id, head.currentVersion, change(await currentBody(id)));
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return r.body.version as number;
+  }
+
+  const rowOf = async (kind: PresetKind, id: string) =>
+    ((await a.list(kind)).body as unknown as Record<string, unknown>[]).find((r) => r.id === id);
+
+  it('refuses an update the team’s presets refuse for anything but an archived preset, in place and as new: 422 invalid', async () => {
+    // Ids in a body have no foreign key (risk 12.1.1): an offered version can name an entry the team
+    // does not hold, its install skipped, say, and only the API stops it from being stored.
+    const hygiene = idOf(v, 'bundle.hygiene');
+    const version = await edited('bundle', hygiene, (b) => ({ ...b, prompt: 'Demo: ask what they need.' }));
+    const undo = releasePlatform([
+      nextVersion('bundle.hygiene', (b) => ({
+        ...b,
+        lines: [...(b.lines as Body[]), { itemId: 'item.demo_not_held', qty: 1, core: true }],
+      })),
+    ]);
+    try {
+      expect((await runInstaller(h, v.teamId)).offer).toEqual({ bundle: 1 });
+      expect(await rowOf('bundle', hygiene)).toMatchObject({ updateOnOffer: true });
+      for (const asNew of [false, true]) {
+        const details = await refusedUnwritten(
+          () => a.takeUpdate('bundle', hygiene, version, asNew),
+          422,
+          'invalid',
+          v.teamId,
+        );
+        expect(details.problems, `asNew ${asNew}`).toEqual([
+          { path: 'lines.1.itemId', code: 'unknown_reference' },
+        ]);
+      }
+    } finally {
+      undo();
+    }
+  });
+
+  it('takes in place an update that renames the preset: the head’s name moves with the body’s', async () => {
+    // The head's name is a copy of its body's (4.1), and the unique name and every name check read
+    // the head: one left behind would keep the old name taken and leave the new one free.
+    const dehydration = idOf(v, 'flag.dehydration_risk');
+    const version = await edited('flag', dehydration, (b) => ({ ...b, criteria: 'Demo: our own words' }));
+    const undo = releasePlatform([
+      nextVersion('flag.dehydration_risk', (b) => ({ ...b, name: 'Demo: Thirst risk' })),
+    ]);
+    try {
+      await runInstaller(h, v.teamId);
+      const r = await a.takeUpdate('flag', dehydration, version, false);
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      expect(await headOf(h, dehydration)).toMatchObject({
+        name: 'Demo: Thirst risk',
+        currentVersion: version + 1,
+      });
+      expect((await currentBody(dehydration)).name).toBe('Demo: Thirst risk');
+      expect(await rowOf('flag', dehydration)).toMatchObject({ name: 'Demo: Thirst risk' });
+      // The new name is held, as the database folds it, and the old one is free.
+      await refusedUnwritten(
+        () => a.create('flag', m.flag({ name: 'demo: THIRST risk' })),
+        409,
+        'name_taken',
+        v.teamId,
+      );
+      expect((await a.create('flag', m.flag({ name: 'Dehydration risk' }))).status).toBe(201);
+    } finally {
+      undo();
+    }
+  });
+});
