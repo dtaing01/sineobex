@@ -1452,6 +1452,30 @@ describe('a tier’s flag order (design 5.1, 5.3, 7)', () => {
     expect((await a.reorder('secondary', [...tier].reverse())).status).toBe(200);
   });
 
+  it('takes an order whose IDs are written in capitals, as the database reads a UUID', async () => {
+    const tier = await activeFlags('secondary', t.teamId);
+    const r = await a.reorder(
+      'secondary',
+      [...tier].reverse().map((id) => id.toUpperCase()),
+    );
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect((r.body as { changed: number }).changed).toBeGreaterThan(0);
+    expect(await activeFlags('secondary', t.teamId)).toEqual([...tier].reverse());
+  });
+
+  it('refuses an ID that is no UUID as malformed, naming it, never as a list that changed', async () => {
+    // As ids_mismatch, the answer would send the person to reload a list nobody changed.
+    const tier = await activeFlags('secondary', t.teamId);
+    const before = await footprint(h, t.teamId);
+    const r = await a.reorder('secondary', [...tier.slice(1), 'not-a-uuid']);
+    expect(r.status).toBe(422);
+    expect(errorOf(r)).toMatchObject({
+      code: 'validation_failed',
+      details: { fields: [expect.objectContaining({ path: `ids.${tier.length - 1}` })] },
+    });
+    await expectNothingWritten(h, t.teamId, before);
+  });
+
   it('refuses a tier it does not know', async () => {
     const before = await footprint(h, t.teamId);
     const r = await a.reorder('tertiary', []);

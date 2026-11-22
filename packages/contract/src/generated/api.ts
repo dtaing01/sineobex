@@ -1,5 +1,22 @@
 // GENERATED FILE. Do not edit by hand. Regenerate with `pnpm contract:generate`.
 export interface paths {
+    "/v1/admin/preset-order/flag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put a tier’s active flags in the order sent, with a reason (recent sign-in) */
+        post: operations["reorderFlags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/presets/{kind}": {
         parameters: {
             query?: never;
@@ -2617,6 +2634,21 @@ export interface components {
             /** @description Why, in a few words. Logged. */
             reason: string;
         };
+        ReorderFlags: {
+            /** @description Every active flag of the tier, each once, in the order its list shows them */
+            ids: string[];
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+            /**
+             * @description The risk level (primary) or the conditions (secondary)
+             * @enum {string}
+             */
+            tier: "primary" | "secondary";
+        };
+        ReorderFlagsResult: {
+            /** @description How many flags moved, each to its next version: 0 when none did, and nothing is written */
+            changed: number;
+        };
         RestorePreset: {
             /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
             reason: string;
@@ -3105,6 +3137,57 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    reorderFlags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderFlags"];
+            };
+        };
+        responses: {
+            /** @description How many flags moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReorderFlagsResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listPresets: {
         parameters: {
             query?: never;
