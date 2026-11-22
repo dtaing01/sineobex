@@ -35,6 +35,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/presets/{kind}/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a preset no active preset names, with a reason (recent sign-in); nothing is deleted */
+        post: operations["archivePreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/presets/{kind}/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived preset at the version it is at, with a reason (recent sign-in) */
+        post: operations["restorePreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/devices": {
         parameters: {
             query?: never;
@@ -1265,6 +1299,12 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        ArchivePreset: {
+            /** @description The version you opened: any other is refused as stale, with the current one */
+            baseVersion: number;
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
         AssignInput: {
             /** @description Why, in a few words. Logged. */
             reason: string;
@@ -2230,6 +2270,10 @@ export interface components {
             description: string;
             key: components["schemas"]["Permission"];
         };
+        PresetRevision: {
+            /** @description The team’s revision this write took: a phone’s next pull gets the change */
+            revision: number;
+        };
         PresetsPull: {
             /**
              * Format: uuid
@@ -2513,6 +2557,10 @@ export interface components {
         RejectReason: "validation" | "signing_rule" | "stale_reference" | "permission" | "record_locked" | "hash_mismatch" | "awaiting_review";
         RemoveMember: {
             /** @description Why, in a few words. Logged. */
+            reason: string;
+        };
+        RestorePreset: {
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
             reason: string;
         };
         ReversalRequestPage: {
@@ -3117,6 +3165,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditPresetResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archivePreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description The kind of preset */
+                kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchivePreset"];
+            };
+        };
+        responses: {
+            /** @description Archived, at the version it is at */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetRevision"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restorePreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                /** @description The kind of preset */
+                kind: "order_category" | "item" | "bundle" | "flag" | "field_supply_map" | "condition_supply_map" | "bag" | "settings";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestorePreset"];
+            };
+        };
+        responses: {
+            /** @description Restored, at the version it is at */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetRevision"];
                 };
             };
             /** @description Not signed in, or the session expired */

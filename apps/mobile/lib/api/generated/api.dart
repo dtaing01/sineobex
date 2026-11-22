@@ -1378,6 +1378,28 @@ class AppointAdmin {
       };
 }
 
+class ArchivePreset {
+  const ArchivePreset({
+    required this.baseVersion,
+    required this.reason,
+  });
+
+  /// The version you opened: any other is refused as stale, with the current one
+  final int baseVersion;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory ArchivePreset.fromJson(Map<String, dynamic> json) => ArchivePreset(
+        baseVersion: (json['baseVersion'] as num).toInt(),
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'baseVersion': baseVersion,
+        'reason': reason,
+      };
+}
+
 class AssignInput {
   const AssignInput({
     required this.reason,
@@ -4573,6 +4595,23 @@ class PermissionInfo {
       };
 }
 
+class PresetRevision {
+  const PresetRevision({
+    required this.revision,
+  });
+
+  /// The team’s revision this write took: a phone’s next pull gets the change
+  final int revision;
+
+  factory PresetRevision.fromJson(Map<String, dynamic> json) => PresetRevision(
+        revision: (json['revision'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'revision': revision,
+      };
+}
+
 class PresetView {
   const PresetView({
     required this.body,
@@ -5379,6 +5418,23 @@ class RemoveMember {
   final String reason;
 
   factory RemoveMember.fromJson(Map<String, dynamic> json) => RemoveMember(
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'reason': reason,
+      };
+}
+
+class RestorePreset {
+  const RestorePreset({
+    required this.reason,
+  });
+
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory RestorePreset.fromJson(Map<String, dynamic> json) => RestorePreset(
         reason: json['reason'] as String,
       );
 
@@ -6770,6 +6826,12 @@ class SineobexApi {
     return Ok.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Archive a preset no active preset names, with a reason (recent sign-in); nothing is deleted
+  Future<PresetRevision> archivePreset({required String kind, required String id, required ArchivePreset body}) async {
+    final json = await _transport.send('POST', '/v1/admin/presets/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/archive', body: body.toJson());
+    return PresetRevision.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Archive a custom role nobody holds
   Future<Role> archiveRole({required String roleId}) async {
     final json = await _transport.send('POST', '/v1/team/roles/${Uri.encodeComponent(roleId)}/archive');
@@ -7146,6 +7208,12 @@ class SineobexApi {
   Future<Member> removeMember({required String membershipId, required RemoveMember body}) async {
     final json = await _transport.send('POST', '/v1/team/members/${Uri.encodeComponent(membershipId)}/remove', body: body.toJson());
     return Member.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Restore an archived preset at the version it is at, with a reason (recent sign-in)
+  Future<PresetRevision> restorePreset({required String kind, required String id, required RestorePreset body}) async {
+    final json = await _transport.send('POST', '/v1/admin/presets/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/restore', body: body.toJson());
+    return PresetRevision.fromJson(json as Map<String, dynamic>);
   }
 
   /// Set a Resolved problem back to Ongoing, with a reason; then offers entries to merge into it
