@@ -14,6 +14,7 @@ import {
   type NoteReader,
   type ResolvedNoteType,
   type SensitiveCodeRange,
+  validate,
 } from '../../src/index.ts';
 
 // Where visibleAnswers may take an answer out (phase 5 design 4.4, D138): a supply map is refused
@@ -415,6 +416,45 @@ describe('mayBeHidden', () => {
       expect(mayBeHidden(nested, 'assess.notes', { answered: true })).toBe(true);
       expect(mayBeHidden(nested, 'checks.marks.groin', { equals: 'bruise' })).toBe(true);
       expect(mayBeHidden(nested, 'checks.marks.head', { equals: 'bruise' })).toBe(false);
+    });
+
+    it('refuses a marked code of a choose-one, whose answer withoutSensitiveExams takes out whole', () => {
+      // No definition above has one: the released and made-up definitions mark options only of
+      // choose-manys. forms' validator takes such a field outside a sensitive section.
+      const focus: ResolvedNoteType = {
+        key: 'demo_focus',
+        version: 1,
+        title: 'Demo focus',
+        kinds: ['medical'],
+        group: 'clinical',
+        sensitivity: 'none',
+        sections: [
+          {
+            id: 'exam',
+            title: 'Demo exam',
+            fields: [
+              {
+                id: 'focus',
+                kind: 'choice',
+                many: false,
+                label: 'Demo focus',
+                options: [
+                  { code: 'skin', label: 'Demo skin' },
+                  { code: 'pelvic', label: 'Demo pelvic', sensitiveExam: true },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      expect(validate(focus, { noteType: () => undefined })).toEqual([]);
+      expect(visibleAnswers(focus, { 'exam.focus': 'pelvic' }, LEAST)).toEqual({});
+      expect(holdsToVisibleAnswers(focus)).toBeGreaterThan(0);
+      for (const when of [{ equals: 'pelvic' }, { includes: 'pelvic' }, { answered: true as const }])
+        expect(mayBeHidden(focus, 'exam.focus', when), JSON.stringify(when)).toBe(true);
+      // An unmarked code's answer stays for every reader, and so reads the same for each.
+      expect(mayBeHidden(focus, 'exam.focus', { equals: 'skin' })).toBe(false);
+      expect(mayBeHidden(focus, 'exam.focus', { includes: 'skin' })).toBe(false);
     });
 
     it('refuses a sensitive note type as a whole, and with any path in it', () => {
