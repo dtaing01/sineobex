@@ -5652,6 +5652,23 @@ void main() {
       final reset = await pull(blair, since: r0 + 5, epoch: epoch);
       expect(reset.reset, isTrue);
       expect(reset.presets.any((p) => p.id == billing), isFalse);
+
+      // Such a kind is never read: a head of it whose current version is missing is no fault, in a
+      // pull since a revision or a reset.
+      final head = server.presetsOf(team).heads[billing]!;
+      final taken = server.takePresetRevision(team);
+      head
+        ..currentVersion += 1
+        ..revision = taken;
+      expect((await pull(blair, since: r0, epoch: epoch)).toJson(), {
+        'reset': false,
+        'revision': r0,
+        'epoch': epoch,
+        'presets': <Object?>[],
+      });
+      final again = await pull(blair);
+      expect([again.reset, again.revision], [true, r0]);
+      expect(again.presets.any((p) => p.id == billing), isFalse);
     });
 
     test('answers a fault while one is missing, and the head with its version once it is there', () async {
@@ -5685,6 +5702,10 @@ void main() {
         );
         expect(server.serverAudit.length, audited);
       }
+      // Only a head the pull would answer is a fault: one at or below the revision sent is not.
+      final past = await pull(blair, since: taken, epoch: epoch);
+      expect([past.reset, past.revision, past.epoch], [false, r0 + 2, epoch]);
+      expect([for (final p in past.presets) p.id], [after]);
 
       // Repaired: the version written. The next pull since what the phone holds brings the head.
       head.versions[held.version + 1] = held.body;
