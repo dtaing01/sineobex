@@ -1607,8 +1607,16 @@ describe('a tier’s flag order from a list changed since (design 5.1, 7)', () =
     // From B's list, B puts Dehydration risk before Frost risk: taken, the order would put
     // Pregnancy back at 30, undoing a rank B never saw.
     const fromB = [listed[1]!, listed[0]!, listed[2]!];
-    const details = await refusedUnwritten(() => adminB.reorder('secondary', fromB), 409, 'stale', s.teamId);
-    expect(details).toEqual({ flags: [{ id: pregnancy, currentVersion: pregnancyNow }] });
+    const before = await footprint(h, s.teamId);
+    const stale = await adminB.reorder('secondary', fromB);
+    expect(refused(stale, 409, 'stale')).toEqual({
+      flags: [{ id: pregnancy, currentVersion: pregnancyNow }],
+    });
+    // Said of the list B ordered, where an edit's refusal speaks of one preset: B reloads the flags.
+    expect(errorOf(stale).message).toBe(
+      'Someone changed these flags since you opened them. Reload them and try again.',
+    );
+    await expectNothingWritten(h, s.teamId, before);
     expect(await activeFlags('secondary', s.teamId)).toEqual([pregnancy, frost, dehydration]);
     // B lists again, sees A's change, and keeps it: Pregnancy first, then Dehydration, then Frost.
     const relisted = await adminB.flagList('secondary');
