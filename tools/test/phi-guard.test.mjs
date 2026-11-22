@@ -41,6 +41,13 @@ describe('fixture locations', () => {
     expect(scanned('packages/contract/test-vectors/x.json')).toBe(true);
   });
 
+  // The platform's presets ship in every team's install and the seed, as the note types do.
+  it('scans the presets package, its platform data and its source', () => {
+    expect(scanned('packages/presets/data/platform.json')).toBe(true);
+    expect(scanned('packages/presets/src/install.ts')).toBe(true);
+    expect(scanned('packages/presets/package.json')).toBe(true);
+  });
+
   it('leaves ordinary source to the source rules', () => {
     expect(scanned('packages/contract/src/index.ts')).toBe(false);
     expect(scanned('services/api/src/app.ts')).toBe(false);

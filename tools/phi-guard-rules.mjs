@@ -12,6 +12,9 @@ export const FIXTURE_GLOBS = [
   // so nothing in them may look like a real identifier.
   /^packages\/forms\//,
   /^packages\/contract\/test-vectors\//,
+  // The platform's presets, and the package that installs them in every team and the seed, under
+  // the same rule.
+  /^packages\/presets\//,
 ];
 
 const SSN = /\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b/g;
