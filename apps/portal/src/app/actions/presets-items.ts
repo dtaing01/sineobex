@@ -2,8 +2,16 @@
 
 import { revalidatePath } from 'next/cache';
 import type { ActionState } from '@/lib/forms';
-import { createPreset, presetFailure, readTexts, sentValues } from '@/lib/presets';
-import type { PresetRefusalContext } from '@/lib/refusals';
+import {
+  createPreset,
+  editPreset,
+  namedPreset,
+  presetFailure,
+  presetNow,
+  readTexts,
+  sentValues,
+} from '@/lib/presets';
+import { presetRefusalState, type PresetRefusalContext } from '@/lib/refusals';
 
 /**
  * Adding an item and editing one (phase 5 design 4.4, 5.1, 8.1): the Items pages' own forms.
@@ -16,6 +24,7 @@ import type { PresetRefusalContext } from '@/lib/refusals';
 
 const LIST = '/team/presets/items';
 const KIND = 'item';
+const LOST = 'This can’t be found. Reload the page.';
 
 /** The forms' words for the body's fields, for the error summary and beside each field. */
 const CONTEXT: Omit<PresetRefusalContext, 'act'> = {
@@ -59,6 +68,20 @@ function newResult(values: Record<string, string>, form: FormData): unknown {
   }
 }
 
+/**
+ * The result an edit sends: what kind it is is the API's, fixed at creation (4.4), and never the
+ * form's; a choice's options and a number's unit are the form's, when it sent them.
+ */
+function editedResult(values: Record<string, string>, form: FormData, now: unknown): unknown {
+  if (now === null || typeof now !== 'object') return now;
+  const result = now as { type?: unknown };
+  if (result.type === 'choice' && values['result.options.count'] !== undefined)
+    return { ...result, options: readTexts(form, 'result.options') };
+  if (result.type === 'number' && values['result.unit'] !== undefined)
+    return { ...result, unit: typed(values, 'result.unit') };
+  return now;
+}
+
 /** The fields both forms send as typed: a tick box that isn't ticked is sent as not ticked. */
 function typedFields(values: Record<string, string>, form: FormData) {
   return {
@@ -84,4 +107,28 @@ export async function addItemAction(_: ActionState, form: FormData): Promise<Act
   }
   revalidatePath(LIST);
   return { ok: true, message: `Added: ${fields.name}. It’s on the phones after their next sync.` };
+}
+
+/**
+ * Edits an item at the version shown: its name, its category, Medical, Capture lot and expiry, and
+ * a result's options or unit. The rest of its body is sent as the API lists it now: what it is
+ * counted in and the kind of result it records can't change, and are never the form's to send.
+ */
+export async function saveItemAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const values = sentValues(form);
+  const preset = namedPreset({ ...values, kind: KIND });
+  if (!preset || preset.baseVersion === null) return { error: LOST, values };
+  const context = { ...CONTEXT, act: 'save' as const };
+  const fields = typedFields(values, form);
+  try {
+    const now = await presetNow(KIND, preset.id);
+    if (!now) return presetRefusalState({ code: 'not_found', message: '' }, values, context);
+    const body = { ...now.body, ...fields, result: editedResult(values, form, now.body.result) };
+    await editPreset(KIND, preset.id, preset.baseVersion, body, values.reason ?? '');
+  } catch (err) {
+    return presetFailure(err, values, context);
+  }
+  revalidatePath(`${LIST}/${preset.id}`);
+  revalidatePath(LIST);
+  return { ok: true, message: `Saved: ${fields.name}. It’s on the phones after their next sync.` };
 }
