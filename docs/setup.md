@@ -55,3 +55,13 @@ Store releases need an Apple Developer Program membership and a Google Play deve
 ## 5. Production on AWS (phase 12)
 
 Do not start until the AWS BAA is accepted in AWS Artifact. Steps live in `infra/README.md` once phase 12 lands.
+
+## 6. After a database restore
+
+Each phone keeps a copy of its team's presets and asks only for what changed since the revision it holds (phase 5 design 4.2 and 6.1). A database restored from a backup can stand at an earlier revision with other rows, and a phone would then keep a copy mixed from two histories. Before the API serves the restored database, renew every team's epoch with the owner connection; each phone replaces its copy at its next pull:
+
+```sql
+update sineobex.team_preset_state set epoch = gen_random_uuid();
+```
+
+Phase 12's restore procedure takes this step over.
