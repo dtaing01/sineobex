@@ -3710,10 +3710,11 @@ const API_DATABASE_URL =
  * no platform version, so the version 1 it was installed from is on offer above it, and the list
  * answers its body, as taking it would write it, for review. Written as the API's role in the team's
  * scope, under the team lock, at a revision taken as takeRevision takes one, as 0023 asks of every
- * head written; with no event, as an offer writes none. A take puts the copy at version 1 again, so
- * nothing is left on offer, as the other cases of this file and every later spec expect.
+ * head written; with no event, as an offer writes none. A take gives the copy platform version 1
+ * again, so nothing is left on offer, as the other cases of this file and every later spec expect;
+ * a case that stops short has its offer taken back after it (noOfferLeft).
  */
-function offerPlatformVersion(id: string) {
+function offerPlatformVersion(kind: string, id: string) {
   const sql = `
     begin;
     select set_config('app.team_id', :'team', true);
@@ -3746,6 +3747,32 @@ function offerPlatformVersion(id: string) {
     { input: sql, encoding: 'utf8' },
   );
   expect(out, 'the copy is offered its platform version').toContain(`offered ${id}`);
+  OFFERED.push([kind, id]);
+}
+
+const OFFERED: [kind: string, id: string][] = [];
+
+/**
+ * Whatever a case left on offer, taken back as another admin would take it, so a case that stopped
+ * short leaves nothing for the hub's and Flags' "nothing on offer" in the narrow run.
+ */
+async function noOfferLeft() {
+  for (const [kind, id] of OFFERED.splice(0)) {
+    const row = await offeredOf(kind, id);
+    if (!row.update) continue;
+    const res = await apiCall(
+      await staffToken('admin@example.com'),
+      'POST',
+      `/v1/admin/presets/${kind}/${id}/take-update`,
+      {
+        baseVersion: row.version,
+        platformVersion: row.update.platformVersion,
+        asNew: false,
+        reason: 'Demo: nothing left on offer',
+      },
+    );
+    expect(res.status, `the update to ${row.name} taken back`).toBe(200);
+  }
 }
 
 /** A row of the review: the field, then its value now and in the update, said "Changes" where they differ. */
@@ -3765,6 +3792,7 @@ async function expectReview(review: Locator, rows: [field: string, now: string, 
 }
 
 test.describe('Sineobex’s update, on an item’s page', () => {
+  test.afterEach(noOfferLeft);
   const LIST = '/team/presets/items';
   const ITEM_FIELDS = ['Name', 'Category', 'Counted in', 'Medical', 'Capture lot and expiry', 'Result'];
 
@@ -3779,7 +3807,7 @@ test.describe('Sineobex’s update, on an item’s page', () => {
       name: 'Demo: Mepilex border',
       captureLot: true,
     }));
-    offerPlatformVersion(mepilex.id);
+    offerPlatformVersion('item', mepilex.id);
     // What is on offer is the platform's version as the team installed it.
     expect(await offeredOf<ItemBody>('item', mepilex.id)).toMatchObject({
       version: 2,
@@ -3907,7 +3935,7 @@ test.describe('Sineobex’s update, on an item’s page', () => {
       ...b,
       name: 'Demo: Aquacel ribbon',
     }));
-    offerPlatformVersion(aquacel.id);
+    offerPlatformVersion('item', aquacel.id);
     const here = `${LIST}/${aquacel.id}`;
     const take = (name: string) => page.getByRole('form', { name: `Take Sineobex’s update to ${name}` });
 
@@ -3952,6 +3980,7 @@ test.describe('Sineobex’s update, on an item’s page', () => {
 });
 
 test.describe('Sineobex’s update, on a flag the team ranked', () => {
+  test.afterEach(noOfferLeft);
   test('the review shows the place in its list that taking the update gives back, and the flag takes that place', async ({
     page,
   }) => {
@@ -3972,7 +4001,7 @@ test.describe('Sineobex’s update, on a flag the team ranked', () => {
     );
     expect(moved.status).toBe(200);
     const ranked = await offeredOf<FlagBody>('flag', flag.id);
-    offerPlatformVersion(flag.id);
+    offerPlatformVersion('flag', flag.id);
     const { update } = await offeredOf<FlagBody>('flag', flag.id);
     expect(update).toMatchObject({ platformVersion: 1, changesFixed: [] });
     expect(update!.body.rank).not.toBe(ranked.body.rank);
@@ -4018,6 +4047,75 @@ test.describe('Sineobex’s update, on a flag the team ranked', () => {
     ).toHaveText(after.map(pillOf));
     expect(after.at(-1)!.id).not.toBe(flag.id);
     await expectNothingStored(page, 'A flag’s update taken');
+    expectOnlyIds(traffic.addresses);
+  });
+});
+
+test.describe('Sineobex’s update, to the team’s settings', () => {
+  test.afterEach(noOfferLeft);
+
+  test('an update to the settings badges both cards that show them, is reviewed on Condition supplies, and taken there puts Sineobex’s settings back', async ({
+    page,
+  }) => {
+    test.slow();
+    const settings = await settingsRow();
+    // The team's own window, so Sineobex's version is only offered.
+    await changedMeanwhile<SettingsBody>('settings', settings.id, (b) => ({ ...b, problemCheckDays: 60 }));
+    offerPlatformVersion('settings', settings.id);
+    const offered = await offeredOf<SettingsBody>('settings', settings.id);
+    expect(offered.update).toMatchObject({ platformVersion: 1, changesFixed: [] });
+    const update = offered.update!.body;
+
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await portalNav(page).getByRole('link', { name: 'Presets', exact: true }).click();
+    const cards = page.getByRole('main').getByRole('listitem');
+    const card = (title: string) =>
+      cards.filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+    await expect(cards.filter({ hasText: 'Update available' })).toHaveCount(2);
+    for (const title of ['Condition supplies', 'Bag minimums'])
+      await expect(card(title).getByText('Update available', { exact: true })).toBeVisible();
+    await card('Condition supplies').getByRole('link', { name: 'Condition supplies', exact: true }).click();
+
+    const offer = page.getByRole('region', { name: `Update available for ${offered.name}` });
+    await expect(offer).toContainText('Sineobex updated this preset. Your edited copy hasn’t changed.');
+    await offer.getByText('Review', { exact: true }).click();
+    const onOff = (on: boolean) => (on ? 'On' : 'Off');
+    // Bag minimums' cases put the template back empty, as the platform's is.
+    expect([offered.body.newBagMinimums, update.newBagMinimums]).toEqual([[], []]);
+    await expectReview(
+      offer.getByRole('table', { name: `What taking the update changes in ${offered.name}` }),
+      [
+        ['Bag minimums', onOff(offered.body.bagMinimumsOn), onOff(update.bagMinimumsOn)],
+        ['Template for new bags', 'None', 'None'],
+        ['Check problems not updated in', '60 days', `${update.problemCheckDays} days`],
+      ],
+    );
+    await expectAccessible(page, 'An update to the settings, reviewed', { inPlace: true });
+    await expectReflow(page, 'An update to the settings, reviewed');
+
+    const take = page.getByRole('form', { name: `Take Sineobex’s update to ${offered.name}` });
+    await take.getByLabel('Reason').fill('Demo: Sineobex’s window again');
+    await take.getByRole('button', { name: 'Replace with the new version' }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/team/presets/condition-supplies\\?done=updated&preset=${settings.id}$`),
+    );
+    await expect(page.getByRole('heading', { name: `Update taken: ${offered.name}` })).toBeFocused();
+    await expect(page.getByLabel('Check problems not updated in')).toHaveValue(
+      String(update.problemCheckDays),
+    );
+    expect(await offeredOf<SettingsBody>('settings', settings.id)).toMatchObject({
+      customized: false,
+      updateOnOffer: false,
+      update: null,
+      body: update,
+    });
+    // Bag minimums, the other page that shows the settings, offers nothing either.
+    await portalNav(page).getByRole('link', { name: 'Presets', exact: true }).click();
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+    await card('Bag minimums').getByRole('link', { name: 'Bag minimums', exact: true }).click();
+    await expect(page.getByRole('region', { name: /^Update available/ })).toHaveCount(0);
+    await expectNothingStored(page, 'An update to the settings taken');
     expectOnlyIds(traffic.addresses);
   });
 });
