@@ -347,6 +347,74 @@ describe('mayBeHidden', () => {
       expect(mayBeHidden(demo('intake'), 'body.areas', { equals: 'head' })).toBe(true);
       expect(mayBeHidden(demo('intake'), 'body.areas', { answered: true })).toBe(true);
       expect(mayBeHidden(demo('intake'), 'body.areas_other', { answered: true })).toBe(true);
+      // The text of an Other option that is not marked stays for every reader.
+      expect(mayBeHidden(demo('exam'), 'lungs.sounds_other.right', { answered: true })).toBe(false);
+    });
+
+    it('takes a diagnosis in a group, and a row picked by a marked option, as visibleAnswers does', () => {
+      // No definition above has either. forms' validator refuses picked rows among marked options
+      // (validate.condition_reads_restricted), but withoutSensitiveExams takes such a row out all the
+      // same, so mayBeHidden answers for it as visibleAnswers would.
+      const nested: ResolvedNoteType = {
+        key: 'demo_nested',
+        version: 1,
+        title: 'Demo nested',
+        kinds: ['medical'],
+        group: 'clinical',
+        sensitivity: 'none',
+        sections: [
+          {
+            id: 'assess',
+            title: 'Demo assessment',
+            fields: [
+              {
+                id: 'dx',
+                kind: 'group',
+                label: 'Demo diagnosis',
+                layout: 'stack',
+                fields: [{ id: 'problem', kind: 'problem', label: 'Demo diagnosis' }],
+              },
+              { id: 'notes', kind: 'text', label: 'Demo notes', lines: 'one', maxLength: 80 },
+            ],
+          },
+          {
+            id: 'checks',
+            title: 'Demo checks',
+            fields: [
+              {
+                id: 'areas',
+                kind: 'choice',
+                many: true,
+                label: 'Demo areas',
+                options: [
+                  { code: 'head', label: 'Demo head' },
+                  { code: 'groin', label: 'Demo groin', sensitiveExam: true },
+                ],
+              },
+              {
+                id: 'marks',
+                kind: 'grid',
+                label: 'Demo marks',
+                rows: { pickedIn: 'checks.areas' },
+                cell: {
+                  id: 'mark',
+                  kind: 'choice',
+                  many: false,
+                  label: 'Demo mark',
+                  options: [
+                    { code: 'none', label: 'Demo none' },
+                    { code: 'bruise', label: 'Demo bruise' },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      };
+      expect(holdsToVisibleAnswers(nested)).toBeGreaterThan(0);
+      expect(mayBeHidden(nested, 'assess.notes', { answered: true })).toBe(true);
+      expect(mayBeHidden(nested, 'checks.marks.groin', { equals: 'bruise' })).toBe(true);
+      expect(mayBeHidden(nested, 'checks.marks.head', { equals: 'bruise' })).toBe(false);
     });
 
     it('refuses a sensitive note type as a whole, and with any path in it', () => {
