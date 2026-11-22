@@ -85,3 +85,10 @@
   list-style: none;
   padding-left: 0;
 }
+/* A history in its preset's own panel (HistoryTable's `flat`): its heading and table, unboxed. */
+.flat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}

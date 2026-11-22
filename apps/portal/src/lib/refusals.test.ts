@@ -178,6 +178,37 @@ describe('a preset form the API refused', () => {
     });
   });
 
+  it('says a form’s own sentence for a field where every problem asks one thing, a line’s too', () => {
+    const r = refused(
+      'invalid',
+      {
+        kind: 'order_category',
+        act: 'save',
+        labels: { name: 'Name', sort: 'Place in the list', 'lines.*.qty': 'Quantity' },
+        sentences: {
+          behaviour: 'Choose what it holds.',
+          sort: 'Enter a whole number.',
+          'lines.*.qty': 'Enter 1 to 99.',
+        },
+      },
+      {
+        problems: [
+          { path: 'name', code: 'too_small' },
+          { path: 'behaviour', code: 'invalid_value' },
+          { path: 'sort', code: 'too_big' },
+          { path: 'lines.1.qty', code: 'invalid_type' },
+        ],
+      },
+    );
+    expect(r.fieldErrors).toEqual({
+      // A field with no sentence of the form's own says the code's.
+      name: 'Name: This is too short or too small.',
+      behaviour: 'Choose what it holds.',
+      sort: 'Place in the list: Enter a whole number.',
+      'lines.1.qty': 'Quantity on line 2: Enter 1 to 99.',
+    });
+  });
+
   it('says a problem with the whole body as the summary', () => {
     expect(refused('invalid', save('bundle'), { problems: [{ path: '', code: 'too_large' }] }).error).toBe(
       'This is too long to save. Make it shorter.',

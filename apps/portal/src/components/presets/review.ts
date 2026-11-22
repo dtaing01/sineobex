@@ -1,6 +1,7 @@
 import {
   FLAG_COLOR_NAMES,
   type AnswerTest,
+  type CategoryBody,
   type FlagColor,
   type LabResult,
   type PresetKind,
@@ -11,7 +12,7 @@ import {
  * order its form shows them. The review of an update and the pages' own forms use the same words,
  * so a person reviewing an update reads the names they edit by.
  */
-export const FIELD_LABELS: { readonly [K in PresetKind]: Readonly<Record<string, string>> } = {
+export const FIELD_LABELS = {
   order_category: { name: 'Name', behaviour: 'What it holds', sort: 'Place in the list' },
   item: {
     name: 'Name',
@@ -39,13 +40,14 @@ export const FIELD_LABELS: { readonly [K in PresetKind]: Readonly<Record<string,
     newBagMinimums: 'Template for new bags',
     problemCheckDays: 'Check problems not updated in',
   },
-};
+} as const satisfies { readonly [K in PresetKind]: Readonly<Record<string, string>> };
 
-const BEHAVIOURS: Readonly<Record<string, string>> = {
+/** What a category holds (its `behaviour`), in 8.1's words, in the order the add form offers them. */
+export const BEHAVIOURS = {
   supply: 'Supplies',
   medication: 'Medications',
   lab: 'Tests',
-};
+} as const satisfies Readonly<Record<CategoryBody['behaviour'], string>>;
 
 const TIERS: Readonly<Record<string, string>> = { primary: 'Risk level', secondary: 'Conditions' };
 
@@ -71,7 +73,7 @@ export function describeField(
   if (value === undefined) return field === 'path' || field === 'when' ? 'Every note of this type' : 'None';
   switch (`${kind}.${field}`) {
     case 'order_category.behaviour':
-      return BEHAVIOURS[String(value)] ?? String(value);
+      return (BEHAVIOURS as Readonly<Record<string, string>>)[String(value)] ?? String(value);
     case 'item.categoryId':
       return named(value);
     case 'item.medical':
@@ -159,7 +161,7 @@ export function reviewRows(
 ): ReviewRow[] {
   const a = now as Record<string, unknown>;
   const b = update as Record<string, unknown>;
-  const labels = FIELD_LABELS[kind];
+  const labels: Readonly<Record<string, string>> = FIELD_LABELS[kind];
   const known = Object.keys(labels);
   const others = [...new Set([...Object.keys(a), ...Object.keys(b)])]
     .filter((f) => !known.includes(f) && !(kind === 'settings' && f === 'name'))

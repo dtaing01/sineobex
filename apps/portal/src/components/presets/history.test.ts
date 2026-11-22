@@ -155,6 +155,14 @@ describe('the history', () => {
     expect(rows[0]).toContain('<td>Nov 2, 2026, 10:04 AM</td>');
   });
 
+  it('stands in a panel of its own, or in its preset’s, unboxed', () => {
+    const boxed = renderToStaticMarkup(createElement(HistoryTable, { events, id: FLAG }));
+    expect(boxed).toContain(`<section aria-labelledby="history-${FLAG}" class="px-panel">`);
+    const flat = renderToStaticMarkup(createElement(HistoryTable, { events, id: FLAG, flat: true }));
+    expect(flat).not.toContain('px-panel');
+    expect(flat).toMatch(new RegExp(`<section aria-labelledby="history-${FLAG}" class="[^"]*flat[^"]*">`));
+  });
+
   it('takes a heading of the page’s level and words', () => {
     const html = renderToStaticMarkup(
       createElement(HistoryTable, { events, id: FLAG, heading: 'History of Frost risk', headingLevel: 3 }),

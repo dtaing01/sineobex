@@ -19,21 +19,27 @@ const ACTS: Readonly<Record<PresetEvent['act'], string>> = {
  * first, with who, when, whether the version is the platform's or the team's, and the reason.
  * The platform installer acts with no person and no reason; a person who takes a platform version
  * is named, with theirs. A reason is admin text, shown here and kept nowhere else (9).
+ *
+ * `flat` draws it without a panel of its own, for a page that places it in the preset's own panel
+ * (a list page, such as Categories, where each preset is a panel): a panel in a panel leaves the
+ * table too little width at 320 px.
  */
 export function HistoryTable({
   events,
   id,
   heading = 'History',
   headingLevel = 2,
+  flat = false,
 }: {
   events: readonly PresetEvent[];
   id: string;
   heading?: string;
   headingLevel?: 2 | 3;
+  flat?: boolean;
 }) {
   const Heading = headingLevel === 2 ? 'h2' : 'h3';
   return (
-    <section aria-labelledby={`history-${id}`} className="px-panel">
+    <section aria-labelledby={`history-${id}`} className={flat ? styles.flat : 'px-panel'}>
       <Heading id={`history-${id}`} className={headingLevel === 2 ? 'px-h2' : 'px-h3'}>
         {heading}
       </Heading>
@@ -72,11 +78,13 @@ export async function VersionHistory({
   id,
   heading,
   headingLevel,
+  flat,
 }: {
   kind: PresetKind;
   id: string;
   heading?: string;
   headingLevel?: 2 | 3;
+  flat?: boolean;
 }) {
   const events = await presetHistory(kind, id);
   return (
@@ -85,6 +93,7 @@ export async function VersionHistory({
       id={id}
       {...(heading ? { heading } : {})}
       {...(headingLevel ? { headingLevel } : {})}
+      {...(flat ? { flat } : {})}
     />
   );
 }

@@ -8,10 +8,12 @@ import {
   namedPreset,
   PRESET_AREAS,
   presetFailure,
+  presetNow,
   presetPage,
   readHub,
   readLines,
   sentValues,
+  wholeNumber,
   type HubLists,
   type PresetKind,
 } from './presets';
@@ -177,6 +179,16 @@ describe('what a preset form sent', () => {
     ]);
   });
 
+  it('reads a number as typed: a whole number as one, anything else as the text it is', () => {
+    expect(wholeNumber('15')).toBe(15);
+    expect(wholeNumber(' 007 ')).toBe(7);
+    expect(wholeNumber('1000000')).toBe(1_000_000);
+    // As typed, so the API names the field: it holds each field to its own range.
+    for (const typed of ['', 'ten', '1.5', '-1', '1,000', '12345678'])
+      expect(wholeNumber(typed), typed).toBe(typed.trim());
+    expect(wholeNumber(undefined)).toBe('');
+  });
+
   it('reads a list with no Core, by its own quantity, and none when it sent none', () => {
     const form = new FormData();
     form.set('minimums.count', '1');
@@ -225,6 +237,19 @@ describe('where an act on a preset comes back to', () => {
     expect(namedPreset({ kind: 'item', id: 'not-an-id' })).toBeNull();
     for (const baseVersion of ['0', '1.5', '', 'x', '9007199254740993'])
       expect(namedPreset({ kind: 'item', id: ITEM, baseVersion }), baseVersion).toBeNull();
+  });
+});
+
+describe('the preset an edit builds on', () => {
+  it('is the API’s list row for the ID, or none when the team holds none of the kind with it', async () => {
+    const rows = [
+      { id: ITEM, name: 'Demo: Gauze', body: { name: 'Demo: Gauze' } },
+      { id: OTHER, name: 'Demo: Socks', body: { name: 'Demo: Socks' } },
+    ];
+    answers = async (kind) => (kind === 'item' ? rows : []);
+    expect(await presetNow('item', OTHER)).toBe(rows[1]);
+    expect(await presetNow('item', '30a00000-0000-4000-8000-000000000009')).toBeNull();
+    expect(await presetNow('bundle', ITEM)).toBeNull();
   });
 });
 
