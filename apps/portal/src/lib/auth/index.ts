@@ -19,7 +19,8 @@ export function authProvider(): AuthProvider {
     if (!url || !anonKey) throw new Error('AUTH_PROVIDER=supabase needs SUPABASE_URL and SUPABASE_ANON_KEY');
     cached = createSupabaseAuth({ url, anonKey });
   } else {
-    // PLAN-OPEN (phase 12): Cognito hosted UI with authorization code + PKCE.
+    // Phase 12 adds Cognito's hosted UI here, with an authorization code and PKCE (BF-1 in
+    // docs/decisions-for-review.md): production's sign-in is decided, only not yet built.
     throw new Error(`Unknown AUTH_PROVIDER ${kind}`);
   }
   return cached;

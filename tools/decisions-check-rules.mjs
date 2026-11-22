@@ -176,9 +176,6 @@ export const RULES = {
     ['CO-11', 'PLAN-OPEN: final wording comes from counsel ("Draft Terms of'],
   ],
   'apps/portal/src/app/c/page.tsx': [['BM-25', 'PLAN-OPEN: the languages patient-facing text is translated']],
-  'apps/portal/src/lib/auth/index.ts': [
-    ['BF-1', 'PLAN-OPEN (phase 12): Cognito hosted UI with authorization'],
-  ],
   'apps/portal/src/lib/dob.ts': [
     ['BM-27', 'PLAN-OPEN: the DOB range that asks for confirmation (design'],
     ['BM-27', 'PLAN-OPEN: day-month order in typed dates (design 14.1,'],
