@@ -92,7 +92,8 @@ interface PulledRow {
   state: 'active' | 'archived';
   version: number;
   originKey: string | null;
-  body: Record<string, unknown>;
+  /** Null only for a head whose current version is missing, which no writer leaves (4.1). */
+  body: Record<string, unknown> | null;
   // A bigint: postgres.js gives it as a string unless it is parsed.
   revision: string | number | null;
 }
@@ -105,7 +106,8 @@ interface PulledRow {
  * takes its revision under the team lock and holds it to commit (4.2), so once a revision is read
  * no lower one can commit later, and what this read did not see, a pull since its answer does.
  * A revision above the team's, or another epoch (a restored database, setup.md), answers a reset,
- * and everything with it.
+ * and everything with it. A head whose current version is missing is a fault, as for every reader
+ * of presets: left out under a revision above it, it would never be asked for again.
  */
 async function pullPresets(
   scope: TeamScope,
@@ -135,7 +137,7 @@ async function pullPresets(
       left join lateral (
         select h.id, h.kind, h.state, h.current_version as version, h.origin_key, v.body, h.revision
         from sineobex.team_presets h
-        join sineobex.team_preset_versions v
+        left join sineobex.team_preset_versions v
           on v.team_id = h.team_id and v.preset_id = h.id and v.version = h.current_version
         where h.team_id = ${teamId}::uuid and h.kind = any(${[...PULLED_KINDS]}::text[])
           and (r.reset or ${since}::bigint is null or h.revision > ${since}::bigint)
@@ -143,6 +145,8 @@ async function pullPresets(
       order by p.revision, p.id`;
     const { reset, epoch } = rows[0]!;
     const held = rows.filter((r) => r.id !== null);
+    // Every writer writes a head with its version (store.ts, the installer); 0023 cannot hold it.
+    if (held.some((r) => r.body === null)) throw new Error('a preset’s current version is missing');
     const greatest = Math.max(0, ...held.map((r) => Number(r.revision)));
     return {
       reset,
@@ -154,7 +158,7 @@ async function pullPresets(
         state: r.state,
         version: r.version,
         originKey: r.originKey,
-        body: r.body,
+        body: r.body!,
       })),
     };
   });
