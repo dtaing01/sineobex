@@ -209,6 +209,10 @@ made by an engineer; until they are gone through, the forms are a preview.
 
 ## The team
 
+The team is the Sineobex team as a whole, whom the PRD's "Open with the team" list addresses. These
+rows need no clinical or legal judgment, so whoever the project lead names answers them, and the
+project lead settles any that are left.
+
 | # | Decision | Default built | Recommendation | If changed later | Where | Phase |
 |---|---|---|---|---|---|---|
 | TM-1 | The ID link host (`ID_LINK_BASE_URL`), and whether the team's QR tools keep the link's fragment | Required in pilot and production; a dedicated host is chosen before the pilot. The token is in the URL's fragment, so no server log sees it | Choose it before the first card is printed, on a domain the project will keep for good, and check that the printing app (TinyPrint) keeps the fragment | Cards never expire, so a printed card names the host for good: a new host means reprinting every card, or keeping the old host forwarding | `services/api/src/config.ts`; phase 3 design 14.1 #7, risk 12; plan section 6 (phase 3) | 3 |
