@@ -166,7 +166,9 @@ export async function seed(
 
     // Every note type version the platform ships, in both teams, as team creation does (forms
     // 3.2), and then every platform preset, whose maps read those note types (phase 5 design 5.2).
-    // Platform scope is set above; a second run writes nothing.
+    // Platform scope is set above; a second run writes nothing. Team creation audits both installs;
+    // the seed audits neither and logs the counts, since it is no one's act, as its patients and
+    // visits are not (demo-encounters.ts).
     for (const teamId of [DEMO_TEAM_ID, NEIGHBOUR_TEAM_ID]) {
       const { installed } = await installPresets(tx, teamId, { presets: options.presets });
       log(`  ${installed.length} note type version(s) installed in team ${teamId}`);
