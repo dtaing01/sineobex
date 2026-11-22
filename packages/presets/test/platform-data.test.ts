@@ -172,6 +172,20 @@ describe('the platform data', () => {
         }
     });
 
+    it('names only entries the file names earlier, the order a team installs them in', () => {
+      // The installer gives each entry in turn its id and checks it against those before it, so an
+      // entry named before it is given would be refused.
+      const seen = new Set<string>();
+      for (const e of entries) {
+        for (const { at, value } of idsOf(e.kind, e.body))
+          expect(
+            seen.has(String(value)),
+            `${e.originKey} ${at} names ${String(value)} before the file does`,
+          ).toBe(true);
+        seen.add(e.originKey);
+      }
+    });
+
     it('passes validatePreset, each entry against all the others and the released note types', () => {
       for (const e of current) {
         const problems = validatePreset({
