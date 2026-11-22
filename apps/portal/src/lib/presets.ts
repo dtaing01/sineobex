@@ -183,6 +183,20 @@ export async function presetHistory(kind: PresetKind, id: string): Promise<Prese
 }
 
 /**
+ * The team's settings and their history: the one preset of its kind a team holds (design 4.4),
+ * which Condition supplies and Bag minimums both edit, each its own fields. Null when the list
+ * holds none, which only a team the installer never reached could be.
+ */
+export async function teamSettings(): Promise<{
+  row: PresetRow<'settings'>;
+  history: PresetEvent[];
+} | null> {
+  const rows = await listPresets('settings');
+  const row = rows.find((r) => r.state === 'active') ?? rows[0];
+  return row ? { row, history: await presetHistory('settings', row.id) } : null;
+}
+
+/**
  * Adds a preset of the team's own at version 1. `body` is what the form sent, in its kind's shape
  * as far as the form can make it: the API answers where it is wrong (`invalid`, with paths).
  */
