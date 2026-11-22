@@ -210,8 +210,8 @@ made by an engineer; until they are gone through, the forms are a preview.
 ## The team
 
 The team is the Sineobex team as a whole, whom the PRD's "Open with the team" list addresses. These
-rows need no clinical or legal judgment, so whoever the project lead names answers them, and the
-project lead settles any that are left.
+rows need no clinical or legal judgment, except where one names counsel after its question (TM-3),
+so whoever the project lead names answers them, and the project lead settles any that are left.
 
 | # | Decision | Default built | Recommendation | If changed later | Where | Phase |
 |---|---|---|---|---|---|---|
