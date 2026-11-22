@@ -516,8 +516,8 @@ describe('the pull of a team the platform has given nothing yet (routes/presets.
     let first: ReturnType<typeof pulled>;
     try {
       first = pulled(await api.pull());
-      expect(first).toEqual({ reset: false, revision: 0, epoch: NO_EPOCH, presets: [] });
-      expect(pulled(await api.pull({ since: 0, epoch: NO_EPOCH }))).toEqual(first);
+      expect(first).toEqual({ reset: true, revision: 0, epoch: NO_EPOCH, presets: [] });
+      expect(pulled(await api.pull({ since: 0, epoch: NO_EPOCH }))).toEqual({ ...first, reset: false });
       expect(await stateOf(h, teamId)).toBeNull();
     } finally {
       platform.push(...held);

@@ -81,7 +81,7 @@
       "by": "staff",
       "story": "The staff member's phone signs in to the team, registers the patient, syncs, and pulls the team's presets with no revision of its own; then it goes offline.",
       "expect": {
-        "pull": { "status": 200, "reset": false, "revision": 0 },
+        "pull": { "status": 200, "reset": true, "revision": 0 },
         "phone": { "holds": "every platform preset, by origin key, at its newest version", "revision": 0 },
         "server": { "revision": 0 }
       }

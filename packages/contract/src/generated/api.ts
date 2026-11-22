@@ -2357,7 +2357,7 @@ export interface components {
             epoch: string;
             /** @description Every preset changed after since, or all of them; archived ones included */
             presets: components["schemas"]["PulledPreset"][];
-            /** @description Replace the copy whole: the revision sent is above the team’s, or another epoch */
+            /** @description Replace the copy whole: no revision was sent, the revision sent is above the team’s, or another epoch */
             reset: boolean;
             /** @description Send as since next time: the greatest revision among presets, else since */
             revision: number;

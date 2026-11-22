@@ -3700,7 +3700,7 @@
             "type": "array"
           },
           "reset": {
-            "description": "Replace the copy whole: the revision sent is above the team’s, or another epoch",
+            "description": "Replace the copy whole: no revision was sent, the revision sent is above the team’s, or another epoch",
             "type": "boolean"
           },
           "revision": {
