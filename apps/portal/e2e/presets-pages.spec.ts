@@ -4029,23 +4029,23 @@ test.describe('Sineobex’s update, on a flag the team ranked', () => {
 // A refused act reads the page again, as a done one does. Where another admin's act changed what
 // the page draws for the preset (removed or restored it), the page draws it as it is now, and the
 // form that was refused, with its sentence and what was typed, goes with the preset's old state.
+/** An item of the team's own among its supplies, as another admin would add it; its ID. */
+async function madeSupply(name: string): Promise<string> {
+  const { id: categoryId } = await named<CategoryBody>('order_category', 'Supplies');
+  return made('item', { name, categoryId, unit: 'each', medical: false, captureLot: false, result: null });
+}
+
+/** A Non-Medical bundle of one item, as another admin would add it; its ID. */
+async function madeBundle(name: string, itemId: string): Promise<string> {
+  return made('bundle', { name, medical: false, prompt: '', lines: [{ itemId, qty: 1, core: true }] });
+}
+
 test.describe('acts after another admin acted meanwhile', () => {
-  /** An item of the team's own among its supplies, as another admin would add it; its ID. */
-  async function supply(name: string): Promise<string> {
-    const { id: categoryId } = await named<CategoryBody>('order_category', 'Supplies');
-    return made('item', { name, categoryId, unit: 'each', medical: false, captureLot: false, result: null });
-  }
-
-  /** A Non-Medical bundle of one item, as another admin would add it; its ID. */
-  async function bundleOf(name: string, itemId: string): Promise<string> {
-    return made('bundle', { name, medical: false, prompt: '', lines: [{ itemId, qty: 1, core: true }] });
-  }
-
   test('Remove is refused stale after another admin changed the bundle meanwhile, and after another admin removed it the page shows it removed; neither removes it again', async ({
     page,
   }) => {
-    const splint = await supply('Demo: Finger splint');
-    const id = await bundleOf('Demo: Splinting', splint);
+    const splint = await madeSupply('Demo: Finger splint');
+    const id = await madeBundle('Demo: Splinting', splint);
     const here = `/team/presets/bundles/${id}`;
     await signIn(page, 'admin@example.com');
     const traffic = watchTraffic(page);
@@ -4089,8 +4089,8 @@ test.describe('acts after another admin acted meanwhile', () => {
   test('Restore after another admin restored the bundle meanwhile shows it back on the list, and Restore of a bundle whose item was removed since is refused with its sentence', async ({
     page,
   }) => {
-    const sling = await supply('Demo: Arm sling');
-    const id = await bundleOf('Demo: Sling care', sling);
+    const sling = await madeSupply('Demo: Arm sling');
+    const id = await madeBundle('Demo: Sling care', sling);
     await actedMeanwhile('bundle', id, 'archive');
     await signIn(page, 'admin@example.com');
     const traffic = watchTraffic(page);
@@ -4135,8 +4135,8 @@ test.describe('acts after another admin acted meanwhile', () => {
   test('a bundle saved naming an item removed meanwhile is refused with its sentence on the line, keeping what was typed; an item saved after another admin removed it shows it removed, saving nothing', async ({
     page,
   }) => {
-    const wrap = await supply('Demo: Crepe wrap');
-    const pad = await supply('Demo: Heel pad');
+    const wrap = await madeSupply('Demo: Crepe wrap');
+    const pad = await madeSupply('Demo: Heel pad');
     await signIn(page, 'admin@example.com');
     const traffic = watchTraffic(page);
 
@@ -4184,5 +4184,42 @@ test.describe('acts after another admin acted meanwhile', () => {
     });
     await expectNothingStored(page, 'A save after another admin acted');
     expectOnlyIds(traffic.addresses);
+  });
+});
+
+test.describe('Remove and Restore with a stale sign-in', () => {
+  test('a stale sign-in sends Remove and Restore through /reauth and back to the page, changing nothing', async ({
+    page,
+  }) => {
+    const id = await madeBundle('Demo: Toe care', await madeSupply('Demo: Toe spacer'));
+    const here = `/team/presets/bundles/${id}`;
+    const throughReauth = async () => {
+      await expect(page).toHaveURL(`/reauth?next=${encodeURIComponent(here)}`);
+      await page.getByLabel('6-digit code').fill(MFA_CODE);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page).toHaveURL(new RegExp(`${here}$`));
+    };
+
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(here);
+    await page.getByRole('button', { name: 'Remove Demo: Toe care', exact: true }).click();
+    const remove = page.getByRole('form', { name: 'Remove Demo: Toe care' });
+    await remove.getByLabel('Reason').fill('Demo: an old sign-in');
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await throughReauth();
+    expect((await listed('bundle')).find((b) => b.id === id)).toMatchObject({ state: 'active', version: 1 });
+
+    // Removed by another admin: its page offers Restore, which a stale sign-in sends the same way.
+    await actedMeanwhile('bundle', id, 'archive');
+    await staleSignIn();
+    await signIn(page, 'admin@example.com');
+    await page.goto(here);
+    const gone = page.getByRole('region', { name: 'Removed', exact: true });
+    await gone.getByLabel('Reason').fill('Demo: an old sign-in');
+    await gone.getByRole('button', { name: 'Restore', exact: true }).click();
+    await throughReauth();
+    expect((await listed('bundle')).find((b) => b.id === id)).toMatchObject({ state: 'archived' });
+    expect((await historyOf('bundle', id)).map((e) => e.act)).toEqual(['created', 'archived']);
   });
 });
