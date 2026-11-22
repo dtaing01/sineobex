@@ -395,9 +395,13 @@ describe('creating a preset (design 5.1, 7)', () => {
   it('compares names as the database does, where JavaScript would fold them otherwise', async () => {
     // Final sigma: JavaScript folds ΟΔΟΣ to οδος, the database to οδοσ. Dotted İ: the database folds
     // it to i, JavaScript to i and a combining dot. Whatever the database answers is the answer.
+    // Each pair is tried both ways round, so neither the name sent nor the name held may be folded
+    // in JavaScript: with οδος held, ΟΔΟΣ folded so would be refused a name the database lets it take.
     for (const [first, second] of [
       ['Demo: ΟΔΟΣ kit', 'Demo: οδος kit'],
+      ['Demo: οδος pack', 'Demo: ΟΔΟΣ pack'],
       ['Demo: İodine swab', 'Demo: iodine swab'],
+      ['Demo: iodine pad', 'Demo: İodine pad'],
     ] as const) {
       await createdPreset(api, 'item', make.item({ name: first }));
       const [fold] = await h.scratch.owner<
