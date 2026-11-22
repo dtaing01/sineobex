@@ -148,12 +148,15 @@ describe('every ID a body names (design 4.4, risk 1)', () => {
   });
 
   describe.each([['a create'], ['an edit']] as const)('on %s', (act) => {
-    /** The field's body with `id`, sent as `act`: on an edit, over a preset of the kind made for it. */
-    async function send(field: IdField, id: string): Promise<Answer> {
-      if (act === 'a create' || field.kind === 'settings') return write(field, field.body(id));
+    /**
+     * The field's body with `id`, ready to send as `act`: on an edit, over a preset of the kind made
+     * for it first, so that what a refusal must leave as it was is counted after it.
+     */
+    async function prepared(field: IdField, id: string): Promise<() => Promise<Answer>> {
+      if (act === 'a create' || field.kind === 'settings') return () => write(field, field.body(id));
       const made = await createdPreset(api, field.kind, field.body(await fresh(field.names)));
       const body = { ...field.body(id), name: (await currentBody(made.id)).name };
-      return api.edit(field.kind, made.id, 1, body);
+      return () => api.edit(field.kind, made.id, 1, body);
     }
 
     it('refuses an ID that names no preset of the team: unknown_reference, at its path', async () => {
@@ -162,7 +165,7 @@ describe('every ID a body names (design 4.4, risk 1)', () => {
           randomUUID(),
           idOf(other, field.names === 'item' ? 'item.gauze' : 'order_category.supplies'),
         ]) {
-          const details = await refusedUnwritten(() => send(field, id), 422, 'invalid');
+          const details = await refusedUnwritten(await prepared(field, id), 422, 'invalid');
           expect(details.problems, `${field.kind} ${field.path}`).toContainEqual({
             path: field.path,
             code: 'unknown_reference',
@@ -174,7 +177,7 @@ describe('every ID a body names (design 4.4, risk 1)', () => {
     it('refuses an ID that names a preset of another kind: wrong_kind, at its path', async () => {
       for (const field of FIELDS) {
         const id = await wrongKindFor(field.names);
-        const details = await refusedUnwritten(() => send(field, id), 422, 'invalid');
+        const details = await refusedUnwritten(await prepared(field, id), 422, 'invalid');
         expect(details.problems, `${field.kind} ${field.path}`).toContainEqual({
           path: field.path,
           code: 'wrong_kind',
@@ -183,11 +186,10 @@ describe('every ID a body names (design 4.4, risk 1)', () => {
       // A map line names an item, never a bundle (12.2): a kit is an item.
       const bundle = await fresh('bundle');
       const details = await refusedUnwritten(
-        () =>
-          send(
-            FIELDS.find((f) => f.kind === 'field_supply_map')!,
-            bundle,
-          ),
+        await prepared(
+          FIELDS.find((f) => f.kind === 'field_supply_map')!,
+          bundle,
+        ),
         422,
         'invalid',
       );
@@ -197,7 +199,7 @@ describe('every ID a body names (design 4.4, risk 1)', () => {
     it('refuses an ID that names an archived preset: 409 reference_archived, at its path', async () => {
       for (const field of FIELDS) {
         const id = await archived(field.names);
-        const details = await refusedUnwritten(() => send(field, id), 409, 'reference_archived');
+        const details = await refusedUnwritten(await prepared(field, id), 409, 'reference_archived');
         expect(details.problems, `${field.kind} ${field.path}`).toEqual([
           { path: field.path, code: 'reference_archived' },
         ]);
@@ -206,7 +208,7 @@ describe('every ID a body names (design 4.4, risk 1)', () => {
 
     it('takes an ID that names an active preset of the right kind', async () => {
       for (const field of FIELDS) {
-        const r = await send(field, await fresh(field.names));
+        const r = await (await prepared(field, await fresh(field.names)))();
         expect(r.status, `${field.kind}: ${JSON.stringify(r.body)}`).toBeLessThan(300);
       }
     });

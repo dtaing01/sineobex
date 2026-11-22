@@ -294,6 +294,10 @@ describe('the phone’s presets pull (phase 5 design 6.1)', () => {
       expect(r.status, JSON.stringify(query)).toBe(422);
       expect(errorOf(r).code).toBe('validation_failed');
     }
+    // A number no revision can be is refused or answered as a reset, never a 500.
+    const huge = await asStaff().pull({ since: '9223372036854775808', epoch });
+    if (huge.status === 200) expect(pulled(huge).reset).toBe(true);
+    else expect(huge.status).toBe(422);
   });
 
   it('gives every member every preset, sensitive flags included, whatever the role, and logs no refusal', async () => {

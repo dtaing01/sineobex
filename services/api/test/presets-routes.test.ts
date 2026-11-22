@@ -471,6 +471,64 @@ describe('creating a preset (design 5.1, 7)', () => {
   });
 });
 
+describe('a request that is not well formed (design 7)', () => {
+  it('refuses a base version, an asNew, ids or an ID in the address that are not what they say, never with a 500', async () => {
+    const body = make.flag();
+    const { id } = await createdPreset(api, 'flag', body);
+    const changed = FREE_CHANGE.flag(body);
+    const tier = await activeFlags('secondary');
+    const sends: [string, () => Promise<Answer>][] = [
+      [
+        'a base version as text',
+        () =>
+          api.send('PUT', `/v1/admin/presets/flag/${id}`, {
+            baseVersion: '1',
+            body: changed,
+            reason: REASON,
+          }),
+      ],
+      ['a fractional base version', () => api.edit('flag', id, 1.5, changed)],
+      ['a base version below 1', () => api.archive('flag', id, 0)],
+      ['no base version', () => api.send('POST', `/v1/admin/presets/flag/${id}/archive`, { reason: REASON })],
+      [
+        'an asNew that is not a boolean',
+        () =>
+          api.send('POST', `/v1/admin/presets/flag/${id}/take-update`, {
+            baseVersion: 1,
+            reason: REASON,
+            asNew: 'yes',
+          }),
+      ],
+      [
+        'ids that are not a list',
+        () =>
+          api.send('POST', '/v1/admin/preset-order/flag', {
+            tier: 'secondary',
+            ids: tier[0],
+            reason: REASON,
+          }),
+      ],
+      ['an id that is no UUID', () => api.reorder('secondary', [...tier.slice(1), 'not-a-uuid'])],
+    ];
+    // Refused, as a malformed request or by what it then means, and nothing written.
+    for (const [label, send] of sends) {
+      const before = await footprint(h, team.teamId);
+      const r = await send();
+      expect([409, 422], `${label}: ${r.status} ${JSON.stringify(r.body)}`).toContainEqual(r.status);
+      await expectNothingWritten(h, team.teamId, before);
+    }
+    // An ID in the address that is no UUID names no preset.
+    for (const path of ['/v1/admin/presets/flag/not-a-uuid/history', '/v1/admin/presets/flag/12345']) {
+      const r = await api.send('GET', path);
+      expect([404, 422], path).toContainEqual(r.status);
+    }
+    const before = await footprint(h, team.teamId);
+    const r = await api.edit('flag', 'not-a-uuid', 1, changed);
+    expect([404, 422]).toContainEqual(r.status);
+    await expectNothingWritten(h, team.teamId, before);
+  });
+});
+
 describe('editing a preset (design 5.1, 7)', () => {
   for (const kind of KINDS_MADE) {
     it(`gives a ${kind} its next version, customized, with its event and reason`, async () => {
@@ -646,6 +704,13 @@ describe('editing a preset (design 5.1, 7)', () => {
     await refusedUnwritten(() => api.edit('flag', id, 1, { ...b, name: a.name }), 409, 'name_taken');
     const recased = String(b.name).toUpperCase().replace('DEMO:', 'Demo:');
     expect((await api.edit('flag', id, 1, { ...b, name: recased })).status).toBe(200);
+    // The head carries the new name, which the database's unique name reads.
+    expect(await headOf(h, id)).toMatchObject({ name: recased, currentVersion: 2 });
+    const renamed = { ...b, name: demoName('flag renamed') };
+    expect((await api.edit('flag', id, 2, renamed)).status).toBe(200);
+    expect(await headOf(h, id)).toMatchObject({ name: renamed.name });
+    // Its old name is free again.
+    await createdPreset(api, 'flag', make.flag({ name: recased }));
   });
 
   it('refuses a fixed field before a name in use, as presetWriteEffect orders them', async () => {
@@ -795,6 +860,7 @@ describe('archiving and restoring a preset (design 5.1, 7)', () => {
   it('refuses to restore an active preset: 409 not_archived', async () => {
     const { id } = await createdPreset(api, 'flag', make.flag());
     await refusedUnwritten(() => api.restore('flag', id), 409, 'not_archived');
+    await refusedUnwritten(() => api.restore('settings', idOf(team, 'settings.team')), 409, 'not_archived');
   });
 
   it('refuses to restore a preset whose name another active one took meanwhile', async () => {
@@ -1530,6 +1596,16 @@ describe('taking a platform update (design 5.1, 5.2, 7)', () => {
       'name_taken',
       u.teamId,
     );
+  });
+
+  it('refuses as new an update that points at an archived preset', async () => {
+    const details = await refusedUnwritten(
+      () => a.takeUpdate('bundle', ids('bundle.general_pain'), 2, true),
+      409,
+      'reference_archived',
+      u.teamId,
+    );
+    expect(details.problems).toEqual([{ path: 'lines.1.itemId', code: 'reference_archived' }]);
   });
 
   it('refuses as new a stale base and an update not on offer', async () => {
