@@ -614,8 +614,10 @@ describe('installing the platform presets', () => {
         await writer.rollback();
       }
       // Its item would have named a category that is not there: nothing of the run is kept, not even
-      // its revision.
+      // its revision. The installer's own check undoes it, not 0023's guard, which would throw too
+      // for a head stamped with a revision its write never took.
       expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toMatch(/wrote fewer heads than were planned/);
       expect(await headsOf(team)).toMatchObject([{ kind: 'order_category', originKey: null }]);
       expect(await versionsOf(team)).toEqual([]);
       expect(await eventsOf(team)).toEqual([]);
