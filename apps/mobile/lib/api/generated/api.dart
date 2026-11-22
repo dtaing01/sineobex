@@ -1972,11 +1972,11 @@ class CorrectionView {
 
 class CreatePreset {
   const CreatePreset({
-    this.body,
+    required this.body,
     required this.reason,
   });
 
-  /// Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets
+  /// The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets
   final Object? body;
   /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
   final String reason;
@@ -2469,13 +2469,13 @@ class DuplicatePairSummary {
 class EditPreset {
   const EditPreset({
     required this.baseVersion,
-    this.body,
+    required this.body,
     required this.reason,
   });
 
   /// The version you opened: any other is refused as stale, with the current one
   final int baseVersion;
-  /// Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets
+  /// The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets
   final Object? body;
   /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
   final String reason;

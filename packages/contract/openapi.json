@@ -665,7 +665,7 @@
       "CreatePreset": {
         "properties": {
           "body": {
-            "description": "Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets"
+            "description": "The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets"
           },
           "reason": {
             "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
@@ -675,6 +675,7 @@
           }
         },
         "required": [
+          "body",
           "reason"
         ],
         "type": "object"
@@ -1209,7 +1210,7 @@
             "type": "integer"
           },
           "body": {
-            "description": "Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets"
+            "description": "The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets"
           },
           "reason": {
             "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
@@ -1220,6 +1221,7 @@
         },
         "required": [
           "baseVersion",
+          "body",
           "reason"
         ],
         "type": "object"

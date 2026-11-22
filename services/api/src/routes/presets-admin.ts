@@ -39,13 +39,14 @@ const kindParam = z.object({ kind: Kind });
 const presetParam = z.object({ kind: Kind, id: Uuid });
 
 /**
- * The body as it is sent, whatever it is: the store parses it by its kind's schema and answers 422
- * invalid with the path of each problem, a body that is no object among them, so the admin is shown
- * where it is wrong.
+ * The body as it is sent, whatever JSON value it is: the store parses it by its kind's schema and
+ * answers 422 invalid with the path of each problem, a body that is no object among them, so the
+ * admin is shown where it is wrong. Only a body left out is the request's own refusal, so the
+ * contract and its clients hold it required.
  */
-const SentBody = z.unknown().openapi({
+const SentBody = z.unknown().nonoptional().openapi({
   description:
-    'Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets',
+    'The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets',
 });
 
 const Revision = z

@@ -1499,8 +1499,8 @@ export interface components {
             requestedByPatient: boolean;
         };
         CreatePreset: {
-            /** @description Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets */
-            body?: unknown;
+            /** @description The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets */
+            body: unknown;
             /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
             reason: string;
         };
@@ -1652,8 +1652,8 @@ export interface components {
         EditPreset: {
             /** @description The version you opened: any other is refused as stale, with the current one */
             baseVersion: number;
-            /** @description Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets */
-            body?: unknown;
+            /** @description The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets */
+            body: unknown;
             /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
             reason: string;
         };
