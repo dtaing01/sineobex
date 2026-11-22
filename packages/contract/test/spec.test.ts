@@ -197,7 +197,7 @@ describe('openapi.json, patient data in requests and refusals', () => {
     expect(required('EditPreset')).toEqual(['baseVersion', 'body', 'reason']);
     expect(required('ArchivePreset')).toEqual(['baseVersion', 'reason']);
     expect(required('RestorePreset')).toEqual(['reason']);
-    expect(required('TakePresetUpdate')).toEqual(['asNew', 'baseVersion', 'reason']);
+    expect(required('TakePresetUpdate')).toEqual(['asNew', 'baseVersion', 'platformVersion', 'reason']);
     expect(required('ReorderFlags')).toEqual(['ids', 'reason', 'tier']);
   });
 

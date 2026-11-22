@@ -724,7 +724,7 @@ const PRESET_ROUTES: RouteCase[] = [
   {
     method: 'POST',
     path: `/v1/admin/presets/flag/${id()}/take-update`,
-    body: { baseVersion: 1, reason: REASON, asNew: false },
+    body: { baseVersion: 1, platformVersion: 1, reason: REASON, asNew: false },
     allowed: [MANAGE_PRESETS],
     refused: ALL_BUT_PRESETS,
     logged: { permission: MANAGE_PRESETS },
@@ -904,7 +904,7 @@ describe('phase 5 preset writes, with a stale sign-in', () => {
       async () => ({
         method: 'POST',
         path: `/v1/admin/presets/order_category/${idOf(team, 'order_category.otc')}/take-update`,
-        body: { baseVersion: 2, reason: REASON, asNew: false },
+        body: { baseVersion: 2, platformVersion: 2, reason: REASON, asNew: false },
         done: 200,
       }),
     ],
@@ -913,7 +913,7 @@ describe('phase 5 preset writes, with a stale sign-in', () => {
       async () => ({
         method: 'POST',
         path: `/v1/admin/presets/flag/${idOf(team, 'flag.frost_risk')}/take-update`,
-        body: { baseVersion: 2, reason: REASON, asNew: true },
+        body: { baseVersion: 2, platformVersion: 2, reason: REASON, asNew: true },
         done: 200,
       }),
     ],
