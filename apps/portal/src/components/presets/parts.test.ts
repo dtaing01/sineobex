@@ -5,8 +5,8 @@ import { ActionForm } from '@/components/ActionForm';
 import { ItemLines, type ItemLinesProps } from './ItemLines';
 import { PresetNotice } from './PresetNotice';
 import { ReasonBox } from './ReasonBox';
-import { RemovedList } from './RemovedList';
-import { RemoveForm } from './RemoveForm';
+import { RemovedList, RestorePresetForm } from './RemovedList';
+import { RemoveForm, RemovePresetForm } from './RemoveForm';
 
 // The parts every preset page places (phase 5 design 8.1), as a page first draws them: an
 // end-to-end test reaches them through the pages that place them. Every name is made up.
@@ -143,17 +143,28 @@ describe('the Removed list', () => {
     { id: OLD, name: 'Demo: Old kit', state: 'archived' as const },
   ];
 
-  it('lists the removed presets, each with Restore and a reason, and none of the others', () => {
+  it('lists the removed presets, each with Restore, and none of the others', () => {
     const html = renderToStaticMarkup(createElement(RemovedList, { kind: 'item', presets }));
     expect(html).toContain('<h2 id="removed-item" class="px-h2">Removed (1)</h2>');
-    expect(html).toContain('Demo: Old kit<span class="sr-only">: restore it</span></summary>');
+    expect(html).toContain('Demo: Old kit</span>');
+    expect(html).not.toContain('Demo: Gauze');
+    // Restore shows its form when pressed: until then no form, and no reason box, is drawn.
+    expect(html).toContain(
+      '<button type="button" class="sx-btn sx-btn--secondary" aria-expanded="false">Restore<span class="sr-only"> Demo: Old kit</span></button>',
+    );
+    expect(html).not.toContain('<form');
+  });
+
+  it('restores with a reason', () => {
+    const html = renderToStaticMarkup(
+      createElement(RestorePresetForm, { kind: 'item', preset: { id: OLD, name: 'Demo: Old kit' } }),
+    );
     expect(html).toContain('aria-label="Restore Demo: Old kit"');
     expect(html).toContain(
       `<input type="hidden" name="kind" value="item"/><input type="hidden" name="id" value="${OLD}"/>`,
     );
     expect(html).toContain('<label for="restore-' + OLD + '-reason">Reason</label>');
     expect(html).toContain('Restore</button>');
-    expect(html).not.toContain('Demo: Gauze');
   });
 
   it('draws nothing while nothing is removed', () => {
@@ -164,21 +175,34 @@ describe('the Removed list', () => {
 });
 
 describe('Remove', () => {
-  it('sends the version shown and a reason, behind a disclosure that names the preset', () => {
+  const preset = { id: GAUZE, name: 'Demo: Frost watch', version: 3 };
+
+  it('shows its form when pressed, named for the preset', () => {
+    const html = renderToStaticMarkup(createElement(RemoveForm, { kind: 'flag', preset }));
+    expect(html).toContain(
+      '<button type="button" class="sx-btn sx-btn--secondary" aria-expanded="false">Remove<span class="sr-only"> Demo: Frost watch</span></button>',
+    );
+    // Until it is pressed no form is drawn: a closed disclosure's buttons would hold the theme
+    // checks up for good (Disclosure.tsx).
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('<details');
+  });
+
+  it('sends the version shown and a reason', () => {
     const html = renderToStaticMarkup(
-      createElement(RemoveForm, {
+      createElement(RemovePresetForm, {
         kind: 'flag',
-        preset: { id: GAUZE, name: 'Demo: Frost watch', version: 3 },
+        preset,
         note: 'Patients who have this flag keep it until someone clears it.',
         back: '/team/presets/flags',
       }),
     );
-    expect(html).toContain('<summary>Remove<span class="sr-only"> Demo: Frost watch</span></summary>');
     expect(html).toContain('aria-label="Remove Demo: Frost watch"');
     expect(html).toContain('<input type="hidden" name="kind" value="flag"/>');
     expect(html).toContain('<input type="hidden" name="baseVersion" value="3"/>');
     expect(html).toContain('<input type="hidden" name="back" value="/team/presets/flags"/>');
     expect(html).toContain('<p>Patients who have this flag keep it until someone clears it.</p>');
+    expect(html).toContain('<label for="remove-' + GAUZE + '-reason">Reason</label>');
     expect(html).toContain('sx-btn--danger');
   });
 });

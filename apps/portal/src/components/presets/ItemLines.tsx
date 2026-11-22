@@ -93,7 +93,7 @@ function Lines({
   return (
     <fieldset
       id={groupId}
-      className="px-fieldset"
+      className={`px-fieldset ${styles.group}`}
       tabIndex={-1}
       aria-describedby={error ? `${groupId}-error` : undefined}
     >
@@ -216,6 +216,9 @@ function Line({
             type="text"
             inputMode="numeric"
             autoComplete="off"
+            // As wide as its box lets it be; left to its own width (20 characters), a line would
+            // be wider than a phone held upright.
+            size={4}
             defaultValue={String(row.quantity)}
             aria-invalid={qtyError ? true : undefined}
             aria-describedby={qtyError ? `${qtyId}-error` : undefined}

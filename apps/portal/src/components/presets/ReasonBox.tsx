@@ -35,6 +35,8 @@ export function ReasonBox({ label = 'Reason' }: { label?: string }) {
           aria-describedby={[error ? `${id}-error` : null, `${id}-hint`].filter(Boolean).join(' ')}
           autoComplete="off"
           maxLength={REASON_MAX}
+          // As wide as its box lets it be, so it fits wherever a page places it at 320 px.
+          size={10}
           defaultValue={sent}
           // A refused form comes back with the reason it sent; a saved one with none.
           key={sent}

@@ -1,5 +1,11 @@
 /* The preset pages' shared parts (phase 5 design 8.1): item lines, the Removed list, the review. */
 
+/* A fieldset never shrinks below its content by default (min-inline-size: min-content): its lines
+   wrap instead, so the page never scrolls sideways at 320 px (WCAG 1.4.10). */
+.group {
+  min-width: 0;
+}
+
 .lines {
   list-style: none;
   margin: 0;
@@ -42,7 +48,26 @@
   flex-direction: column;
   gap: var(--space-2);
 }
-.disclosure > summary {
+.removedItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.removedName {
+  font-weight: 700;
+}
+.disclosure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.disclosure > div {
+  align-self: stretch;
+}
+.reviewDetails > summary {
   cursor: pointer;
   font-weight: 700;
   /* 24px of text and 24px of padding: the 48px tap target. */
@@ -50,4 +75,13 @@
 }
 .review {
   overflow-wrap: anywhere;
+}
+/* Three columns side by side still fit a phone held upright, nested in a panel. */
+.review th,
+.review td {
+  padding: var(--space-2);
+}
+.review ul {
+  list-style: none;
+  padding-left: 0;
 }
