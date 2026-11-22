@@ -12,15 +12,17 @@ import '../sync/sync_engine.dart' show AfterSyncRefresher, RefreshReason;
 import 'preset_store.dart';
 
 /// Pulls the presets changed since the revision [presets] holds, under the epoch it holds (neither
-/// sent when none is held), and writes the answer with [PresetStore.apply]. A 403 clears the copy
-/// ([PresetStore.clear]); any other failure leaves it as it was, for the next run to ask again.
-/// Nothing is asked while the store is frozen. An answer that is no reset is written only over the
-/// copy it was asked from: the revision and the epoch held still those the pull sent.
+/// sent when none is held), and writes the answer with [PresetStore.apply]. A 403 `not_a_member`
+/// clears the copy ([PresetStore.clear]); any other failure, another 403 included, leaves it as it
+/// was, for the next run to ask again. Nothing is asked while the store is frozen. An answer that
+/// is no reset is written only over the copy it was asked from: the revision and the epoch held
+/// still those the pull sent.
 ///
-/// An answer, a 403 included, is written only into [presets]' own store, and only while [current]
-/// says that store is still the one the controller holds open, for the same sign-in, and it is not
-/// frozen; any other answer is dropped. The controller also closes a store before a sign-out clears
-/// it (phase 3's review P3), so a write that got past this would fail closed, as the index's do.
+/// An answer, a removal's 403 included, is written only into [presets]' own store, and only while
+/// [current] says that store is still the one the controller holds open, for the same sign-in, and
+/// it is not frozen; any other answer is dropped. The controller also closes a store before a
+/// sign-out clears it (phase 3's review P3), so a write that got past this would fail closed, as
+/// the index's do.
 class PresetsRefresher implements AfterSyncRefresher {
   PresetsRefresher(this.presets, this.api, {required this.current});
 
@@ -44,9 +46,11 @@ class PresetsRefresher implements AfterSyncRefresher {
     try {
       answer = await api.pullPresets(since: since?.toString(), epoch: epoch);
     } on ApiException catch (e) {
-      // No longer a member of the team: its presets go, and the next pull asks for everything.
-      // Any other refusal (a sign-in to renew, a fault) keeps the copy for the next run.
-      if (e.status == 403 && _writable) presets.clear();
+      // No longer a member of the team (teamScope's 403 not_a_member): its presets go, and the next
+      // pull asks for everything. Any other refusal keeps the copy for the next run: a sign-in to
+      // renew or to finish, terms to accept, a fault, a page from something in front of the API,
+      // and a team suspended, whose data the controller's device check decides about.
+      if (e.status == 403 && e.code == 'not_a_member' && _writable) presets.clear();
       return;
     }
     // Answered after a sign-out, a lock, a switch of team, a freeze or a sign-in again, it goes

@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/app_providers.dart' show appRefreshers;
@@ -204,17 +207,69 @@ void main() {
       expect(presets.revision, 5);
     });
 
-    test('a 403 takes the copy and every key, and the next pull asks for everything', () async {
+    test(
+      'no longer a member (403 not_a_member): the copy and every key go, and the next pull asks for everything',
+      () async {
+        await holdThree();
+        store.setKv('intake.draft', '{}');
+        standIn.answers[team] = const ApiException(403, 'not_a_member', 'You are not a member of this team.');
+        await run();
+        expect(copyIn(db.db), noCopy);
+        expect(presets.downloaded, isFalse);
+        expect(store.kv('intake.draft'), '{}');
+        standIn.answers[team] = pullAnswer(reset: true, revision: 6);
+        await run();
+        expect(standIn.queriesOf(team).last, isEmpty);
+      },
+    );
+
+    test('any other 403 keeps the copy and its revision: the person is still a member of the team', () async {
       await holdThree();
-      store.setKv('intake.draft', '{}');
-      standIn.answers[team] = const ApiException(403, 'not_a_member', 'You are not a member of this team.');
+      final held = copyIn(db.db);
+      for (final refusal in const [
+        // teamScope's other refusals (auth/context.ts): a sign-in to finish, terms to accept, and a
+        // team suspended, whose data the controller's device check decides about.
+        ApiException(403, 'mfa_required', 'Finish signing in with your authenticator app or passkey.'),
+        ApiException(403, 'acknowledgement_required', 'Accept the Terms of Use first.'),
+        ApiException(403, 'team_suspended', 'This team is suspended.'),
+        // Something in front of the API (a proxy, a wifi sign-in page), as the transport reads it.
+        ApiException(403, 'bad_response', 'The server sent something unexpected.'),
+        ApiException(403, 'error', 'Something went wrong.'),
+      ]) {
+        standIn.answers[team] = refusal;
+        await run();
+        expect(copyIn(db.db), held, reason: refusal.code);
+      }
+      standIn.answers[team] = pullAnswer(revision: 3);
       await run();
+      expect(standIn.queriesOf(team).skip(1), everyElement({'since': '3', 'epoch': epochA}));
+    });
+
+    test('through the app’s transport: a 403 page from in front of the API keeps the copy, the API’s '
+        'not_a_member takes it', () async {
+      await holdThree();
+      final held = copyIn(db.db);
+      var answer = http.Response(
+        '<html><body>Request blocked</body></html>',
+        403,
+        headers: {'content-type': 'text/html'},
+      );
+      final transport = HttpTransport(
+        baseUrl: Uri.parse('https://api.invalid'),
+        client: MockClient((_) async => answer),
+      );
+      final refresher = PresetsRefresher(presets, SineobexApi(transport), current: () => open);
+      await runQuietly(refresher);
+      expect(copyIn(db.db), held);
+      answer = http.Response(
+        jsonEncode({
+          'error': {'code': 'not_a_member', 'message': 'You are not a member of this team.'},
+        }),
+        403,
+        headers: {'content-type': 'application/json'},
+      );
+      await runQuietly(refresher);
       expect(copyIn(db.db), noCopy);
-      expect(presets.downloaded, isFalse);
-      expect(store.kv('intake.draft'), '{}');
-      standIn.answers[team] = pullAnswer(reset: true, revision: 6);
-      await run();
-      expect(standIn.queriesOf(team).last, isEmpty);
     });
 
     test('a refused sign-in, a fault or a refused request keeps the copy and its revision', () async {

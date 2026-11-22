@@ -352,7 +352,7 @@ void main() {
     h.server.offline = true;
     await openTeamSetup(tester);
     await expectShown(tester, find.text('Demo: Glucose test'));
-    // As a 403 from the pull clears it (6.1); the screen hears the controller's next run.
+    // As the pull's 403 not_a_member clears it (6.1); the screen hears the controller's next run.
     PresetStore(h.sync.store!).clear();
     await tester.runAsync(() => h.sync.refreshNow(reason: RefreshReason.manual));
     await tester.pumpAndSettle();

@@ -119,9 +119,9 @@ class PresetStore {
       ..setKv(updatedAtKey, now().toUtc().toIso8601String());
   });
 
-  /// The team refused the pull (403): every row and every key under `presets.` go, so the next
-  /// pull asks for everything. One transaction: rows gone with their revision kept would be a copy
-  /// missing rows that no later pull sends again.
+  /// The team refused the pull to a person no longer its member (403 `not_a_member`): every row
+  /// and every key under `presets.` go, so the next pull asks for everything. One transaction: rows
+  /// gone with their revision kept would be a copy missing rows that no later pull sends again.
   void clear() => store.transaction(() {
     store.database
       ..execute('DELETE FROM presets')
