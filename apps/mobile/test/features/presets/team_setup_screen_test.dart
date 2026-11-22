@@ -331,6 +331,20 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a team that holds no preset says so in each part, its copy downloaded all the same', (tester) async {
+    final h = await signIn(tester);
+    // The team has taken no revision: the pull answers revision 0 under the nil epoch (6.1).
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    expect(PresetStore(h.sync.store!).downloaded, isTrue);
+    await openTeamSetup(tester);
+    await expectShown(tester, find.textContaining(updatedToday));
+    for (final empty in [noItemsText, noBundlesText, noRiskLevelsText, noConditionsText]) {
+      await expectShown(tester, find.text(empty));
+    }
+    expect(find.text(setupNotDownloaded), findsNothing);
+  });
+
   testWidgets('a copy the team’s refusal cleared says to connect again', (tester) async {
     final h = await signIn(tester);
     await pulledEveryKind(tester, h);
@@ -388,6 +402,9 @@ void main() {
       ['patients.view', 'billing.view_codes', 'inventory.view', 'exports.billing', 'exports.grant'],
       false,
     ),
+    // A custom role with the key but no problem list (12.1, risk 6): the server's projection sees no
+    // sensitive problem for it, so no sensitive flag either.
+    ('a custom role with patients.view_sensitive alone', ['patients.view', 'patients.view_sensitive'], false),
   ]) {
     testWidgets('a sensitive flag is listed, marked, only to a person who may see a sensitive problem ($role)', (
       tester,
