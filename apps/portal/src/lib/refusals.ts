@@ -50,6 +50,12 @@ export interface PresetRefusalContext {
    * `categoryId`, or a line's field as `lines.*.qty`. A path with none is named by its sentence alone.
    */
   labels?: Readonly<Record<string, string>>;
+  /**
+   * What a problem at a field says beside it whatever the API's code, by the same paths as
+   * `labels`: for a field where every problem asks the person one thing, such as a choice nothing
+   * was chosen for ("Choose what it holds.") or a number out of its range.
+   */
+  sentences?: Readonly<Record<string, string>>;
 }
 
 /** 8.1's sentences, word for word. */
@@ -159,13 +165,22 @@ function problemSentence(code: string, path: string): string {
   return /(^|\.)(itemId|categoryId)$/.test(path) ? 'Choose one from the list.' : 'Check this.';
 }
 
+/** A line's field: `lines.2.qty` is line 3's `qty`, written `lines.*.qty` in a form's words. */
+const LINE_FIELD = /^([^.]+)\.(\d+)\.(.+)$/;
+
 /** The form's word for a path: `lines.2.qty` is the label of `lines.*.qty`, on line 3. */
 function labelOf(path: string, labels: Readonly<Record<string, string>>): string | undefined {
   if (labels[path]) return labels[path];
-  const line = /^([^.]+)\.(\d+)\.(.+)$/.exec(path);
+  const line = LINE_FIELD.exec(path);
   const lineLabel = line && labels[`${line[1]}.*.${line[3]}`];
   if (line && lineLabel) return `${lineLabel} on line ${Number(line[2]) + 1}`;
   return labels[path.split('.')[0]!];
+}
+
+/** The form's own sentence for a path, a line's field's by its `lines.*.qty` pattern. */
+function sentenceOf(path: string, sentences: Readonly<Record<string, string>>): string | undefined {
+  const line = LINE_FIELD.exec(path);
+  return sentences[path] ?? (line ? sentences[`${line[1]}.*.${line[3]}`] : undefined);
 }
 
 type Problem = { path: string; code: string };
@@ -190,12 +205,15 @@ export function presetRefusalState(
   const { code, details } = refusal;
   const { act } = context;
   const labels = context.labels ?? {};
+  const sentences = context.sentences ?? {};
   const noun = NOUN[context.kind] ?? 'preset';
   const at = (problems: readonly Problem[], sentence?: (p: Problem) => string) => {
     const fieldErrors: Record<string, string> = {};
     for (const p of problems) {
       if (p.path === '' || fieldErrors[p.path]) continue;
-      const said = sentence ? sentence(p) : problemSentence(p.code, p.path);
+      const said = sentence
+        ? sentence(p)
+        : (sentenceOf(p.path, sentences) ?? problemSentence(p.code, p.path));
       const label = labelOf(p.path, labels);
       fieldErrors[p.path] = label ? `${label}: ${said}` : said;
     }

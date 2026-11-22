@@ -2,6 +2,8 @@ import { createElement, Fragment, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ActionForm } from '@/components/ActionForm';
+import { ChoiceGroup } from './ChoiceGroup';
+import { FreeText } from './FreeText';
 import { ItemLines, type ItemLinesProps } from './ItemLines';
 import { PresetNotice } from './PresetNotice';
 import { ReasonBox } from './ReasonBox';
@@ -51,6 +53,68 @@ describe('the Reason box', () => {
       html.indexOf('<input id="f-reason"'),
     );
     expect(html).toContain('<p id="f-reason-hint" class="sx-help">Don’t put patient names here.</p>');
+  });
+});
+
+describe('a free-text box', () => {
+  it('is required, never filled in by the browser, and carries the warning under it', () => {
+    const html = inForm(createElement(FreeText, { name: 'name', label: 'Name', defaultValue: 'Demo: Kits' }));
+    expect(html).toContain('<label for="f-name">Name</label>');
+    const input = tagOf(html, 'f-name');
+    for (const attribute of [
+      'name="name"',
+      'type="text"',
+      'required=""',
+      'aria-required="true"',
+      'aria-describedby="f-name-warning"',
+      'autoComplete="off"',
+      'value="Demo: Kits"',
+    ])
+      expect(input).toContain(attribute);
+    expect(
+      html.indexOf('<p id="f-name-warning" class="sx-help">Don’t put patient names here.</p>'),
+    ).toBeGreaterThan(html.indexOf('<input id="f-name"'));
+  });
+
+  it('says its hint above the box, read with the warning', () => {
+    const html = inForm(
+      createElement(FreeText, { name: 'prompt', label: 'Ask', hint: 'Demo: asked first.' }),
+    );
+    expect(html).toContain('<p id="f-prompt-hint" class="sx-help">Demo: asked first.</p>');
+    expect(tagOf(html, 'f-prompt')).toContain('aria-describedby="f-prompt-hint f-prompt-warning"');
+  });
+});
+
+describe('a choice made once', () => {
+  const choice = () =>
+    inForm(
+      createElement(ChoiceGroup, {
+        name: 'behaviour',
+        legend: 'What it holds',
+        hint: 'What it holds can’t be changed later.',
+        options: [
+          { value: 'supply', label: 'Supplies', hint: 'Demo: either.' },
+          { value: 'lab', label: 'Tests' },
+        ],
+      }),
+    );
+
+  it('reads its sentence with the group, and each option’s with the option', () => {
+    const html = choice();
+    expect(tagOf(html, 'f-behaviour')).toContain('aria-describedby="f-behaviour-hint"');
+    expect(html).toContain('<legend>What it holds</legend>');
+    expect(html).toContain(
+      '<p id="f-behaviour-hint" class="sx-help">What it holds can’t be changed later.</p>',
+    );
+    expect(tagOf(html, 'f-behaviour-supply')).toContain('aria-describedby="f-behaviour-supply-hint"');
+    expect(tagOf(html, 'f-behaviour-lab')).not.toContain('aria-describedby');
+  });
+
+  it('chooses nothing for the person, and the error summary’s link can focus it', () => {
+    const html = choice();
+    expect(html).not.toContain('checked');
+    expect(tagOf(html, 'f-behaviour')).toContain('tabindex="-1"');
+    expect(tagOf(html, 'f-behaviour-supply')).toContain('name="behaviour"');
   });
 });
 

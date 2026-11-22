@@ -394,6 +394,27 @@ export function sentValues(form: FormData): Record<string, string> {
   return out;
 }
 
+/**
+ * A whole number as the person typed it into a form, or the text as typed when it is none (a
+ * blank, "1.5", "ten"), so the API answers its path and the form says which field to fix. The API
+ * holds each field to its own range; this only reads what was typed.
+ */
+export function wholeNumber(typed: string | undefined): number | string {
+  const raw = (typed ?? '').trim();
+  return /^\d{1,7}$/.test(raw) ? Number(raw) : raw;
+}
+
+/**
+ * One preset as the API lists it now, or null when the team holds none of the kind with that ID.
+ * An edit sends its form's fields over this body, so whatever the form doesn't show (what a
+ * category holds, a flag's place in its tier, a field a later phase adds) goes back as it is. The
+ * edit sends the version the person opened, so a body changed since is refused stale, never
+ * overwritten.
+ */
+export async function presetNow<K extends PresetKind>(kind: K, id: string): Promise<PresetRow<K> | null> {
+  return (await listPresets(kind)).find((p) => p.id === id) ?? null;
+}
+
 /** What a line's quantity is called in its kind's body: a bundle's, a map's, a bag's. */
 export type LineQuantity = 'qty' | 'qtyPerPatient' | 'min';
 
@@ -419,10 +440,9 @@ export function readLines(
       const v = form.get(`${prefix}${i}.${field}`);
       return typeof v === 'string' ? v : '';
     };
-    const raw = text(options.quantity).trim();
     return {
       itemId: text('itemId'),
-      [options.quantity]: /^\d{1,6}$/.test(raw) ? Number(raw) : raw,
+      [options.quantity]: wholeNumber(text(options.quantity)),
       ...(options.core ? { core: form.get(`${prefix}${i}.core`) === 'on' } : {}),
     };
   });
