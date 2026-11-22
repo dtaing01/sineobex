@@ -3,7 +3,7 @@ import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { takeRevision } from '@sineobex/forms';
-import type { Sql, TransactionSql } from 'postgres';
+import postgres, { type Sql, type TransactionSql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, MIGRATIONS_DIR } from '../src/migrate.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
@@ -845,43 +845,47 @@ describe('0023 team presets', () => {
 
   // A phone asks for the heads above the revision it holds (phase 5 design 6.1; D130): a head left
   // below its team's revision would never reach a phone that pulled since, and one above it would
-  // make a phone skip the revisions between. So every head carries its team's revision as its write
-  // left it: the one takeRevision gave that write.
+  // make a phone skip the revisions between. So every head carries the revision its own write took
+  // from takeRevision, its team's revision as that write left it. The team's revision alone is not
+  // enough: a write that took none, as an archive that forgot to after the edit that did, would
+  // leave its head at a revision a phone may already hold.
   describe('the revision a head carries', () => {
     type Write = <T>(teamId: string, run: (tx: TransactionSql) => Promise<T>) => Promise<T>;
     // As the app role the check reads the state row under the team policy, which in a team's scope
     // shows the team's own row only: the head's, since the head's own policy writes no other team's.
-    const WRITERS: [string, Write][] = [
-      ['the app role in the team’s scope', (teamId, run) => as(teamId, run)],
-      [
-        'the app role in platform scope',
-        (_, run) => asApp(db.appUrl, { userId: admin, platform: true }, run),
-      ],
-      ['the owner', (_, run) => asOwner(run)],
+    // Platform scope and the owner write any team's heads, so one write may take two teams'.
+    const WRITERS: { who: string; write: Write; anyTeam: boolean }[] = [
+      { who: 'the app role in the team’s scope', write: (teamId, run) => as(teamId, run), anyTeam: false },
+      {
+        who: 'the app role in platform scope',
+        write: (_, run) => asApp(db.appUrl, { userId: admin, platform: true }, run),
+        anyTeam: true,
+      },
+      { who: 'the owner', write: (_, run) => asOwner(run), anyTeam: true },
     ];
     // A head of each table at a revision, and a change to one.
     const HEADS = [
       {
         table: 'team_presets',
-        insert: (tx: TransactionSql, teamId: string, revision: number) =>
+        insert: (tx: Sql | TransactionSql, teamId: string, revision: number) =>
           tx<{ ref: string }[]>`
             insert into sineobex.team_presets ${values(tx, head({ team_id: teamId, revision }))}
             returning id::text as ref`,
-        update: (tx: TransactionSql, teamId: string, ref: string, set: Row) =>
+        update: (tx: Sql | TransactionSql, teamId: string, ref: string, set: Row) =>
           tx`update sineobex.team_presets set ${tx(set)} where team_id = ${teamId} and id = ${ref}`,
       },
       {
         table: 'note_types',
-        insert: (tx: TransactionSql, teamId: string, revision: number) =>
+        insert: (tx: Sql | TransactionSql, teamId: string, revision: number) =>
           tx<{ ref: string }[]>`
             insert into sineobex.note_types ${values(tx, noteType({ team_id: teamId, revision }))}
             returning key as ref`,
-        update: (tx: TransactionSql, teamId: string, ref: string, set: Row) =>
+        update: (tx: Sql | TransactionSql, teamId: string, ref: string, set: Row) =>
           tx`update sineobex.note_types set ${tx(set)} where team_id = ${teamId} and key = ${ref}`,
       },
     ];
-    const cases = () =>
-      WRITERS.flatMap(([who, write]) =>
+    const cases = (writers = WRITERS) =>
+      writers.flatMap(({ who, write }) =>
         HEADS.map((h) => ({
           ...h,
           write,
@@ -889,6 +893,22 @@ describe('0023 team presets', () => {
           refused: { code: CHECK, constraint: `${h.table}_revision_taken` },
         })),
       );
+    const headsOf = (table: string, teamId: string) =>
+      db.owner<{ revision: number; state: string }[]>`
+        select revision::int as revision, state from sineobex.${db.owner(table)}
+        where team_id = ${teamId} order by revision, state`;
+    const revisionOf = async (teamId: string) => {
+      const [row] = await db.owner<{ revision: number }[]>`
+        select revision::int as revision from sineobex.team_preset_state where team_id = ${teamId}`;
+      return row?.revision ?? null;
+    };
+    /** What takeRevision recorded for `teamId` in the transaction `tx` is in: null where it took none. */
+    const recordOf = async (tx: Sql | TransactionSql, teamId: string) => {
+      const [row] = await tx<{ record: string | null }[]>`
+        select nullif(current_setting('app.revision_' || replace(${teamId}::uuid::text, '-', ''), true), '')
+                 as record`;
+      return row!.record === null ? null : Number(row!.record);
+    };
 
     it('is the revision its write took: one for the write, on every head it changes', async () => {
       for (const { write, table, insert, update, label } of cases()) {
@@ -913,24 +933,44 @@ describe('0023 team presets', () => {
       }
     });
 
-    it('refuses a head below or above its team’s revision, or of a team that has taken none', async () => {
-      for (const { write, insert, update, label, refused } of cases()) {
+    it('refuses a head below or above the revision its write took, or of a write that took none', async () => {
+      for (const { write, table, insert, update, label, refused } of cases()) {
         const fresh = await makeTeam(db.owner, 'Preset Revision Refused Team');
         const written: string[] = [];
-        const insertAt = (revision: number) =>
-          refusal(write(fresh, async (tx) => written.push((await insert(tx, fresh, revision))[0]!.ref)));
+        // A write of a new head at `revision`, which takes the team's next revision first if it `takes`.
+        const insertAt = (revision: number, takes = false) =>
+          refusal(
+            write(fresh, async (tx) => {
+              if (takes) await takeRevision(tx, fresh);
+              written.push((await insert(tx, fresh, revision))[0]!.ref);
+            }),
+          );
         expect(await insertAt(1), `${label}: none taken`).toEqual(refused);
         for (let i = 0; i < 3; i++) await as(fresh, (tx) => takeRevision(tx, fresh));
+        // The team at 3, by writes before: a write that takes none is refused even at it.
         expect(await insertAt(2), `${label}: below`).toEqual(refused);
         expect(await insertAt(4), `${label}: above`).toEqual(refused);
-        expect(await insertAt(3), `${label}: at it`).toBeNull();
-        // A change, the same.
-        const changeTo = (revision: number) =>
-          refusal(write(fresh, (tx) => update(tx, fresh, written[0]!, { revision })));
-        expect(await changeTo(2), `${label}: changed to below`).toEqual(refused);
-        expect(await changeTo(4), `${label}: changed to above`).toEqual(refused);
-        expect(await changeTo(3), `${label}: changed at it`).toBeNull();
+        expect(await insertAt(3), `${label}: at it, none taken`).toEqual(refused);
+        // A write that takes 4 stands at 4 only.
+        expect(await insertAt(3, true), `${label}: below its take`).toEqual(refused);
+        expect(await insertAt(5, true), `${label}: above its take`).toEqual(refused);
+        expect(await insertAt(4, true), `${label}: at its take`).toBeNull();
+        // A change, the same, from 4.
+        const changeTo = (revision: number, takes = false) =>
+          refusal(
+            write(fresh, async (tx) => {
+              if (takes) await takeRevision(tx, fresh);
+              return update(tx, fresh, written[0]!, { revision });
+            }),
+          );
+        expect(await changeTo(3), `${label}: changed to below`).toEqual(refused);
+        expect(await changeTo(5), `${label}: changed to above`).toEqual(refused);
+        expect(await changeTo(4), `${label}: changed at it, none taken`).toEqual(refused);
+        expect(await changeTo(4, true), `${label}: changed to below its take`).toEqual(refused);
+        expect(await changeTo(6, true), `${label}: changed to above its take`).toEqual(refused);
+        expect(await changeTo(5, true), `${label}: changed at its take`).toBeNull();
         expect(written).toHaveLength(1);
+        expect(await headsOf(table, fresh), label).toEqual([{ revision: 5, state: 'active' }]);
       }
     });
 
@@ -972,24 +1012,212 @@ describe('0023 team presets', () => {
         ).toBeNull();
       }
     });
+
+    // What a guard on the team's revision alone let through: an admin edits a preset, and the
+    // archive after it forgets takeRevision, so its head keeps the edit's revision, still the team's,
+    // and no phone that pulled the edit is ever sent the archive.
+    it('refuses a write that took no revision, though its head is at the team’s', async () => {
+      for (const { write, table, insert, update, label, refused } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Untaken Team');
+        // The edit, stamped with the revision it takes: 1, the team's.
+        const ref = await write(
+          fresh,
+          async (tx) => (await insert(tx, fresh, await takeRevision(tx, fresh)))[0]!.ref,
+        );
+        // The archive, in a later transaction that takes none and leaves the head's revision as it is.
+        expect(
+          await refusal(write(fresh, (tx) => update(tx, fresh, ref, { state: 'archived' }))),
+          `${label}: the archive`,
+        ).toEqual(refused);
+        // Nor does a new head stand at the team's revision without a take of its own.
+        expect(await refusal(write(fresh, (tx) => insert(tx, fresh, 1))), `${label}: a new head`).toEqual(
+          refused,
+        );
+        expect(await headsOf(table, fresh), label).toEqual([{ revision: 1, state: 'active' }]);
+        expect(await revisionOf(fresh), label).toBe(1);
+        // The archive that takes its revision stands, above what a phone that pulled the edit holds.
+        await write(fresh, async (tx) =>
+          update(tx, fresh, ref, { state: 'archived', revision: await takeRevision(tx, fresh) }),
+        );
+        expect(await headsOf(table, fresh), label).toEqual([{ revision: 2, state: 'archived' }]);
+      }
+    });
+
+    // The record alone would let a step taken outside takeRevision through: the team's revision is
+    // checked too.
+    it('refuses a head once its team moved past the write’s take outside takeRevision', async () => {
+      for (const { write, insert, label, refused } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Stepped Team');
+        await as(fresh, (tx) => takeRevision(tx, fresh));
+        // A write that takes 2, then steps the team to 3 itself, and stamps what `stamp` gives.
+        const stepped = (stamp: (taken: number) => number) =>
+          refusal(
+            write(fresh, async (tx) => {
+              const taken = await takeRevision(tx, fresh);
+              await tx`update sineobex.team_preset_state set revision = revision + 1 where team_id = ${fresh}`;
+              return insert(tx, fresh, stamp(taken));
+            }),
+          );
+        expect(await stepped((taken) => taken), `${label}: at its take`).toEqual(refused);
+        expect(await stepped((taken) => taken + 1), `${label}: at the team’s`).toEqual(refused);
+        expect(await revisionOf(fresh), label).toBe(1);
+      }
+    });
+
+    it('goes with a savepoint rolled back, and stays with one released', async () => {
+      for (const { write, table, insert, label, refused } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Savepoint Team');
+        await as(fresh, (tx) => takeRevision(tx, fresh));
+        const outcome = await write(fresh, async (tx) => {
+          // A take undone with its savepoint: its step and its record go with it.
+          let undone = 0;
+          await tx
+            .savepoint(async (sp) => {
+              undone = await takeRevision(sp, fresh);
+              throw new Error('undone');
+            })
+            .catch(() => {});
+          const recordAfterUndo = await recordOf(tx, fresh);
+          // So this write has taken nothing, and a head at the team's revision, 1, is refused.
+          const untaken = await refusal(tx.savepoint((sp) => insert(sp, fresh, 1)));
+          // A take in a savepoint released stays with the write: the same step again, with no gap.
+          const kept = await tx.savepoint((sp) => takeRevision(sp, fresh));
+          await insert(tx, fresh, kept);
+          return { undone, recordAfterUndo, untaken, kept, recordAfterRelease: await recordOf(tx, fresh) };
+        });
+        expect(outcome, label).toEqual({
+          undone: 2,
+          recordAfterUndo: null,
+          untaken: refused,
+          kept: 2,
+          recordAfterRelease: 2,
+        });
+        expect(await headsOf(table, fresh), label).toEqual([{ revision: 2, state: 'active' }]);
+      }
+    });
+
+    // Team creation runs two installers in one transaction, each taking its own revision.
+    it('follows a second take in one write: the heads after it carry the second', async () => {
+      for (const { write, table, insert, update, label, refused } of cases()) {
+        const fresh = await makeTeam(db.owner, 'Preset Revision Two Takes Team');
+        const outcome = await write(fresh, async (tx) => {
+          const first = await takeRevision(tx, fresh);
+          const early = (await insert(tx, fresh, first))[0]!.ref;
+          const second = await takeRevision(tx, fresh);
+          // Each refusal in a savepoint of its own, so the write goes on past it.
+          const late = await refusal(tx.savepoint((sp) => insert(sp, fresh, first)));
+          const left = await refusal(tx.savepoint((sp) => update(sp, fresh, early, { state: 'archived' })));
+          await insert(tx, fresh, second);
+          return { first, second, late, left };
+        });
+        expect(outcome, label).toEqual({ first: 1, second: 2, late: refused, left: refused });
+        expect(await headsOf(table, fresh), label).toEqual([
+          { revision: 1, state: 'active' },
+          { revision: 2, state: 'active' },
+        ]);
+      }
+    });
+
+    // The seed installs both its teams in one transaction, in platform scope. A team the write took
+    // nothing for is refused, though its revision is the number another team's take answered. In a
+    // team's scope no other team's revision can be taken (preset-revision.test.ts).
+    it('holds each team in one write to the take of its own', async () => {
+      for (const { write, table, insert, label, refused } of cases(WRITERS.filter((w) => w.anyTeam))) {
+        const a = await makeTeam(db.owner, 'Preset Revision First Team');
+        const b = await makeTeam(db.owner, 'Preset Revision Second Team');
+        const c = await makeTeam(db.owner, 'Preset Revision Third Team');
+        const writes = async (teamId: string, n: number) => {
+          for (let i = 0; i < n; i++) await as(teamId, (tx) => takeRevision(tx, teamId));
+        };
+        // a at 2 and b at 5; c at 3, what a's next take answers.
+        await writes(a, 2);
+        await writes(b, 5);
+        await writes(c, 3);
+        const outcome = await write(a, async (tx) => {
+          const taken = { a: await takeRevision(tx, a), b: await takeRevision(tx, b) };
+          await insert(tx, a, taken.a);
+          await insert(tx, b, taken.b);
+          return { ...taken, untaken: await refusal(tx.savepoint((sp) => insert(sp, c, taken.a))) };
+        });
+        expect(outcome, label).toEqual({ a: 3, b: 6, untaken: refused });
+        expect(await headsOf(table, a), label).toEqual([{ revision: 3, state: 'active' }]);
+        expect(await headsOf(table, b), label).toEqual([{ revision: 6, state: 'active' }]);
+        expect(await headsOf(table, c), label).toEqual([]);
+      }
+    });
+
+    // postgres.js hands one connection to transaction after transaction, as the API's pool does.
+    it('never carries a take into the next transaction, even on the same connection', async () => {
+      const app = postgres(db.appUrl, { max: 1, onnotice: () => {} });
+      const CONNECTIONS = [
+        { who: 'the app role in the team’s scope', pool: app, scope: 'team' },
+        { who: 'the app role in platform scope', pool: app, scope: 'platform' },
+        { who: 'the owner', pool: db.owner, scope: null },
+      ] as const;
+      try {
+        for (const { who, pool, scope } of CONNECTIONS) {
+          for (const { table, insert, update } of HEADS) {
+            const label = `${table}, ${who}`;
+            const refused = { code: CHECK, constraint: `${table}_revision_taken` };
+            const fresh = await makeTeam(db.owner, 'Preset Revision Connection Team');
+            const conn = await pool.reserve();
+            // One transaction on the connection, as the writer, with the backend it ran on.
+            const inTx = async <T>(run: (tx: Sql) => Promise<T>) => {
+              await conn`begin`;
+              try {
+                if (scope !== null)
+                  await conn`select set_config('app.team_id', ${scope === 'team' ? fresh : ''}, true),
+                                    set_config('app.user_id', ${admin}, true),
+                                    set_config('app.scope', ${scope === 'platform' ? 'platform' : ''}, true)`;
+                const [row] = await conn<{ pid: number }[]>`select pg_backend_pid() as pid`;
+                const out = await run(conn);
+                await conn`commit`;
+                return { pid: row!.pid, out };
+              } catch (err) {
+                await conn`rollback`;
+                throw err;
+              }
+            };
+            try {
+              const made = await inTx(
+                async (tx) => (await insert(tx, fresh, await takeRevision(tx, fresh)))[0]!.ref,
+              );
+              expect(await inTx((tx) => recordOf(tx, fresh)), `${label}: the next transaction`).toEqual({
+                pid: made.pid,
+                out: null,
+              });
+              expect(
+                await refusal(inTx((tx) => update(tx, fresh, made.out, { state: 'archived' }))),
+                `${label}: a change in it`,
+              ).toEqual(refused);
+              expect(await refusal(inTx((tx) => insert(tx, fresh, 1))), `${label}: a new head in it`).toEqual(
+                refused,
+              );
+            } finally {
+              conn.release();
+            }
+          }
+        }
+      } finally {
+        await app.end({ timeout: 5 });
+      }
+    });
   });
 
   describe('a note type head', () => {
     it('is taken from the app role and given back, with what a new head leaves out filled in', async () => {
-      // At revision 0, as 0023 fills the heads of the teams it finds, whose state rows it puts at 0.
+      // From a state row at 0, as 0023 makes the rows of the teams it finds. A head stays at 0 only
+      // as 0023 fills it: every write takes a revision (the revision a head carries, above), and no
+      // take answers 0, so this head carries its write's take, the team's first.
       const fresh = await makeTeam(db.owner, 'Preset Note Type Head Team');
       await as(fresh, (tx) => tx`insert into sineobex.team_preset_state (team_id) values (${fresh})`);
       const key = noteType().key as string;
-      await insertNoteType(
-        {
-          team_id: fresh,
-          key,
-          title: 'Demo: a note type',
-          current_version: 2,
-          revision: 0,
-        },
-        fresh,
-      );
+      const written = { team_id: fresh, key, title: 'Demo: a note type', current_version: 2 };
+      expect(await refusal(insertNoteType({ ...written, revision: 0 }, fresh))).toEqual({
+        code: CHECK,
+        constraint: 'note_types_revision_taken',
+      });
+      await insertNoteType({ ...written, revision: TAKEN }, fresh);
       const [row] = await as(
         fresh,
         (tx) => tx`
@@ -1003,7 +1231,7 @@ describe('0023 team presets', () => {
         current_version: 2,
         platform_latest: null,
         customized: false,
-        revision: '0',
+        revision: '1',
         updated_by: null,
         recent: true,
       });

@@ -150,17 +150,26 @@ from (
   group by team_id, key
 ) newest;
 
--- A head carries the revision its write took: its team's revision, as takeRevision left it. A phone
--- asks for the heads above the revision it holds, so a head left below its team's revision never
--- reaches a phone that pulled since, and one above it makes a phone skip the revisions between. A
--- team with no state row has taken no revision for a head to carry. Checked after the row is
--- written, so its own checks and keys answer first; the heads filled above, at their teams' 0, are
--- not checked. Class 23, as 0018's guards; it holds for the owner too.
+-- A head carries the revision its own write took. A phone asks for the heads above the revision it
+-- holds, so a head left below its team's revision never reaches a phone that pulled since, and one
+-- above it makes a phone skip the revisions between. The team's revision is not enough: an archive
+-- that forgot takeRevision would leave its head at the revision of the edit before it, still the
+-- team's, and a phone that pulled the edit would never see the archive. So takeRevision records
+-- what it took for the team in a setting local to its transaction (app.revision_ and the team's id
+-- without its dashes), which goes at commit, and with a savepoint rolled back, as the step does.
+-- A head carries both the record and its team's revision: the record alone would let a step taken
+-- outside takeRevision through. A team with no state row has taken no revision for a head to
+-- carry. Checked after the row is written, so its own checks and keys answer first; the heads
+-- filled above, at their teams' 0, are not checked. Class 23, as 0018's guards; it holds for the
+-- owner too.
 create function sineobex.keep_head_at_team_revision() returns trigger
 language plpgsql as $$
 begin
+  -- Null where the session never took one, '' where an earlier transaction's record has gone.
   if new.revision is distinct from
-     (select s.revision from sineobex.team_preset_state s where s.team_id = new.team_id) then
+       nullif(current_setting('app.revision_' || replace(new.team_id::text, '-', ''), true), '')::bigint
+     or new.revision is distinct from
+       (select s.revision from sineobex.team_preset_state s where s.team_id = new.team_id) then
     raise exception 'a head carries the revision its write took'
       using errcode = 'check_violation', constraint = tg_table_name || '_revision_taken';
   end if;

@@ -592,8 +592,11 @@ describe('installing the platform presets', () => {
       const writer = await openWriter(team);
       let thrown: unknown = null;
       try {
-        // A writer that never took the team lock, so neither plan saw its row. It takes no revision
-        // and stamps the one the team holds, which is all the database can check.
+        // A writer that never took the team lock, so neither plan saw its row. Nor did it take a
+        // revision, which would have taken the lock: it writes a take's record by hand, for the
+        // revision the team holds, and stamps that, which is all the database can check.
+        await writer.conn`
+          select set_config('app.revision_' || replace(${team}::uuid::text, '-', ''), '1', true)`;
         await writer.conn`
           insert into sineobex.team_presets (team_id, kind, name, current_version, revision, created_by, updated_by)
           values (${team}, 'order_category', 'Demo: Supplies', 1, 1, ${user}, ${user})`;

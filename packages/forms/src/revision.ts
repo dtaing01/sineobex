@@ -32,13 +32,27 @@ export async function lockTeam(sql: InstallSql, teamId: string): Promise<void> {
  * first has committed: revisions commit in the order they are taken, one step each, and a writer
  * that rolls back takes its step with it, so there is no gap. A team made after migration 0023 has
  * no row until its first write, which makes it at revision 1.
+ *
+ * With the step it records what it took for the team, in a setting local to the transaction, and
+ * 0023 refuses a head that does not carry that record: a head at its team's revision is not enough,
+ * since a write that never took one would leave its head at the revision of the write before it,
+ * which a phone may already hold. Local, the record goes at commit and with a savepoint rolled
+ * back, as the step does, so it never reaches the next transaction on a pooled connection. A second
+ * take in one transaction, a second writer's (team creation runs two installers), moves it, and the
+ * heads written after it carry the second.
  */
 export async function takeRevision(sql: InstallSql, teamId: string): Promise<number> {
   await lockTeam(sql, teamId);
-  // A bigint: postgres.js gives it as a string unless its caller parses it.
+  // The record is set in the step's own statement, from the row it wrote, so no take is without one
+  // and the edge pays no round trip more for it. A setting's name is identifiers only, hence the id
+  // without its dashes, as 0023 reads it. The revision is a bigint: postgres.js gives it as a string
+  // unless its caller parses it.
   const [row] = await sql<{ revision: string | number }[]>`
-    insert into sineobex.team_preset_state (team_id, revision) values (${teamId}::uuid, 1)
-    on conflict (team_id) do update set revision = sineobex.team_preset_state.revision + 1
-    returning revision`;
+    with taken as (
+      insert into sineobex.team_preset_state (team_id, revision) values (${teamId}::uuid, 1)
+      on conflict (team_id) do update set revision = sineobex.team_preset_state.revision + 1
+      returning team_id, revision)
+    select revision, set_config('app.revision_' || replace(team_id::text, '-', ''), revision::text, true)
+    from taken`;
   return Number(row!.revision);
 }
