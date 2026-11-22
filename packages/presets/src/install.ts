@@ -39,21 +39,28 @@ export const PLATFORM: readonly PlatformEntry[] = PLATFORM_FILE as unknown as re
 export type HeldPreset = {
   id: string;
   kind: PresetKind;
+  /** The head's name, which the database's unique name reads. */
+  name: string;
   state: 'active' | 'archived';
   originKey: string | null;
   originVersion: number | null;
   platformLatest: number | null;
   customized: boolean;
   currentVersion: number;
-  body: PresetBody;
+  /**
+   * Its current version's body; null when that version cannot be read, which the database does
+   * not rule out (its writers hold that a head's version is there).
+   */
+  body: PresetBody | null;
 };
 
 /**
- * Why an entry is not written: what validatePreset refuses, the copy being of another kind, or a
- * name another of the team's active presets of the kind holds, which the database's unique name
- * would refuse.
+ * Why an entry is not written: what validatePreset refuses, the copy being of another kind, a name
+ * another of the team's active presets of the kind holds, which the database's unique name would
+ * refuse, or a copy whose current version cannot be read, so nothing can be checked against it.
  */
-export type PlanProblem = PresetProblem | { path: 'name'; code: 'name_taken' };
+export type PlanProblem =
+  PresetProblem | { path: 'name'; code: 'name_taken' } | { path: 'currentVersion'; code: 'version_missing' };
 
 export type PlanStep = { originKey: string; kind: PresetKind; platformVersion: number } & (
   | { effect: 'install'; id: string; body: PresetBody }
@@ -74,9 +81,9 @@ export type TeamPresetsInstalled = Record<
  * held body), with the body's origin keys put as the team's ids: a held preset's, or the new id of
  * one installed earlier in the plan. An install or an update that validatePreset refuses against
  * the team's presets as the plan leaves them, whose name another active preset of its kind holds,
- * or whose held copy is of another kind, is `skipped` with its problems. An offer is a step only
- * while platform_latest is below the platform version, so it is made once; a skip is no step.
- * Pure: newId is called once for each install, and for nothing else.
+ * or whose held copy is of another kind or cannot be read, is `skipped` with its problems. An offer
+ * is a step only while platform_latest is below the platform version, so it is made once; a skip is
+ * no step. Pure: newId is called once for each install, and for nothing else.
  */
 export function planTeamPresets(input: {
   held: readonly HeldPreset[];
@@ -84,12 +91,19 @@ export function planTeamPresets(input: {
   /** The current definition of each of the team's active note types a map may name. */
   definitions: Readonly<Record<string, ResolvedNoteType>>;
   newId: () => string;
+  /**
+   * A name as the database's unique name compares it: its lower(), which only the database can
+   * answer, since it folds by the database's locale and JS's toLowerCase folds otherwise ('İ').
+   * Called only for the team's names and those of entries the plan may install or update.
+   */
+  fold: (name: string) => string;
 }): PlanStep[] {
   const copies = copiesByOrigin(input.held);
   const ids = new Map([...copies].map(([key, copy]) => [key, copy.id]));
 
   // The team's presets as validatePreset reads them. A category's behaviour is read before its
-  // items', so an item takes the behaviour of the category it names.
+  // items', so an item takes the behaviour of the category it names. A preset whose body cannot be
+  // read is not among them, so whatever names it is refused, never checked against a guess.
   const refs: Record<string, PresetRef> = {};
   const behaviourOf = (categoryId: string) => {
     const ref = Object.hasOwn(refs, categoryId) ? refs[categoryId] : undefined;
@@ -104,13 +118,19 @@ export function planTeamPresets(input: {
           : undefined;
     return behaviour === undefined ? { kind, state } : { kind, state, behaviour };
   };
-  for (const h of input.held) if (h.kind === 'order_category') refs[h.id] = refOf(h.kind, h.state, h.body);
-  for (const h of input.held) if (h.kind !== 'order_category') refs[h.id] = refOf(h.kind, h.state, h.body);
+  for (const h of input.held)
+    if (h.kind === 'order_category' && h.body !== null) refs[h.id] = refOf(h.kind, h.state, h.body);
+  for (const h of input.held)
+    if (h.kind !== 'order_category' && h.body !== null) refs[h.id] = refOf(h.kind, h.state, h.body);
 
-  // Every name an active preset holds, by kind, as it is now, and every name the plan gives. A name
-  // a held preset leaves on an update stays taken for this run: the statements write many rows at
-  // once, in no order the plan can rely on, so a name is free only once no row holds it.
-  const taken = new Set(input.held.filter((h) => h.state === 'active').map((h) => nameKey(h.kind, h.body)));
+  const nameKey = (kind: PresetKind, name: string) => `${kind}\u0000${input.fold(name)}`;
+  // Every name an active head holds, by kind, as it is now, and every name the plan gives: a head's
+  // name is what the unique index reads, whatever its body. A name a held preset leaves on an update
+  // stays taken for this run: the statements write many rows at once, in no order the plan can rely
+  // on, so a name is free only once no row holds it. Worked out only once a name is compared.
+  let taken: Set<string> | undefined;
+  const takenNames = () =>
+    (taken ??= new Set(input.held.filter((h) => h.state === 'active').map((h) => nameKey(h.kind, h.name))));
 
   const steps: PlanStep[] = [];
   for (const entry of newestOf(input.platform)) {
@@ -120,6 +140,17 @@ export function planTeamPresets(input: {
     // of another kind is never written under its head.
     if (copy && copy.kind !== entry.kind) {
       steps.push({ ...step, effect: 'skipped', problems: [{ path: 'kind', code: 'wrong_kind' }] });
+      continue;
+    }
+    // A copy whose body cannot be read is held all the same, so its entry is never installed again;
+    // neither a fixed field nor its refs can be checked against it, so nothing is written over it.
+    if (copy?.body === null) {
+      if (platformUpdateEffect(effectInput(entry, copy, false)) !== 'skip')
+        steps.push({
+          ...step,
+          effect: 'skipped',
+          problems: [{ path: 'currentVersion', code: 'version_missing' }],
+        });
       continue;
     }
     const body = withIds(entry.kind, entry.body, ids) as PresetBody;
@@ -142,15 +173,15 @@ export function planTeamPresets(input: {
       definitions: input.definitions,
       id: copy?.id ?? null,
     });
-    const name = nameKey(entry.kind, body);
-    const renamed = copy === undefined || name !== nameKey(copy.kind, copy.body);
-    if (problems.length === 0 && renamed && taken.has(name))
+    const name = nameKey(entry.kind, body.name);
+    const renamed = copy === undefined || name !== nameKey(copy.kind, copy.name);
+    if (problems.length === 0 && renamed && takenNames().has(name))
       problems.push({ path: 'name', code: 'name_taken' });
     if (problems.length > 0) {
       steps.push({ ...step, effect: 'skipped', problems });
       continue;
     }
-    taken.add(name);
+    takenNames().add(name);
     if (effect === 'install') {
       const id = input.newId();
       ids.set(entry.originKey, id);
@@ -184,8 +215,13 @@ export async function installTeamPresets(
 
   const plan = async () => {
     const held = await heldBy(sql, teamId);
-    const definitions = await definitionsOf(sql, teamId, noteTypesToCheck(held, platform));
-    return planTeamPresets({ held, platform, definitions, newId });
+    const writable = mayWrite(held, platform);
+    const definitions = await definitionsOf(sql, teamId, noteTypesOf(writable));
+    const fold = await foldOf(
+      sql,
+      writable.length === 0 ? [] : [...held.map((h) => h.name), ...writable.map(nameOf)],
+    );
+    return planTeamPresets({ held, platform, definitions, newId, fold });
   };
   let steps = await plan();
   if (!steps.some(writes)) return countsOf(steps);
@@ -246,9 +282,6 @@ function effectInput(
   };
 }
 
-/** A name as the database's unique index compares it: within its kind, ignoring case. */
-const nameKey = (kind: PresetKind, body: PresetBody) => `${kind}\u0000${body.name.toLowerCase()}`;
-
 /** The body with each origin key it holds as an id put as the team's id, where the team has one. */
 function withIds(
   kind: PresetKind,
@@ -276,32 +309,62 @@ function withIds(
 }
 
 /**
- * The note types whose definitions the plan may check a map against: those the maps it may install
- * or update name. A map the team holds at the platform's version, or whose update can only be
- * offered, stores no body, so a team that is up to date reads no definition.
+ * The entries a plan may install or update, by what the team holds: the plan reads what checking
+ * them needs, and nothing for a team that is up to date. With no fixed field changed every update
+ * stays an update, so an entry too many is counted here, never one too few.
  */
-function noteTypesToCheck(held: readonly HeldPreset[], platform: readonly PlatformEntry[]): string[] {
+function mayWrite(held: readonly HeldPreset[], platform: readonly PlatformEntry[]): PlatformEntry[] {
   const copies = copiesByOrigin(held);
-  const keys = new Set<string>();
-  for (const entry of newestOf(platform)) {
-    if (entry.kind !== 'field_supply_map') continue;
-    // With no fixed field changed, every update stays an update: a key too many is read, never one
-    // too few.
+  return newestOf(platform).filter((entry) => {
     const effect = platformUpdateEffect(effectInput(entry, copies.get(entry.originKey), false));
-    if (effect === 'install' || effect === 'update') keys.add(String(entry.body.noteTypeKey));
+    return effect === 'install' || effect === 'update';
+  });
+}
+
+/**
+ * The note types whose definitions the plan may check a map against: those the maps it may write
+ * name. A map the team holds at the platform's version, or whose update can only be offered, stores
+ * no body.
+ */
+function noteTypesOf(entries: readonly PlatformEntry[]): string[] {
+  return [
+    ...new Set(entries.filter((e) => e.kind === 'field_supply_map').map((e) => String(e.body.noteTypeKey))),
+  ];
+}
+
+const nameOf = (entry: PlatformEntry) => String(entry.body.name);
+
+/**
+ * Each name the plan compares, folded by the database as 0023's unique name folds it, in one
+ * statement: lower() folds by the database's locale, which JS cannot know. A plan with no name to
+ * compare asks nothing; a name it was not given is a fault in the installer, never a guess.
+ */
+async function foldOf(sql: InstallSql, names: readonly string[]): Promise<(name: string) => string> {
+  const folds = new Map<string, string>();
+  if (names.length > 0) {
+    const rows = await sql<{ name: string; folded: string }[]>`
+      select n.name, lower(n.name) as folded
+      from jsonb_array_elements_text(${JSON.stringify([...new Set(names)])}::text::jsonb) as n (name)`;
+    for (const row of rows) folds.set(row.name, row.folded);
   }
-  return [...keys];
+  return (name) => {
+    const folded = folds.get(name);
+    if (folded === undefined)
+      throw new Error('installTeamPresets: a name was compared that was never folded');
+    return folded;
+  };
 }
 
 // Every column is read under a name with no underscore, so a caller's column-name transform (the
-// API's toCamel) changes nothing the installer reads.
+// API's toCamel) changes nothing the installer reads. Every head is read, with its current body
+// where that version is there: a head left out would be installed again at every run.
 async function heldBy(sql: InstallSql, teamId: string): Promise<HeldPreset[]> {
   const rows = await sql<HeldPreset[]>`
-    select p.id, p.kind, p.state, p.origin_key as "originKey", p.origin_version as "originVersion",
+    select p.id, p.kind, p.name, p.state, p.origin_key as "originKey", p.origin_version as "originVersion",
            p.platform_latest as "platformLatest", p.customized, p.current_version as "currentVersion",
            v.body
     from sineobex.team_presets p
-    join sineobex.team_preset_versions v
+    left join sineobex.team_preset_versions v
       on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
     where p.team_id = ${teamId}::uuid`;
   return [...rows];
@@ -332,9 +395,12 @@ async function definitionsOf(
 
 /**
  * The plan's writes, one statement for each kind of row. Rows travel as one JSON text cast to jsonb,
- * as installPresets sends them. A head is written with `on conflict do nothing`, and a version and
- * an event only beside a head that is there: under the lock the plan has seen every row, so nothing
- * conflicts, and if something ever did, the entry would be left out whole, never half written.
+ * as installPresets sends them. Under the lock the plan has seen every row and compared every name
+ * as the database does, so every head it plans is written. A head that does not come back from `on
+ * conflict do nothing` was taken first by a writer that never took the team lock; the entries
+ * naming it would point at nothing, in versions that never change, so the run throws and its
+ * caller's transaction is undone. The error names no preset, where a unique index's own would name
+ * the row, since it may be logged. A version and an event are written only beside their head.
  */
 async function write(sql: InstallSql, teamId: string, revision: number, steps: readonly PlanStep[]) {
   const installs = steps.filter((s) => s.effect === 'install');
@@ -342,8 +408,8 @@ async function write(sql: InstallSql, teamId: string, revision: number, steps: r
   const offers = steps.filter((s) => s.effect === 'offer');
   const rows = (list: readonly object[]) => JSON.stringify(list);
 
-  if (installs.length > 0)
-    await sql`
+  if (installs.length > 0) {
+    const written = await sql<{ id: string }[]>`
       insert into sineobex.team_presets
         (team_id, id, kind, name, current_version, origin_key, origin_version, platform_latest, revision)
       select ${teamId}::uuid, h.id, h.kind, h.name, 1, h.origin, h.platform, h.platform, ${revision}::bigint
@@ -356,7 +422,13 @@ async function write(sql: InstallSql, teamId: string, revision: number, steps: r
           platform: s.platformVersion,
         })),
       )}::text::jsonb) as h (id uuid, kind text, name text, origin text, platform integer)
-      on conflict do nothing`;
+      on conflict do nothing
+      returning id`;
+    if (written.length !== installs.length)
+      throw new Error(
+        'installTeamPresets: the database wrote fewer heads than were planned; undo the transaction',
+      );
+  }
   // An update gives the copy back to the platform's version, by nobody; an offer moves only what the
   // team is told is on offer.
   if (updates.length > 0)

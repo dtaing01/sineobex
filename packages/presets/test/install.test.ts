@@ -22,19 +22,25 @@ import type { HeldPreset, PlanStep, PlatformEntry, PresetBody } from '../src/ind
 //   export type HeldPreset = {
 //     id: string;
 //     kind: PresetKind;
+//     /** The head's name, which the database's unique name reads. */
+//     name: string;
 //     state: 'active' | 'archived';
 //     originKey: string | null;
 //     originVersion: number | null;
 //     platformLatest: number | null;
 //     customized: boolean;
 //     currentVersion: number;
-//     body: PresetBody;
+//     /** Null when its current version cannot be read. */
+//     body: PresetBody | null;
 //   };
+//   /** What validatePreset refuses, a name taken, or a held copy whose body cannot be read. */
+//   export type PlanProblem = PresetProblem | { path: 'name'; code: 'name_taken' }
+//     | { path: 'currentVersion'; code: 'version_missing' };
 //   export type PlanStep = { originKey: string; kind: PresetKind; platformVersion: number } & (
 //     | { effect: 'install'; id: string; body: PresetBody }
 //     | { effect: 'update'; id: string; version: number; body: PresetBody }
 //     | { effect: 'offer'; id: string }
-//     | { effect: 'skipped'; problems: PresetProblem[] }
+//     | { effect: 'skipped'; problems: PlanProblem[] }
 //   );
 //   /**
 //    * For each origin key, its newest platform version, in the order the file first names the key:
@@ -43,6 +49,7 @@ import type { HeldPreset, PlanStep, PlatformEntry, PresetBody } from '../src/ind
 //    * new id of one installed earlier in the plan); an install or an update validatePreset refuses
 //    * against the held presets and those installed before it is `skipped`, with its problems; an
 //    * offer is a step only while platformLatest is below the platform version; a skip is no step.
+//    * Names are compared within a kind through `fold`, the database's lower() of each name.
 //    * Pure: newId is called once for each install, and for nothing else.
 //    */
 //   export function planTeamPresets(input: {
@@ -51,6 +58,7 @@ import type { HeldPreset, PlanStep, PlatformEntry, PresetBody } from '../src/ind
 //     /** The current definition of each of the team's active note types. */
 //     definitions: Readonly<Record<string, ResolvedNoteType>>;
 //     newId: () => string;
+//     fold: (name: string) => string;
 //   }): PlanStep[];
 //
 //   /** Counts by kind; `skipped` is what validatePreset refused. */
@@ -175,6 +183,7 @@ function held(
   return {
     id: id(n),
     kind: entry.kind,
+    name: (body as { name: string }).name,
     state: 'active',
     originKey: entry.originKey,
     originVersion: entry.platformVersion,
@@ -190,8 +199,10 @@ const definitions: Record<string, ResolvedNoteType> = {};
 for (const p of PRESETS)
   if ((definitions[p.key]?.version ?? 0) < p.version) definitions[p.key] = p.definition;
 
+/** A name folded as the database folds the ASCII names these tests give. */
+const fold = (name: string) => name.toLowerCase();
 const plan = (heldPresets: HeldPreset[], platform: PlatformEntry[], newId = ids().newId) =>
-  planTeamPresets({ held: heldPresets, platform, definitions, newId });
+  planTeamPresets({ held: heldPresets, platform, definitions, newId, fold });
 const effects = (steps: PlanStep[]) => steps.map((s) => `${s.originKey} ${s.effect}`);
 
 describe('the preset installer', () => {
@@ -371,6 +382,7 @@ describe('the preset installer', () => {
         platform: [CATEGORY, GAUZE, MAP],
         definitions: {},
         newId: ids().newId,
+        fold,
       });
       expect(noNoteTypes.at(-1)).toMatchObject({
         effect: 'skipped',
@@ -494,6 +506,100 @@ describe('the preset installer', () => {
       ]);
     });
 
+    // PostgreSQL's lower() folds 'İ' to 'i', where JS's toLowerCase gives 'i' and a combining dot:
+    // a name is compared through the fold the installer asks the database for, never JS's.
+    it('compares names as the database folds them, through the fold it is given', () => {
+      const asTheDatabase = (name: string) => name.toLowerCase().replaceAll('i̇', 'i');
+      const ours = own({ ...CATEGORY, body: { ...CATEGORY.body, name: 'DEMO: SUPPLİES' } }, 2);
+      const steps = planTeamPresets({
+        held: [ours],
+        platform: [CATEGORY, GAUZE],
+        definitions,
+        newId: ids().newId,
+        fold: asTheDatabase,
+      });
+      // The category is never given, so neither is the item that names it.
+      expect(steps).toEqual([
+        {
+          effect: 'skipped',
+          originKey: CATEGORY.originKey,
+          kind: 'order_category',
+          platformVersion: 1,
+          problems: [nameTaken],
+        },
+        {
+          effect: 'skipped',
+          originKey: GAUZE.originKey,
+          kind: 'item',
+          platformVersion: 1,
+          problems: [{ path: 'categoryId', code: 'unknown_reference' }],
+        },
+      ]);
+      // A copy the platform renames into such a name is not updated either.
+      const copy = held(CATEGORY, 1);
+      const kits = own({ ...CATEGORY, body: { ...CATEGORY.body, name: 'DEMO: SUPPLİES AND KİTS' } }, 2);
+      expect(
+        planTeamPresets({
+          held: [copy, kits],
+          platform: [v2(CATEGORY, { name: 'Demo: Supplies and kits' })],
+          definitions,
+          newId: ids().newId,
+          fold: asTheDatabase,
+        }),
+      ).toEqual([
+        {
+          effect: 'skipped',
+          originKey: CATEGORY.originKey,
+          kind: 'order_category',
+          platformVersion: 2,
+          problems: [nameTaken],
+        },
+      ]);
+    });
+
+    it('reads a name taken from the head, which the database’s unique name reads', () => {
+      // A head whose name differs from its body's, as no writer should leave one: the head's counts.
+      const ours = {
+        ...own({ ...GAUZE, body: { ...GAUZE.body, name: 'Demo: Lint' } }, 2),
+        name: 'Demo: Gauze',
+      };
+      expect(effects(plan([held(CATEGORY, 1), ours], [CATEGORY, GAUZE]))).toEqual([
+        'item.demo_gauze skipped',
+      ]);
+      // So is a copy's own: an update giving it the name its body holds is a rename, checked as one.
+      const copy = { ...held(CATEGORY, 1), name: 'Demo: Supplies, renamed' };
+      const archived = own(CATEGORY, 2, { state: 'archived' });
+      const active = own({ ...CATEGORY, body: { ...CATEGORY.body, name: 'Demo: SUPPLIES' } }, 3);
+      expect(effects(plan([copy, archived], [v2(CATEGORY, { sort: 11 })]))).toEqual([
+        'order_category.demo_supplies update',
+      ]);
+      expect(effects(plan([copy, active], [v2(CATEGORY, { sort: 11 })]))).toEqual([
+        'order_category.demo_supplies skipped',
+      ]);
+    });
+
+    it('holds a head whose current version cannot be read, and writes nothing over it', () => {
+      const unread: HeldPreset = { ...held(CATEGORY, 1), body: null };
+      // Held, so never installed again: at the platform's version there is nothing to do.
+      expect(plan([unread], [CATEGORY])).toEqual([]);
+      // A newer version cannot be checked against what it holds, so nothing is written.
+      expect(plan([unread], [v2(CATEGORY, { sort: 11 })])).toEqual([
+        {
+          effect: 'skipped',
+          originKey: CATEGORY.originKey,
+          kind: 'order_category',
+          platformVersion: 2,
+          problems: [{ path: 'currentVersion', code: 'version_missing' }],
+        },
+      ]);
+      // Its name stays taken, and nothing that names it is written, since it cannot be checked.
+      const sameName = { ...CATEGORY, originKey: 'order_category.demo_other' };
+      expect(effects(plan([unread], [CATEGORY, sameName, GAUZE]))).toEqual([
+        'order_category.demo_other skipped',
+        'item.demo_gauze skipped',
+      ]);
+    });
+
     it('never writes a body under a copy of another kind', () => {
       const wrong: HeldPreset = { ...held(CATEGORY, 1), originKey: FLAG.originKey };
       expect(plan([wrong], [v2(FLAG, { criteria: 'Demo: newer.' })])).toEqual([
@@ -551,10 +657,27 @@ describe('the preset installer', () => {
       | 'version insert'
       | 'event insert'
       | 'audit';
+    /**
+     * What the database answers a statement the installer sends: the revision taken, the names it
+     * folds, and the id of each head it writes (each but the last `dropped`, as a head a unique
+     * index refused under `on conflict do nothing`); no rows for anything else.
+     */
+    const answer = (text: string, parameters: readonly (string | number)[], dropped = 0): object[] => {
+      if (/team_preset_state/.test(text)) return [{ revision: '7' }];
+      if (/lower\(/.test(text))
+        return (JSON.parse(String(parameters[0])) as string[]).map((name) => ({ name, folded: fold(name) }));
+      if (/insert into sineobex\.team_presets\b/.test(text)) {
+        const heads = JSON.parse(String(parameters.find((p) => String(p).startsWith('[')))) as {
+          id: string;
+        }[];
+        return heads.slice(0, heads.length - dropped).map(({ id }) => ({ id }));
+      }
+      return [];
+    };
     /** A transaction in which the team holds nothing: every read answers no rows. */
-    function standIn() {
+    function standIn(dropped = 0) {
       const asked: { kind: Kind; text: string }[] = [];
-      const sql: InstallSql = async (template) => {
+      const sql: InstallSql = async (template, ...parameters) => {
         const text = template.join('?').replace(/\s+/g, ' ');
         const kind: Kind = /pg_advisory_xact_lock/.test(text)
           ? 'lock'
@@ -572,7 +695,7 @@ describe('the preset installer', () => {
                       ? 'event insert'
                       : 'read';
         asked.push({ kind, text });
-        return (kind === 'revision' ? [{ revision: '7' }] : []) as never;
+        return answer(text, parameters, dropped) as never;
       };
       return { sql, asked };
     }
@@ -627,6 +750,39 @@ describe('the preset installer', () => {
       expect(kinds.slice(Math.max(...writes)).filter((k) => k === 'lock' || k === 'revision')).toEqual([]);
     });
 
+    it('asks the database to fold the names it compares, and only when it may write', async () => {
+      const { sql, asked } = standIn();
+      await installTeamPresets(sql, TEAM, { platform: [CATEGORY, GAUZE] });
+      const folds = asked.filter((a) => /lower\(/.test(a.text));
+      expect(folds.length).toBeGreaterThan(0);
+      // Before the lock, and again under it, with each plan.
+      const at = (a: (typeof asked)[number]) => asked.indexOf(a);
+      const lock = asked.findIndex((a) => a.kind === 'lock');
+      expect(folds.some((a) => at(a) < lock) && folds.some((a) => at(a) > lock)).toBe(true);
+    });
+
+    it('stops, writing nothing more, when the database writes fewer heads than it planned', async () => {
+      // A head a unique index refused under on conflict do nothing: only a writer that never took the
+      // team lock could have made one. Every entry naming it would point at nothing, for good.
+      const { sql, asked } = standIn(1);
+      const run = installTeamPresets(sql, TEAM, { platform: [CATEGORY, GAUZE, FLAG] });
+      await expect(run).rejects.toThrow();
+      const error = (await run.then(
+        () => null,
+        (e: unknown) => e,
+      )) as Error;
+      // The message names no preset: it may reach a log.
+      for (const name of [
+        'Demo: Supplies',
+        'Demo: Gauze',
+        'Demo: Frost risk',
+        'order_category.demo_supplies',
+      ])
+        expect(error.message).not.toContain(name);
+      const kinds = asked.map((a) => a.kind);
+      expect(kinds.slice(kinds.indexOf('head insert') + 1)).toEqual([]);
+    });
+
     it('reads a note type only when a map that names it may be written', async () => {
       // A team that holds what it reads back; no note type is there to read.
       const asked: { text: string; parameters: readonly (string | number)[] }[] = [];
@@ -635,8 +791,7 @@ describe('the preset installer', () => {
         async (template, ...parameters) => {
           const text = template.join('?').replace(/\s+/g, ' ');
           asked.push({ text, parameters });
-          if (/team_preset_state/.test(text)) return [{ revision: '7' }] as never;
-          return (/from sineobex\.team_presets p\b/.test(text) ? team : []) as never;
+          return (/from sineobex\.team_presets p\b/.test(text) ? team : answer(text, parameters)) as never;
         };
       const readsOf = () => asked.filter((a) => /note_type/.test(a.text));
       const ids = { [CATEGORY.originKey]: id(1), [GAUZE.originKey]: id(2) };
@@ -653,6 +808,8 @@ describe('the preset installer', () => {
       const edited = [...settled.slice(0, 2), held(MAP, 3, { customized: true, currentVersion: 2 }, ids)];
       await installTeamPresets(holding(edited), TEAM, { platform: [CATEGORY, GAUZE, newer] });
       expect(readsOf()).toEqual([]);
+      // Nor is a name folded: nothing may be written, so no name is compared.
+      expect(asked.filter((a) => /lower\(/.test(a.text))).toEqual([]);
 
       // A newer map the team never edited is checked against its note type, which is read; the
       // stand-in holds none, so the update is skipped, and nothing is locked or written.
