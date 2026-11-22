@@ -4120,6 +4120,45 @@ test.describe('Sineobex’s update, to the team’s settings', () => {
   });
 });
 
+test.describe('an item the template for new bags holds', () => {
+  test('its page says the template uses it, and Remove is refused while the template holds it', async ({
+    page,
+  }) => {
+    const settings = await settingsRow();
+    const { id: categoryId } = await named<CategoryBody>('order_category', 'Supplies');
+    const powder = await made('item', {
+      name: 'Demo: Foot powder',
+      categoryId,
+      unit: 'each',
+      medical: false,
+      captureLot: false,
+      result: null,
+    });
+    await changedMeanwhile<SettingsBody>('settings', settings.id, (b) => ({
+      ...b,
+      newBagMinimums: [{ itemId: powder, min: 2 }],
+    }));
+    try {
+      await signIn(page, 'admin@example.com');
+      await page.goto(`/team/presets/items/${powder}`);
+      await expect(page.getByRole('main').locator('.px-lede')).toHaveText(
+        'In Supplies, counted in each. Used by the template for new bags.',
+      );
+      await page.getByRole('button', { name: 'Remove Demo: Foot powder', exact: true }).click();
+      const remove = page.getByRole('form', { name: 'Remove Demo: Foot powder' });
+      await remove.getByLabel('Reason').fill('Demo: nobody asks for it');
+      await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+      await expect(remove.getByRole('alert')).toHaveText(
+        'Still used by the template for new bags. Take it out of those first.',
+      );
+      await expectAccessible(page, 'Remove refused, the template holds it', { inPlace: true });
+      expect((await listed('item')).find((i) => i.id === powder)).toMatchObject({ state: 'active' });
+    } finally {
+      await settingsBack(settings.body);
+    }
+  });
+});
+
 // ------------------------------------------------------------------------------------------------
 // Shared on every page (8.1): Remove, Restore and a save, after another admin acted meanwhile
 // ------------------------------------------------------------------------------------------------
