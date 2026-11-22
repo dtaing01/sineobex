@@ -5273,4 +5273,455 @@ void main() {
     expect(times, [...times]..sort((a, b) => b.compareTo(a)));
     expect([times.first, times.last], [now.add(const Duration(minutes: 104)), now.add(const Duration(minutes: 5))]);
   });
+
+  // Phase 5, design 6.3: the presets pull (services/api/src/routes/presets.ts). Each case has the
+  // name of the API test that holds the same rule (services/api/test/presets-pull.test.ts; the last
+  // one's is presets-store.test.ts) and expects what that test expects of the API. The installer
+  // the API's pull runs first is not mirrored: each test writes its team's presets, as the API's
+  // tests write rows.
+  group('phase 5: the presets pull', () {
+    const otherTeam = '6b2a1d3f-9c8e-4f7b-8d4c-2e3f4a5b6c7d';
+    int revisionOf(String teamId) => server.presetsOf(teamId).revision;
+    String epochOf(String teamId) => server.presetsOf(teamId).epoch!;
+
+    Future<PresetsPull> pull(String user, {Object? since, String? epoch, String inTeam = team}) =>
+        SineobexApi(server.transportFor(user, inTeam)).pullPresets(since: since?.toString(), epoch: epoch);
+
+    int byIdOrder(Map<String, Object?> a, Map<String, Object?> b) => (a['id']! as String).compareTo(b['id']! as String);
+
+    /// An answer's presets as JSON, by ID.
+    List<Map<String, Object?>> byId(PresetsPull answer) =>
+        [for (final p in answer.presets) p.toJson()]..sort(byIdOrder);
+
+    /// What the pull must answer from the server's tables: each preset above [since], at its current
+    /// version.
+    List<Map<String, Object?>> heldAbove(String teamId, [int since = -1]) => [
+      for (final p in server.presetsOf(teamId).heads.values)
+        if (p.revision > since)
+          {
+            'body': p.versions[p.currentVersion],
+            'id': p.id,
+            'kind': p.kind,
+            'originKey': p.originKey,
+            'state': p.state,
+            'version': p.currentVersion,
+          },
+    ]..sort(byIdOrder);
+
+    int greatestRevision(String teamId) =>
+        server.presetsOf(teamId).heads.values.fold(0, (m, p) => p.revision > m ? p.revision : m);
+
+    /// A team's presets as an install and its admins leave them: each kind a phone reads, the
+    /// platform's with their origin keys and the team's own without, a sensitive flag among them.
+    /// Each write takes its own revision. Returns their IDs by name.
+    Map<String, String> holdPresets(String teamId) {
+      final ids = <String, String>{};
+      void add(String ref, String kind, Map<String, Object?> body, {bool platform = true}) =>
+          ids[ref] = server.addPreset(teamId, kind, body, originKey: platform ? '$kind.$ref' : null);
+      Map<String, Object?> item(String name, String category, {Map<String, Object?>? result}) => {
+        'name': name,
+        'categoryId': ids[category],
+        'unit': result == null ? 'each' : 'test',
+        'medical': result != null,
+        'captureLot': false,
+        'result': result,
+      };
+      Map<String, Object?> flag(String name, String tier, String color, int rank, {bool sensitive = false}) => {
+        'name': name,
+        'tier': tier,
+        'criteria': '',
+        'color': color,
+        'rank': rank,
+        'sensitive': sensitive,
+      };
+      add('labs', 'order_category', {'name': 'Demo: Labs', 'behaviour': 'lab', 'sort': 30});
+      add('supplies', 'order_category', {'name': 'Demo: Supplies', 'behaviour': 'supply', 'sort': 40});
+      add('socks', 'item', item('Demo: Socks', 'supplies'));
+      add('handwarmers', 'item', item('Demo: Handwarmers', 'supplies'));
+      add(
+        'glucose',
+        'item',
+        item('Demo: Glucose test', 'labs', result: {'type': 'number', 'unit': 'mg/dL'}),
+        platform: false,
+      );
+      add('foot_check', 'bundle', {
+        'name': 'Demo: Foot check',
+        'medical': true,
+        'prompt': '',
+        'lines': [
+          {'itemId': ids['glucose'], 'qty': 1, 'core': true},
+        ],
+      }, platform: false);
+      add('high', 'flag', flag('Demo: High', 'primary', 'red', 10));
+      add('dehydration_risk', 'flag', flag('Demo: Dehydration risk', 'secondary', 'blue', 20));
+      add('pregnancy', 'flag', flag('Demo: Pregnancy', 'secondary', 'purple', 30, sensitive: true));
+      add('warm_feet', 'field_supply_map', {
+        'name': 'Demo: Warm feet',
+        'noteTypeKey': 'test_note',
+        'lines': [
+          {'itemId': ids['socks'], 'qty': 2},
+        ],
+      });
+      add('wet_feet', 'condition_supply_map', {
+        'name': 'Demo: Wet feet',
+        'codes': ['T69.0'],
+        'lines': [
+          {'itemId': ids['socks'], 'qtyPerPatient': 2},
+        ],
+      });
+      add('day_bag', 'bag', {
+        'name': 'Demo: Day bag',
+        'minimums': [
+          {'itemId': ids['socks'], 'min': 4},
+        ],
+      });
+      add('team', 'settings', {
+        'name': 'Team settings',
+        'bagMinimumsOn': false,
+        'newBagMinimums': <Object?>[],
+        'problemCheckDays': 90,
+      });
+      return ids;
+    }
+
+    /// The fake's 422 for a request its route's schema refuses, naming each field.
+    Matcher unreadable(List<String> paths) => throwsA(
+      isA<ApiException>()
+          .having((e) => e.status, 'status', 422)
+          .having((e) => e.code, 'code', 'validation_failed')
+          .having((e) => [for (final f in e.details!['fields']! as List<Object?>) (f! as Map)['path']], 'paths', paths),
+    );
+
+    test(
+      'answers every preset of the team at its current version, archived ones included, when no revision is sent',
+      () async {
+        final ids = holdPresets(team);
+        final others = holdPresets(otherTeam).values.toSet();
+        server.archivePreset(team, ids['socks']!);
+        final glucose = ids['glucose']!;
+        server.editPreset(team, glucose, {...server.presetsOf(team).heads[glucose]!.versions[1]!, 'captureLot': true});
+
+        final answer = await pull(blair);
+        expect(answer.reset, isTrue);
+        expect(answer.epoch, epochOf(team));
+        expect(answer.revision, greatestRevision(team));
+        expect(byId(answer), heldAbove(team));
+        // Each preset carries exactly these keys, as JSON carries the answer.
+        final raw = await server.handle(blair, team, 'GET', '/v1/presets', null, query: {}) as Map<String, Object?>;
+        expect(raw.keys.toSet(), {'reset', 'revision', 'epoch', 'presets'});
+        for (final p in (raw['presets']! as List<Object?>).cast<Map<String, Object?>>()) {
+          expect(p.keys.toList()..sort(), ['body', 'id', 'kind', 'originKey', 'state', 'version']);
+        }
+        // The archived item is there, for its name, and the edited one at its new version.
+        expect(answer.presets.singleWhere((p) => p.id == ids['socks']).state, PulledPresetState.archived);
+        final edited = answer.presets.singleWhere((p) => p.id == glucose);
+        expect([edited.version, edited.body['captureLot']], [2, true]);
+        // Every preset is there, the platform's and the team's own, and nothing of the other team's.
+        expect({for (final p in answer.presets) p.id}, ids.values.toSet());
+        expect(answer.presets.where((p) => others.contains(p.id)), isEmpty);
+      },
+    );
+
+    test('answers only what changed after the revision sent, with the greatest revision among it', () async {
+      final ids = holdPresets(team);
+      final epoch = epochOf(team);
+      final r0 = revisionOf(team);
+      final x = server.addPreset(team, 'flag', {
+        'name': 'Demo: pulled flag',
+        'tier': 'secondary',
+        'criteria': '',
+        'color': 'grey',
+        'rank': 90,
+        'sensitive': false,
+      });
+      final y = ids['handwarmers']!;
+      server.archivePreset(team, y);
+      final z = ids['dehydration_risk']!;
+      server.editPreset(team, z, {
+        ...server.presetsOf(team).heads[z]!.versions[1]!,
+        'criteria': 'Demo: pulled criteria',
+      });
+      expect(revisionOf(team), r0 + 3);
+
+      Future<PresetsPull> since(int n) => pull(blair, since: n, epoch: epoch);
+      final all = await since(r0);
+      expect([all.reset, all.revision, all.epoch], [false, r0 + 3, epoch]);
+      expect([for (final p in all.presets) p.id]..sort(), [x, y, z]..sort());
+      expect(byId(all), heldAbove(team, r0));
+      final two = await since(r0 + 1);
+      expect([two.reset, two.revision], [false, r0 + 3]);
+      expect([for (final p in two.presets) p.id]..sort(), [y, z]..sort());
+      final one = await since(r0 + 2);
+      expect([for (final p in one.presets) (p.id, p.version, p.body['criteria'])], [(z, 2, 'Demo: pulled criteria')]);
+      // Nothing since the newest: the revision it was sent, and no preset.
+      expect((await since(r0 + 3)).toJson(), {
+        'reset': false,
+        'revision': r0 + 3,
+        'epoch': epoch,
+        'presets': <Object?>[],
+      });
+    });
+
+    test('answers the greatest revision among the presets it holds, never one no preset carries', () async {
+      holdPresets(team);
+      final epoch = epochOf(team);
+      final r0 = revisionOf(team);
+      // A note type head takes the team's next revision too (design 4.3), and is no preset.
+      server.takePresetRevision(team);
+      expect(revisionOf(team), r0 + 1);
+      expect((await pull(blair, since: r0, epoch: epoch)).toJson(), {
+        'reset': false,
+        'revision': r0,
+        'epoch': epoch,
+        'presets': <Object?>[],
+      });
+      // Not above the team's revision, so no reset.
+      expect((await pull(blair, since: r0 + 1, epoch: epoch)).toJson(), {
+        'reset': false,
+        'revision': r0 + 1,
+        'epoch': epoch,
+        'presets': <Object?>[],
+      });
+    });
+
+    test('answers everything as a reset when the revision sent is above the team’s', () async {
+      holdPresets(team);
+      final epoch = epochOf(team);
+      final answer = await pull(blair, since: revisionOf(team) + 1, epoch: epoch);
+      expect([answer.reset, answer.epoch, answer.revision], [true, epoch, greatestRevision(team)]);
+      expect(byId(answer), heldAbove(team));
+    });
+
+    test(
+      'answers everything as a reset when the epoch sent is not the team’s, or a revision comes without one',
+      () async {
+        holdPresets(team);
+        final epoch = epochOf(team);
+        final revision = revisionOf(team);
+        final everything = heldAbove(team);
+        final another = await pull(blair, since: revision, epoch: uuid());
+        expect([another.reset, another.epoch], [true, epoch]);
+        expect(byId(another), everything);
+        final none = await pull(blair, since: revision);
+        expect([none.reset, none.epoch], [true, epoch]);
+        expect(byId(none), everything);
+        // The API reads the epoch as a UUID, so one in capitals is the team's.
+        expect((await pull(blair, since: revision, epoch: epoch.toUpperCase())).reset, isFalse);
+
+        // A database restore renews the epoch (docs/setup.md): a phone holding the old one starts over.
+        final renewed = server.renewPresetEpoch(team);
+        expect(renewed, isNot(epoch));
+        expect(epochOf(team), renewed);
+        final old = await pull(blair, since: revision, epoch: epoch);
+        expect([old.reset, old.epoch], [true, renewed]);
+        expect(byId(old), everything);
+        expect((await pull(blair, since: revision, epoch: renewed)).toJson(), {
+          'reset': false,
+          'revision': revision,
+          'epoch': renewed,
+          'presets': <Object?>[],
+        });
+      },
+    );
+
+    test('answers everything as a reset when no revision is sent, whatever the epoch', () async {
+      // Everything is sent either way, so the phone puts it in place of its copy: a phone that lost
+      // its revision but kept rows a restored server no longer has keeps none of them (design 6.1).
+      holdPresets(team);
+      final epoch = epochOf(team);
+      final everything = heldAbove(team);
+      for (final sent in [null, epoch, uuid()]) {
+        final answer = await pull(blair, epoch: sent);
+        expect([answer.reset, answer.epoch, answer.revision], [true, epoch, greatestRevision(team)], reason: sent);
+        expect(byId(answer), everything, reason: sent);
+      }
+    });
+
+    test('refuses a revision that is not a whole number from 0, and an epoch that is not a UUID', () async {
+      holdPresets(team);
+      final epoch = epochOf(team);
+      for (final (since, sent, paths) in [
+        ('-1', epoch, ['since']),
+        ('1.5', epoch, ['since']),
+        ('abc', epoch, ['since']),
+        ('12345678901234567890', epoch, ['since']),
+        ('1', 'not-an-epoch', ['epoch']),
+        // zod's uuid() takes versions 1 to 8 only.
+        ('1', '5a1f0c2e-8b7d-0e6a-9c3b-1d2e3f4a5b6c', ['epoch']),
+        ('x', 'y', ['since', 'epoch']),
+      ]) {
+        await expectLater(
+          pull(blair, since: since, epoch: sent),
+          unreadable(paths),
+          reason: '$since $sent',
+        );
+      }
+      // The query is read before the team: one malformed is 422 to someone who is not a member too.
+      server.removedFromTeam.add('$dana/$team');
+      await expectLater(pull(dana, since: 'abc', epoch: epoch), unreadable(['since']));
+      // A number no revision can be is refused or answered as a reset, never a 500. Up to 19 digits
+      // it is read, and past what a JavaScript number holds exactly it is one never sent.
+      for (final huge in ['9223372036854775808', '9999999999999999999', '9007199254740992']) {
+        final answer = await pull(blair, since: huge, epoch: epoch);
+        expect(answer.reset, isTrue, reason: huge);
+        expect(byId(answer), heldAbove(team), reason: huge);
+      }
+      // A revision written with leading zeros is read as its number, and the nil UUID is a UUID:
+      // here another epoch than the team's, so a reset.
+      expect((await pull(blair, since: '0${revisionOf(team)}', epoch: epoch)).reset, isFalse);
+      expect((await pull(blair, since: 0, epoch: FakeSyncServer.noPresetEpoch)).reset, isTrue);
+    });
+
+    test('gives every member every preset, sensitive flags included, whatever the role, and logs no refusal', () async {
+      final ids = holdPresets(team);
+      final everything = heldAbove(team);
+      final cases = [
+        for (final c in (vectors('access')['cases']! as List<Object?>).cast<Map<String, Object?>>())
+          (c['name']! as String, (c['permissions']! as List<Object?>).cast<String>()),
+        ('no permission', <String>[]),
+      ];
+      expect(cases.length, greaterThanOrEqualTo(13));
+      for (final (name, permissions) in cases) {
+        final member = uuid();
+        server.permissions[member] = permissions.toSet();
+        final audited = server.serverAudit.length;
+        final answer = await pull(member);
+        expect(byId(answer), everything, reason: name);
+        expect(
+          answer.presets.any((p) => p.id == ids['pregnancy'] && p.body['sensitive'] == true),
+          isTrue,
+          reason: name,
+        );
+        // Nothing is logged of a read that names no patient: no refusal, no read event.
+        expect(server.serverAudit.length, audited, reason: name);
+      }
+    });
+
+    test('refuses a member of another team, and logs it in the platform chain', () async {
+      // The fake logs no refusal (its header): what it holds is the 403, with nothing of the team's.
+      holdPresets(team);
+      holdPresets(otherTeam);
+      const outsider = 'e0000000-0000-4000-8000-00000000000e';
+      final programAdmin = (vectors('access')['cases']! as List<Object?>).cast<Map<String, Object?>>().singleWhere(
+        (c) => c['name'] == 'Program Admin',
+      );
+      // A Program Admin of the other team only: teamScope finds no active membership in this one.
+      server
+        ..permissions[outsider] = (programAdmin['permissions']! as List<Object?>).cast<String>().toSet()
+        ..removedFromTeam.add('$outsider/$team');
+      expect(byId(await pull(outsider, inTeam: otherTeam)), heldAbove(otherTeam));
+      await expectLater(
+        pull(outsider),
+        throwsA(
+          isA<ApiException>().having((e) => e.status, 'status', 403).having((e) => e.code, 'code', 'not_a_member'),
+        ),
+      );
+    });
+
+    test('takes no lock and no revision for a team that is up to date, and audits nothing', () async {
+      // The fake has no lock to take: what it holds is that a pull takes no revision and audits nothing.
+      holdPresets(team);
+      final before = revisionOf(team);
+      final audited = server.serverAudit.length;
+      await pull(blair);
+      await pull(blair, since: before, epoch: epochOf(team));
+      expect(revisionOf(team), before);
+      expect(server.serverAudit.length, audited);
+    });
+
+    test('never answers a kind outside the eight, in a pull, a pull since a revision or a reset', () async {
+      // Phase 10 adds billing_code_map, a ninth kind no phone reads (phase 10 design 4.3).
+      holdPresets(team);
+      final epoch = epochOf(team);
+      final r0 = revisionOf(team);
+      final billing = server.addPreset(team, 'billing_code_map', {'name': 'Demo: billing codes', 'codes': <Object?>[]});
+      expect(server.presetsOf(team).heads[billing]!.revision, r0 + 1);
+      final raw = await server.handle(blair, team, 'GET', '/v1/presets', null, query: {}) as Map<String, Object?>;
+      final kinds = {for (final p in (raw['presets']! as List<Object?>).cast<Map<String, Object?>>()) p['kind']};
+      expect(kinds.difference(FakeSyncServer.pulledPresetKinds), isEmpty);
+      final everything = await pull(blair);
+      expect(everything.presets.any((p) => p.id == billing), isFalse);
+      expect(everything.revision, r0);
+      // A pull since the last preset the phone reads holds nothing, and says so with its own revision.
+      expect((await pull(blair, since: r0, epoch: epoch)).toJson(), {
+        'reset': false,
+        'revision': r0,
+        'epoch': epoch,
+        'presets': <Object?>[],
+      });
+      final reset = await pull(blair, since: r0 + 5, epoch: epoch);
+      expect(reset.reset, isTrue);
+      expect(reset.presets.any((p) => p.id == billing), isFalse);
+    });
+
+    test('answers a fault while one is missing, and the head with its version once it is there', () async {
+      final ids = holdPresets(team);
+      final epoch = epochOf(team);
+      final r0 = revisionOf(team);
+      // A writer that moves a head on and writes no version for it, then an ordinary write after it.
+      final broken = ids['handwarmers']!;
+      final head = server.presetsOf(team).heads[broken]!;
+      final held = (version: head.currentVersion, body: head.versions[head.currentVersion]!);
+      final taken = server.takePresetRevision(team);
+      head
+        ..currentVersion += 1
+        ..revision = taken;
+      final after = server.addPreset(team, 'flag', {
+        'name': 'Demo: pulled after',
+        'tier': 'secondary',
+        'criteria': '',
+        'color': 'grey',
+        'rank': 90,
+        'sensitive': false,
+      });
+      expect(revisionOf(team), r0 + 2);
+
+      for (final (since, sent) in [(r0, epoch), (null, null)]) {
+        final audited = server.serverAudit.length;
+        await expectLater(
+          pull(blair, since: since, epoch: sent),
+          throwsA(isA<ApiException>().having((e) => e.status, 'status', 500).having((e) => e.code, 'code', 'internal')),
+          reason: '$since',
+        );
+        expect(server.serverAudit.length, audited);
+      }
+
+      // Repaired: the version written. The next pull since what the phone holds brings the head.
+      head.versions[held.version + 1] = held.body;
+      final answer = await pull(blair, since: r0, epoch: epoch);
+      expect([answer.reset, answer.revision], [false, r0 + 2]);
+      expect([for (final p in answer.presets) p.id]..sort(), [broken, after]..sort());
+      expect(answer.presets.singleWhere((p) => p.id == broken).version, held.version + 1);
+    });
+
+    // services/api/test/presets-store.test.ts, 'the pull of a team the platform has given nothing yet'.
+    test('answers no preset at revision 0 under a fixed epoch, then a reset under the team’s own', () async {
+      const unwritten = '7c3b2e4a-0d9f-4a8c-9e5d-3f4a5b6c7d8e';
+      const nil = FakeSyncServer.noPresetEpoch;
+      final first = await pull(blair, inTeam: unwritten);
+      expect(first.toJson(), {'reset': true, 'revision': 0, 'epoch': nil, 'presets': <Object?>[]});
+      expect((await pull(blair, since: 0, epoch: nil, inTeam: unwritten)).toJson(), {
+        ...first.toJson(),
+        'reset': false,
+      });
+      // A revision above the team's is a reset, answered with revision 0 when no preset comes with
+      // it, never the one sent (presets.ts: `reset ? 0`).
+      expect((await pull(blair, since: 3, epoch: nil, inTeam: unwritten)).toJson(), first.toJson());
+      // The read writes no state row.
+      expect(server.presetTeams.containsKey(unwritten), isFalse);
+
+      // The team's first revision makes its row, and its epoch: the next pull is a reset.
+      server.addPreset(unwritten, 'settings', {
+        'name': 'Team settings',
+        'bagMinimumsOn': false,
+        'newBagMinimums': <Object?>[],
+        'problemCheckDays': 90,
+      });
+      final second = await pull(blair, since: 0, epoch: nil, inTeam: unwritten);
+      expect(second.reset, isTrue);
+      expect(second.epoch, epochOf(unwritten));
+      expect(second.epoch, isNot(nil));
+      expect(second.presets, isNotEmpty);
+    });
+  });
 }

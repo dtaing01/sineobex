@@ -48,6 +48,22 @@ import 'test_note_types.dart';
 /// migration 0018 does (13); each answer checked against its type (14); the offline audit actions
 /// (15, the registry's); what a sync read shows of a note and what hangs off it (16); what is
 /// accepted with no effect (17). Each person has a credential, an attending's unless a test says.
+///
+/// Phase 5 (design 6.3), as services/api/src/routes/presets.ts builds it, each rule with its case
+/// in fake_parity_test.dart named as the API's own: the presets pull (`GET /v1/presets`), for any
+/// member of the team whatever the role, and refused to anyone else as every route is here; its
+/// query read before the team is, so a `since` that is not 1 to 19 digits or an `epoch` that is not
+/// a UUID is 422 whoever asks; a reset when `since` is left out, above the team's revision or past
+/// what a JavaScript number holds exactly, or when `epoch` is not the team's; the revision answered,
+/// the greatest among the presets answered, else `since`, else 0 on a reset; revision 0 and the nil
+/// UUID for a team that has taken no revision; archived presets answered, a kind no phone reads
+/// never; a fault (500) while a preset's current version is missing. A test writes each team's
+/// presets as the API's writers leave them ([addPreset], [editPreset], [archivePreset],
+/// [restorePreset]), each write under the team's next revision as takeRevision takes it, and renews
+/// an epoch as a database restore does ([renewPresetEpoch]). Not mirrored: the preset and note type
+/// installers and the platform updates they offer, which the API's pull runs first, so a pull here
+/// never writes; the admin routes (routes/presets-admin.ts, routes/note-types-admin.ts); and the
+/// `access.denied` event a refusal is logged with, which no route here writes.
 class FakeSyncServer {
   FakeSyncServer({required this.now});
 
@@ -569,6 +585,9 @@ class FakeSyncServer {
     if (signed != null) {
       result = await _signed(signed.group(1)!, signed.group(2)!, body!);
     } else {
+      // The route's schema reads the pull's query before its handler runs teamScope (app.ts), so a
+      // malformed one is refused whoever asks.
+      final presetsQuery = method == 'GET' && path == '/v1/presets' ? _pullQuery(query ?? const {}) : null;
       if (removedUsers.contains(userId) || removedFromTeam.contains('$userId/$teamId')) {
         throw const ApiException(403, 'not_a_member', 'You are not a member of this team.');
       }
@@ -594,6 +613,7 @@ class FakeSyncServer {
           _reviewDecision.firstMatch(path)![1]!,
           body!,
         ),
+        ('GET', '/v1/presets') => _pullPresets(teamId, presetsQuery!),
         ('GET', '/v1/time') => {'epochMs': now().millisecondsSinceEpoch, 'serverTime': now().toUtc().toIso8601String()},
         _ => throw ApiException(404, 'not_found', 'no route $method $path'),
       };
@@ -3356,6 +3376,157 @@ class FakeSyncServer {
     return _reviewView(review);
   }
 
+  // ---- the team's presets (phase 5 design 4.1, 4.2, 6.1; services/api/src/routes/presets.ts) ----
+
+  /// Each team's presets by team ID (team_preset_state, team_presets and team_preset_versions, 0023):
+  /// what `GET /v1/presets` reads. A team with no entry has no state row.
+  final presetTeams = <String, FakePresetTeam>{};
+
+  /// [teamId]'s presets, for a test to write or change, as the API's tests change rows.
+  FakePresetTeam presetsOf(String teamId) => presetTeams.putIfAbsent(teamId.toLowerCase(), FakePresetTeam.new);
+
+  /// Takes [teamId]'s next revision, as takeRevision does once in each write's transaction: the
+  /// team's first makes its state row, at revision 1 under a new epoch. A note type write takes one
+  /// too, and is no preset (design 4.3).
+  int takePresetRevision(String teamId) {
+    final team = presetsOf(teamId);
+    team.epoch ??= _uuid();
+    return ++team.revision;
+  }
+
+  /// A preset made online at version 1, under the team's next revision, as the store's create writes
+  /// one, or an installer with the platform preset's [originKey]. [body] is stored as given, not
+  /// checked, so a test can hold a phone to one it can't read. Returns its ID.
+  String addPreset(String teamId, String kind, Map<String, Object?> body, {String? id, String? originKey}) {
+    final presetId = id ?? _uuid();
+    final team = presetsOf(teamId);
+    if (team.heads.containsKey(presetId)) throw StateError('A preset with this ID exists.');
+    team.heads[presetId] = FakePreset(presetId, kind, originKey)
+      ..versions[1] = _copyJson(body)
+      ..currentVersion = 1
+      ..revision = takePresetRevision(teamId);
+    return presetId;
+  }
+
+  /// The preset [id]'s next version, [body], under the team's next revision, as an edit or an update
+  /// taken in place writes it: its kind, state and origin stay. Returns the version.
+  int editPreset(String teamId, String id, Map<String, Object?> body) {
+    final head = presetsOf(teamId).heads[id]!;
+    final version = head.currentVersion + 1;
+    head
+      ..versions[version] = _copyJson(body)
+      ..currentVersion = version
+      ..revision = takePresetRevision(teamId);
+    return version;
+  }
+
+  /// Archives the preset [id] at the version it is at, under the team's next revision.
+  void archivePreset(String teamId, String id) => presetsOf(teamId).heads[id]!
+    ..state = 'archived'
+    ..revision = takePresetRevision(teamId);
+
+  /// Restores the preset [id] at the version it is at, under the team's next revision.
+  void restorePreset(String teamId, String id) => presetsOf(teamId).heads[id]!
+    ..state = 'active'
+    ..revision = takePresetRevision(teamId);
+
+  /// A database restore renews every team's epoch (docs/setup.md), so a phone holding a copy from
+  /// before it replaces the copy at its next pull. The statement updates state rows only, so a team
+  /// with none keeps answering [noPresetEpoch]. Returns the epoch the team answers now.
+  String renewPresetEpoch(String teamId) {
+    final team = presetsOf(teamId);
+    if (team.epoch != null) team.epoch = _uuid();
+    return team.epoch ?? noPresetEpoch;
+  }
+
+  /// The kinds a phone reads (presets.ts PULLED_KINDS): never one a later phase adds for the server
+  /// alone, as phase 10's billing_code_map.
+  static const pulledPresetKinds = {
+    'order_category',
+    'item',
+    'bundle',
+    'flag',
+    'field_supply_map',
+    'condition_supply_map',
+    'bag',
+    'settings',
+  };
+
+  /// The epoch a team that has taken no revision answers (presets.ts NO_EPOCH).
+  static const noPresetEpoch = '00000000-0000-0000-0000-000000000000';
+
+  /// `since` as PresetsQuery reads it.
+  static final _presetsSince = RegExp(r'^\d{1,19}$');
+
+  /// A UUID as the API's `Uuid` (zod's uuid()) reads one: versions 1 to 8 of variant 8 to b, in
+  /// either case, or the nil UUID, or the max one in lowercase.
+  static final _zodUuid = RegExp(
+    r'^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|'
+    r'00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+  );
+
+  /// The greatest whole number a JavaScript number holds exactly (Number.MAX_SAFE_INTEGER).
+  static final _maxSafeInteger = BigInt.from(9007199254740991);
+
+  /// The pull's query as PresetsQuery reads it: `since` 1 to 19 digits and `epoch` a UUID, else 422
+  /// naming each. A `since` past what a JavaScript number holds exactly, which no team can have
+  /// taken, is read as one left out (presets.ts Number.isSafeInteger).
+  static ({int? since, String? epoch}) _pullQuery(Map<String, String> query) {
+    final since = query['since'];
+    final epoch = query['epoch'];
+    final unreadable = [
+      if (since != null && !_presetsSince.hasMatch(since)) ('since', 'invalid_format'),
+      if (epoch != null && !_zodUuid.hasMatch(epoch)) ('epoch', 'invalid_format'),
+    ];
+    if (unreadable.isNotEmpty) _unreadable(unreadable);
+    final sent = since == null ? null : BigInt.parse(since);
+    return (since: sent != null && sent <= _maxSafeInteger ? sent.toInt() : null, epoch: epoch);
+  }
+
+  /// GET /v1/presets (presets.ts pullPresets): every preset of the kinds a phone reads whose
+  /// revision is above `since`, archived ones included, each at its current version, by revision
+  /// then ID; every one of them on a reset. A pull is a reset when `since` is left out or above the
+  /// team's revision, or when `epoch` is not the team's, left out included; an epoch is compared as
+  /// the UUID it is, whatever its case. The revision answered is the greatest among the presets
+  /// answered, else `since`, else 0 on a reset; a team with no state row answers revision 0 and
+  /// [noPresetEpoch], and the read gives it none. A preset whose current version is missing is a
+  /// fault, never left out under a revision above it, after which no phone would ask for it again.
+  /// No pull takes a revision or audits anything.
+  Map<String, Object?> _pullPresets(String teamId, ({int? since, String? epoch}) query) {
+    final team = presetTeams[teamId.toLowerCase()] ?? FakePresetTeam();
+    final epoch = team.epoch ?? noPresetEpoch;
+    final since = query.since;
+    final reset = since == null || since > team.revision || query.epoch?.toLowerCase() != epoch;
+    final above = reset ? null : since;
+    final answered = [
+      for (final p in team.heads.values)
+        if (pulledPresetKinds.contains(p.kind) && (above == null || p.revision > above)) p,
+    ]..sort((a, b) => a.revision != b.revision ? a.revision.compareTo(b.revision) : a.id.compareTo(b.id));
+    if (answered.any((p) => !p.versions.containsKey(p.currentVersion))) {
+      throw const ApiException(500, 'internal', 'Something went wrong. Your data is safe; try again.');
+    }
+    return {
+      'reset': reset,
+      'revision': answered.isEmpty ? (above ?? 0) : answered.last.revision,
+      'epoch': epoch,
+      'presets': [
+        for (final p in answered)
+          {
+            'id': p.id,
+            'kind': p.kind,
+            'state': p.state,
+            'version': p.currentVersion,
+            'originKey': p.originKey,
+            'body': _copyJson(p.versions[p.currentVersion]!),
+          },
+      ],
+    };
+  }
+
+  /// A body as JSON carries it, so neither a test's map nor an answer's is shared with the server's.
+  static Map<String, Object?> _copyJson(Map<String, Object?> body) =>
+      jsonDecode(jsonEncode(body)) as Map<String, Object?>;
+
   // ---- reads ----
 
   /// POST /v1/sync/records (routes/sync.ts requireRead, review.ts fetchRecords): each kind of record
@@ -4037,6 +4208,43 @@ class FakeIdLink {
   final int received;
   final String issuedBy;
   final String? replaces;
+}
+
+/// One team's presets (0023): its state row's revision and epoch, and its presets by ID.
+class FakePresetTeam {
+  /// team_preset_state.revision: 0 until the team's first write takes one.
+  int revision = 0;
+
+  /// team_preset_state.epoch; null while the team has no state row.
+  String? epoch;
+
+  /// Each preset's head (team_presets), by ID.
+  final heads = <String, FakePreset>{};
+}
+
+/// A preset's head (team_presets) and its versions (team_preset_versions).
+class FakePreset {
+  FakePreset(this.id, this.kind, this.originKey);
+  final String id;
+
+  /// Fixed once made (0023's team_presets_kind_fixed).
+  final String kind;
+
+  /// The platform preset it came from; null for the team's own.
+  final String? originKey;
+
+  /// active or archived.
+  String state = 'active';
+
+  /// The version the head is at. A test that moves it past [versions] breaks the head as no writer
+  /// may (design 4.1), and the pull is then a fault.
+  int currentVersion = 0;
+
+  /// The revision of the write that last changed the head.
+  int revision = 0;
+
+  /// Each version's body, by version, never changed once written.
+  final versions = <int, Map<String, Object?>>{};
 }
 
 class _Receipt {
