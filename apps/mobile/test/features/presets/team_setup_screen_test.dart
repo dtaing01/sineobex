@@ -399,6 +399,39 @@ void main() {
     await expectShown(tester, find.text('Demo: Glucose test'));
   });
 
+  // The time is the phone's, as Home's "Last synced at" is: a phone whose clock is off from the
+  // server's (D35) still names, for a copy pulled a moment ago, the time its own clock shows.
+  for (final (name, ahead) in [
+    ('4 minutes ahead', const Duration(minutes: 4)),
+    ('2 hours ahead', const Duration(hours: 2)),
+    ('10 hours behind', const Duration(hours: -10)),
+  ]) {
+    testWidgets('“Updated” names the sync’s time as Home does, by the phone’s clock (the server $name)', (
+      tester,
+    ) async {
+      final h = await signIn(tester);
+      // 03:00 UTC by the phone's clock: 10 hours behind, the server's is the day before.
+      h
+        ..wall = fixtureNow.subtract(const Duration(hours: 12))
+        ..serverAhead = ahead;
+      await tester.runAsync(() => h.sync.checkClock(fresh: true));
+      await pulledEveryKind(tester, h);
+      h.server.offline = true;
+      await settle(tester);
+      final home = find.textContaining(RegExp('^Last synced at $time\\.\$'));
+      await expectShown(tester, home);
+      final synced = tester.widget<Text>(home).data!;
+      await openTeamSetup(tester);
+      final updated = find.textContaining(RegExp('^Updated '));
+      await expectShown(tester, updated);
+      expect(
+        tester.widget<Text>(updated).data,
+        'Updated ${synced.substring('Last synced at '.length, synced.length - 1)}',
+      );
+      expect(tester.widget<Text>(updated).data, matches(updatedToday));
+    });
+  }
+
   testWidgets('a copy from another day says the day it was updated', (tester) async {
     final h = await signIn(tester);
     await pulledEveryKind(tester, h);

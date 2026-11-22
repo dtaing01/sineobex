@@ -76,14 +76,10 @@ class PresetsRefresher implements AfterSyncRefresher {
 /// leave the refresher's store behind, as the screens' `servicesOpen` reads it.
 List<AfterSyncRefresher> presetRefreshers(OpenTeam team, {required LocalStore? Function() openStore}) => [
   PresetsRefresher(
-    // Clock-corrected, as the patient services date what they keep.
-    PresetStore(
-      team.store,
-      now: () {
-        final s = team.clock.stamp();
-        return s.correctedTime ?? s.deviceTime;
-      },
-    ),
+    // "Updated" is only shown, and expires nothing: dated by the phone's own clock, as Home dates
+    // the last sync (SyncController.lastSyncedAt) and as Team setup judges "today", so the two
+    // screens name one time for one sync even while the phone's clock is off from the server's.
+    PresetStore(team.store, now: () => team.clock.stamp().deviceTime),
     team.api,
     current: () => identical(openStore(), team.store),
   ),
