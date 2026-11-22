@@ -4,7 +4,8 @@
 // project lead's rule (Nov 21) is that a choice needing a person is built as a default, marked in
 // the code and listed in that document, which is reviewed once the MVP is built: a marker with no
 // row is a default nobody will be asked about. A marker names its row ("PLAN-OPEN (TM-6): …"); an
-// older one without a row id is matched to its row by decisions-check-rules.mjs, which only shrinks.
+// older one without a row id is matched to its row by decisions-check-rules.mjs, which holds its
+// words and only shrinks.
 //
 //   node tools/decisions-check.mjs [--list <file>]
 //
@@ -152,6 +153,23 @@ function paragraph(entries, n, p) {
 
 const marksIn = (text) => [...text.matchAll(/PLAN-OPEN/g)].map((m) => m.index);
 
+const WORDS = 60;
+/**
+ * What a rule holds of an older marker: what it says from "PLAN-OPEN" up to the next marker, cut at
+ * a word within WORDS characters. That tells it from every other marker of its file, so a marker
+ * written later, or one reworded, is not taken for it.
+ */
+export function wordsOf(own) {
+  const text = own
+    .slice(0, marksIn(own).find((m) => m > 0) ?? own.length)
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= WORDS) return text;
+  const cut = text.lastIndexOf(' ', WORDS);
+  // A long word near the start (a path, a link) is cut through, not dropped with all after it.
+  return text.slice(0, cut > WORDS / 2 ? cut : WORDS);
+}
+
 /** A string's text, and where in it the marker at column p of the source sits. */
 function inString(line, part, p, unescape) {
   const inner = line.slice(part.start + 1, part.open ? line.length : part.end - 1);
@@ -222,9 +240,9 @@ function questionAt(text, at) {
 }
 
 /**
- * Every marker in one file: its line, the row it names (or null), its question, and a problem
- * when it cannot be read as a marker. A line may hold several (a forms diff file's "why"); each is
- * its own. A comment's markers are read across its lines, so a row id may wrap.
+ * Every marker in one file: its line, the row it names (or null), its words and its question, and a
+ * problem when it cannot be read as a marker. A line may hold several (a forms diff file's "why");
+ * each is its own. A comment's markers are read across its lines, so a row id may wrap.
  */
 export function markersIn(file, text) {
   const lines = text.split(/\r?\n/);
@@ -249,6 +267,7 @@ export function markersIn(file, text) {
       found.push({
         ...at,
         id,
+        words: wordsOf(own),
         question: questionAt(where.text, where.at) + (where.on ? ` [on: ${where.on}]` : ''),
         problem: like
           ? `"${like[0]}" is not a row id: write it as in "${EXAMPLE}", with PL, BM, CO or TM (a row of "Before the first real patient" needs no decision, so no marker names one)`
@@ -339,15 +358,33 @@ export function readRows(doc) {
 
 const nMarkers = (n) => `${n} marker${n === 1 ? '' : 's'}`;
 
+// A rule is [row, words] or [row, words, count], its words as wordsOf cuts them.
 const isRule = (r) =>
   Array.isArray(r) &&
-  (r.length === 3 || r.length === 4) &&
+  (r.length === 2 || r.length === 3) &&
   typeof r[0] === 'string' &&
   ROW.test(r[0]) &&
   typeof r[1] === 'string' &&
-  Number.isInteger(r[2]) &&
-  r[2] > 0 &&
-  (r.length === 3 || (r[3] instanceof RegExp && !r[3].global && !r[3].sticky));
+  r[1].startsWith(MARK) &&
+  wordsOf(r[1]) === r[1] &&
+  (r.length === 2 || (Number.isInteger(r[2]) && r[2] > 0));
+
+/** The rules of decisions-check-rules.mjs as one list, each with its file; one it can't read is a problem. */
+function ruleList(rules, problems) {
+  if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) {
+    problems.push(`${RULES_FILE}: RULES is not the files, each with its rules`);
+    return [];
+  }
+  return Object.entries(rules).flatMap(([file, list]) =>
+    (Array.isArray(list) ? list : [list]).flatMap((r, i) => {
+      if (isRule(r)) return [{ row: r[0], file, words: r[1], count: r[2] ?? 1 }];
+      problems.push(
+        `${RULES_FILE}: rule ${i + 1} for ${file} is not [row, words] or [row, words, count], with the words as the check cuts them`,
+      );
+      return [];
+    }),
+  );
+}
 
 /**
  * The check. `markers` as markersIn gives them, `rules` as decisions-check-rules.mjs holds them,
@@ -357,12 +394,9 @@ const isRule = (r) =>
  */
 export function checkDecisions({ doc, markers, rules, exists }) {
   const { rows, problems } = readRows(doc);
-  const usable = rules.map(isRule);
-  rules.forEach((r, i) => {
-    if (!usable[i])
-      problems.push(`${RULES_FILE}: rule ${i + 1} is not [row, file, count] or [row, file, count, pattern]`);
-  });
-  const takes = rules.map(() => []);
+  const list = ruleList(rules, problems);
+  const nameOf = (r) => `the rule for ${r.row} in ${r.file} ("${r.words}")`;
+  const takes = list.map(() => []);
   const assigned = [];
   for (const mk of markers) {
     const loc = `${mk.file}:${mk.line}`;
@@ -370,12 +404,10 @@ export function checkDecisions({ doc, markers, rules, exists }) {
     if (mk.problem) problems.push(`${loc}: ${mk.problem}`);
     else if (mk.id) row = mk.id;
     else {
-      const hits = rules.flatMap((r, i) =>
-        usable[i] && r[1] === mk.file && (r.length === 3 || r[3].test(mk.question)) ? [i] : [],
-      );
+      const hits = list.flatMap((r, i) => (r.file === mk.file && r.words === mk.words ? [i] : []));
       const q = mk.question.length > 100 ? `${mk.question.slice(0, 100)}…` : mk.question;
       if (hits.length === 1) {
-        row = rules[hits[0]][0];
+        row = list[hits[0]].row;
         takes[hits[0]].push(mk);
       } else if (hits.length === 0)
         problems.push(
@@ -383,7 +415,7 @@ export function checkDecisions({ doc, markers, rules, exists }) {
         );
       else
         problems.push(
-          `${loc}: the rules ${hits.map((i) => rules[i][0] + (rules[i][3] ? ` ${rules[i][3]}` : '')).join(', ')} all take this marker, which belongs to one row: name it, as in "${EXAMPLE}" ("${q}")`,
+          `${loc}: the rules for ${hits.map((i) => list[i].row).join(', ')} all hold its words, and it belongs to one row: name it, as in "${EXAMPLE}" ("${q}")`,
         );
     }
     assigned.push({ ...mk, row });
@@ -393,10 +425,9 @@ export function checkDecisions({ doc, markers, rules, exists }) {
       problems.push(`${loc}: row ${row}'s Where does not name ${mk.file}`);
   }
 
-  rules.forEach((r, i) => {
-    if (!usable[i]) return;
-    const [row, file, count] = r;
-    const name = `the rule for ${row} in ${file}${r[3] ? ` (${r[3]})` : ''}`;
+  list.forEach((r, i) => {
+    const { row, count } = r;
+    const name = nameOf(r);
     if (!rows.has(row)) problems.push(`${RULES_FILE}: ${name} names a row that is not in ${DOC}`);
     const n = takes[i].length;
     // A rule takes the markers it was written for and no more, so a new marker names its row.
