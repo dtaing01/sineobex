@@ -6,3 +6,5 @@
 // (test/import-path.test.ts holds this).
 // The body of each kind (phase 5 design 4.4).
 export * from './schemas.ts';
+// When a problem is due a status check (5.3).
+export * from './problem-check.ts';
