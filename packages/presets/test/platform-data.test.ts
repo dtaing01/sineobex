@@ -32,14 +32,15 @@ import type { FieldSupplyMapBody, PresetBody, PresetKind, PresetRef } from '../s
 // PLAN-OPEN (BM-63): do safer-use supplies and naloxone count as Non-Medical? The Naloxone kit is
 // in OTC, so Medical, and the safer-use kits are in Supplies, so their bundles are Non-Medical.
 // PLAN-OPEN (BM-67): which flags ship? Primary High, Medium and Low in red, yellow and green, each
-// with the PRD's six suggested starting criteria to rewrite; secondary Frost risk, Dehydration
-// risk and Pregnancy, sensitive.
+// with the PRD's six suggested starting criteria to rewrite; secondary Frost risk in blue,
+// Dehydration risk in orange and Pregnancy in purple, sensitive, with no criteria of their own.
 // PLAN-OPEN (CO-13): does a flag about substance use fall under 42 CFR Part 2? No such flag ships
 // until counsel answers.
 // PLAN-OPEN (BM-81): are bag minimums on for a new team? Off, with an empty template.
 // PLAN-OPEN (BM-76): when is a problem due a status check? After 90 days, by default.
 // PLAN-OPEN (BM-79): what do the 18 bundles and the starter items hold, and how is each tagged?
-// What the PRD's words give, else one kit named after the bundle; the tags as 4.6's table.
+// What the PRD's words give, else one kit named after the bundle, Medical as its bundle is; the
+// tags as 4.6's table; one of each line's item, as the PRD gives no quantity.
 // PLAN-OPEN (BM-74): which bundles ask a prompt first? Summer/dehydration, Winter/frostbite and
 // Cold/flu, one each in plain words.
 // PLAN-OPEN (BM-80): which fields drive the default mappings? Fields that record something given:
