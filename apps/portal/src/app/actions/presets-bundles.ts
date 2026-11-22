@@ -2,8 +2,16 @@
 
 import { revalidatePath } from 'next/cache';
 import type { ActionState } from '@/lib/forms';
-import { createPreset, presetFailure, readLines, sentValues } from '@/lib/presets';
-import type { PresetRefusalContext } from '@/lib/refusals';
+import {
+  createPreset,
+  editPreset,
+  namedPreset,
+  presetFailure,
+  presetNow,
+  readLines,
+  sentValues,
+} from '@/lib/presets';
+import { presetRefusalState, type PresetRefusalContext } from '@/lib/refusals';
 
 /**
  * Adding a bundle and editing one (phase 5 design 4.4, 5.1, 8.1): the Bundles pages' own forms.
@@ -16,6 +24,7 @@ import type { PresetRefusalContext } from '@/lib/refusals';
 
 const LIST = '/team/presets/bundles';
 const KIND = 'bundle';
+const LOST = 'This can’t be found. Reload the page.';
 
 /** The forms' words for the body's fields, for the error summary and beside each field. */
 const CONTEXT: Omit<PresetRefusalContext, 'act'> = {
@@ -61,4 +70,26 @@ export async function addBundleAction(_: ActionState, form: FormData): Promise<A
   }
   revalidatePath(LIST);
   return { ok: true, message: `Added: ${body.name}. It’s on the phones after their next sync.` };
+}
+
+/**
+ * Edits a bundle at the version shown: its name, its tag, its lines and its prompt. Any field of
+ * its body the form doesn't show is sent as the API lists it now, so nothing is lost.
+ */
+export async function saveBundleAction(_: ActionState, form: FormData): Promise<ActionState> {
+  const values = sentValues(form);
+  const preset = namedPreset({ ...values, kind: KIND });
+  if (!preset || preset.baseVersion === null) return { error: LOST, values };
+  const context = { ...CONTEXT, act: 'save' as const };
+  const fields = typedBody(values, form);
+  try {
+    const now = await presetNow(KIND, preset.id);
+    if (!now) return presetRefusalState({ code: 'not_found', message: '' }, values, context);
+    await editPreset(KIND, preset.id, preset.baseVersion, { ...now.body, ...fields }, values.reason ?? '');
+  } catch (err) {
+    return presetFailure(err, values, context);
+  }
+  revalidatePath(`${LIST}/${preset.id}`);
+  revalidatePath(LIST);
+  return { ok: true, message: `Saved: ${fields.name}. It’s on the phones after their next sync.` };
 }
