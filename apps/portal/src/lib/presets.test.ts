@@ -1,6 +1,20 @@
 import { redirect } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { hubAreas, PRESET_AREAS, readHub, type HubLists, type PresetKind } from './presets';
+import type * as Api from './api';
+import { PortalApiError } from './api';
+import {
+  donePath,
+  hubAreas,
+  namedPreset,
+  PRESET_AREAS,
+  presetFailure,
+  presetPage,
+  readHub,
+  readLines,
+  sentValues,
+  type HubLists,
+  type PresetKind,
+} from './presets';
 
 // What the portal's preset pages read of the admin routes (phase 5 design 7, 8.1). The API answers
 // every list here; `answers` stands in for it, kind by kind, and `asked` records the order the
@@ -8,7 +22,8 @@ import { hubAreas, PRESET_AREAS, readHub, type HubLists, type PresetKind } from 
 const asked: string[] = [];
 let answers: (kind: PresetKind) => Promise<unknown>;
 
-vi.mock('./api', () => ({
+vi.mock('./api', async (importOriginal) => ({
+  ...(await importOriginal<typeof Api>()),
   api: async () => ({
     GET: async (_path: string, init: { params: { path: { kind: PresetKind } } }) => {
       const { kind } = init.params.path;
@@ -126,5 +141,115 @@ describe('reading the hub', () => {
     await expect(readHub()).rejects.toMatchObject({ digest: expect.stringContaining('NEXT_REDIRECT') });
     // One request, so the API logs one access.denied.
     expect(asked.filter((a) => a.startsWith('ask'))).toHaveLength(1);
+  });
+});
+
+const ITEM = '30a00000-0000-4000-8000-000000000001';
+const OTHER = '30a00000-0000-4000-8000-000000000002';
+
+describe('what a preset form sent', () => {
+  it('keeps every text but React’s own fields for the action', () => {
+    const form = new FormData();
+    form.set('$ACTION_ID_abc', '');
+    form.set('$ACTION_REF_1', '');
+    form.set('name', 'Demo: Rainy night');
+    form.set('lines.0.itemId', ITEM);
+    form.set('photo', new Blob(['x']));
+    expect(sentValues(form)).toEqual({ name: 'Demo: Rainy night', 'lines.0.itemId': ITEM });
+  });
+
+  it('reads a bundle’s lines in order, as the body holds them', () => {
+    const form = new FormData();
+    form.set('lines.count', '3');
+    form.set('lines.0.itemId', ITEM);
+    form.set('lines.0.qty', '2');
+    form.set('lines.0.core', 'on');
+    form.set('lines.1.itemId', OTHER);
+    form.set('lines.1.qty', ' 1 ');
+    form.set('lines.2.itemId', '');
+    form.set('lines.2.qty', 'two');
+    form.set('minimums.0.itemId', ITEM);
+    expect(readLines(form, 'lines', { quantity: 'qty', core: true })).toEqual([
+      { itemId: ITEM, qty: 2, core: true },
+      { itemId: OTHER, qty: 1, core: false },
+      // As typed, so the API names the line to fix.
+      { itemId: '', qty: 'two', core: false },
+    ]);
+  });
+
+  it('reads a list with no Core, by its own quantity, and none when it sent none', () => {
+    const form = new FormData();
+    form.set('minimums.count', '1');
+    form.set('minimums.0.itemId', ITEM);
+    form.set('minimums.0.min', '12');
+    expect(readLines(form, 'minimums', { quantity: 'min' })).toEqual([{ itemId: ITEM, min: 12 }]);
+    expect(readLines(form, 'lines', { quantity: 'qty', core: true })).toEqual([]);
+  });
+});
+
+describe('where an act on a preset comes back to', () => {
+  it('is a page of Team setup’s, by path alone, the form’s own choice first', () => {
+    expect(presetPage('/team/presets/items', '/team/presets/items/' + ITEM)).toBe('/team/presets/items');
+    expect(presetPage(undefined, '/team/presets/bundles/' + ITEM)).toBe('/team/presets/bundles/' + ITEM);
+    expect(presetPage(undefined, '/team/presets')).toBe('/team/presets');
+  });
+
+  it('is never another page, an address with more than a path, or another site', () => {
+    for (const crafted of [
+      '/home',
+      '/team/presetsx',
+      '/team/presets/../members',
+      '/team/presets/items?done=removed',
+      '/team/presets/items#x',
+      '//elsewhere.example.com/team/presets',
+      'https://elsewhere.example.com/team/presets',
+      '/team/presets/Items',
+    ])
+      expect(presetPage(crafted, null), crafted).toBe('/team/presets');
+  });
+
+  it('says what was done to which preset, by an act’s name and an ID only', () => {
+    expect(donePath('/team/presets/items', 'removed', ITEM)).toBe(
+      `/team/presets/items?done=removed&preset=${ITEM}`,
+    );
+  });
+
+  it('names a preset only as a page writes one', () => {
+    expect(namedPreset({ kind: 'item', id: ITEM, baseVersion: '3' })).toEqual({
+      kind: 'item',
+      id: ITEM,
+      baseVersion: 3,
+    });
+    expect(namedPreset({ kind: 'bag', id: ITEM })).toEqual({ kind: 'bag', id: ITEM, baseVersion: null });
+    expect(namedPreset({ kind: 'note_type', id: ITEM })).toBeNull();
+    expect(namedPreset({ kind: 'item', id: 'not-an-id' })).toBeNull();
+    for (const baseVersion of ['0', '1.5', '', 'x', '9007199254740993'])
+      expect(namedPreset({ kind: 'item', id: ITEM, baseVersion }), baseVersion).toBeNull();
+  });
+});
+
+describe('a preset form the API refused', () => {
+  it('shows the refusal’s sentence and keeps what was sent', () => {
+    const state = presetFailure(
+      new PortalApiError(409, 'stale', 'm', { currentVersion: 4 }),
+      { reason: 'Demo: a reason' },
+      { kind: 'item', act: 'remove' },
+    );
+    expect(state).toEqual({
+      error: 'Someone else changed this while you were editing. Reload to see their version.',
+      values: { reason: 'Demo: a reason' },
+    });
+  });
+
+  it('lets anything that is no refusal go on up: a sign-in to renew, a lost connection', () => {
+    let reauth: unknown;
+    try {
+      redirect('/reauth?next=%2Fteam%2Fpresets%2Fitems');
+    } catch (err) {
+      reauth = err;
+    }
+    expect(() => presetFailure(reauth, {}, { kind: 'item', act: 'remove' })).toThrow(reauth as Error);
+    const lost = new TypeError('fetch failed');
+    expect(() => presetFailure(lost, {}, { kind: 'item', act: 'remove' })).toThrow(lost);
   });
 });
