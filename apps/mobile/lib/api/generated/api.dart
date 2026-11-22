@@ -2387,6 +2387,54 @@ class DuplicatePairSummary {
       };
 }
 
+class EditPreset {
+  const EditPreset({
+    required this.baseVersion,
+    this.body,
+    required this.reason,
+  });
+
+  /// The version you opened: any other is refused as stale, with the current one
+  final int baseVersion;
+  /// Required: the preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets
+  final Object? body;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory EditPreset.fromJson(Map<String, dynamic> json) => EditPreset(
+        baseVersion: (json['baseVersion'] as num).toInt(),
+        body: json['body'],
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'baseVersion': baseVersion,
+        'body': body,
+        'reason': reason,
+      };
+}
+
+class EditPresetResult {
+  const EditPresetResult({
+    required this.revision,
+    required this.version,
+  });
+
+  /// The team’s revision this write took: a phone’s next pull gets the change
+  final int revision;
+  final int version;
+
+  factory EditPresetResult.fromJson(Map<String, dynamic> json) => EditPresetResult(
+        revision: (json['revision'] as num).toInt(),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'revision': revision,
+        'version': version,
+      };
+}
+
 class ErrorResponse {
   const ErrorResponse({
     required this.error,
@@ -6816,6 +6864,12 @@ class SineobexApi {
   Future<TeamIndexPage> downloadTeamIndex({required TeamIndexRequest body}) async {
     final json = await _transport.send('POST', '/v1/patients/index', body: body.toJson());
     return TeamIndexPage.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Give a preset its next version, with a reason (recent sign-in); what is fixed at creation stays
+  Future<EditPresetResult> editPreset({required String kind, required String id, required EditPreset body}) async {
+    final json = await _transport.send('PUT', '/v1/admin/presets/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}', body: body.toJson());
+    return EditPresetResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Charts for the phone’s 24-hour cache, with every redirect that touches them. Gzipped.
