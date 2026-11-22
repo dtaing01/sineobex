@@ -661,6 +661,16 @@ const usedByOf = (referencedBy: Record<string, number>) => {
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
 };
 
+/**
+ * A category with a long name, made once: the item forms' Category select offers it, so a reflow
+ * check at 320 px also checks the select never widens the page, whichever cases ran before.
+ */
+async function longCategory(): Promise<void> {
+  const name = 'Demo: Supplies for the winter outreach van and the shelter';
+  if ((await listed('order_category')).some((c) => c.name === name)) return;
+  await made('order_category', { name, behaviour: 'supply', sort: 990 });
+}
+
 const STALE = 'Someone else changed this while you were editing. Reload to see their version.';
 
 /** A stale sign-in for the admin: their next write goes through /reauth. */
@@ -790,6 +800,7 @@ test.describe('items, /team/presets/items', () => {
     page,
   }) => {
     test.slow();
+    await longCategory();
     await signIn(page, 'admin@example.com');
     const traffic = watchTraffic(page);
     await page.goto(PAGE);
@@ -1014,6 +1025,7 @@ test.describe('an item, /team/presets/items/[id]', () => {
     page,
   }) => {
     test.slow();
+    await longCategory();
     const id = await itemIn('Supplies', { name: 'Demo: Wool socks', unit: 'pair' });
     await made('bundle', {
       name: 'Demo: Cold feet',

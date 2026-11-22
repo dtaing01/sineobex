@@ -53,7 +53,7 @@ export function CategorySelect({
       <select
         id={id}
         name="categoryId"
-        className="px-select"
+        className={`px-select ${styles.choose}`}
         defaultValue={value}
         key={value}
         aria-invalid={error ? true : undefined}
