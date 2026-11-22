@@ -527,6 +527,48 @@ describe('a request that is not well formed (design 7)', () => {
     expect([404, 422]).toContainEqual(r.status);
     await expectNothingWritten(h, team.teamId, before);
   });
+
+  it('refuses a base version that is not a whole number from 1 as malformed, naming it, never as stale', async () => {
+    // As stale, the answer would send the person to reload a preset nobody else changed.
+    const body = make.flag();
+    const { id } = await createdPreset(api, 'flag', body);
+    const bases: [string, Record<string, unknown>][] = [
+      ['as text', { baseVersion: '1' }],
+      ['fractional', { baseVersion: 1.5 }],
+      ['zero', { baseVersion: 0 }],
+      ['null', { baseVersion: null }],
+      ['beyond the column', { baseVersion: 2 ** 31 }],
+      ['left out', {}],
+    ];
+    for (const [label, base] of bases) {
+      const sends: [string, () => Promise<Answer>][] = [
+        [
+          'edit',
+          () =>
+            api.send('PUT', `/v1/admin/presets/flag/${id}`, {
+              ...base,
+              body: FREE_CHANGE.flag(body),
+              reason: REASON,
+            }),
+        ],
+        [
+          'archive',
+          () => api.send('POST', `/v1/admin/presets/flag/${id}/archive`, { ...base, reason: REASON }),
+        ],
+      ];
+      for (const [act, send] of sends) {
+        const before = await footprint(h, team.teamId);
+        const r = await send();
+        expect(r.status, `${act}, ${label}: ${JSON.stringify(r.body)}`).toBe(422);
+        expect(errorOf(r).code, `${act}, ${label}`).toBe('validation_failed');
+        expect(
+          (errorOf(r).details!.fields as { path: string }[]).map((f) => f.path),
+          `${act}, ${label}`,
+        ).toContainEqual('baseVersion');
+        await expectNothingWritten(h, team.teamId, before);
+      }
+    }
+  });
 });
 
 describe('editing a preset (design 5.1, 7)', () => {
@@ -1139,6 +1181,12 @@ describe('the admin list (design 7)', () => {
     expect(listed.filter((n) => names.includes(n))).toEqual(names);
     const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
     expect(listed).toEqual([...listed].sort((a, b) => collator.compare(a, b)));
+  });
+
+  it('writes no audit event: presets hold no patient data (PL-13)', async () => {
+    const mark = await auditMark(h);
+    expect((await api.list('flag')).status).toBe(200);
+    expect(await auditAfter(h, mark)).toEqual([]);
   });
 
   it('names no other team’s preset', async () => {
