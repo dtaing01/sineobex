@@ -43,6 +43,11 @@ the commit.
 export PATH=/opt/flutter/bin:/opt/bin:$PATH        # flutter, deno, gitleaks, actionlint
 pg_isready -h localhost || pg_ctlcluster 16 main start   # Postgres is down after a machine restart
 su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres'\""   # a fresh machine's Postgres has none
+# CI's Postgres images sort text as en_US.UTF-8; make every new database do the same. The server
+# reads its locales when it starts, so restart it after making one (before anything uses it).
+locale -a | grep -qx en_US.utf8 || { localedef -i en_US -f UTF-8 en_US.UTF-8 && pg_ctlcluster 16 main restart; }
+su postgres -c "psql -qAtc \"select datcollate from pg_database where datname = 'template1'\"" | grep -qx en_US.UTF-8 ||
+  su postgres -c "psql -q -c \"update pg_database set datistemplate = false where datname = 'template1'\" -c 'drop database template1' -c \"create database template1 template template0 locale 'en_US.UTF-8'\" -c \"update pg_database set datistemplate = true where datname = 'template1'\""
 pnpm install --frozen-lockfile
 (cd apps/mobile && flutter pub get --enforce-lockfile)
 export TEST_ADMIN_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
@@ -84,7 +89,10 @@ that look like bugs.
 anything is pushed. Without `PW_CHROMIUM_PATH` the portal tests can't start a browser.
 Local Postgres is 16; CI also runs 17, so don't rely on version-specific behaviour (the
 `unaccent` dictionary differs between them: that is why `normalize_name` is pinned, migration
-0015).
+0015). Nor on how text sorts: CI's databases sort by en_US.UTF-8 rules, which pass over `_` and
+other punctuation (`safer_crack_use` comes before `safe_smoking`), where C.UTF-8 sorts by code
+point. A test that compares an `order by` on text with a list built in code orders it
+`collate "C"`.
 
 ## Conventions
 

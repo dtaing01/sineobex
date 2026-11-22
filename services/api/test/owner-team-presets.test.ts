@@ -77,11 +77,12 @@ describe('creating a team', () => {
     expect(created.status).toBe(201);
     const teamId = created.body.id as string;
 
+    // Keys in code-point order, as the sorted list below: CI's databases sort text by en_US rules, which pass over '_'.
     const heads = await h.scratch.owner<Json[]>`
       select kind, origin_key as "originKey", state, current_version as "currentVersion",
              origin_version as "originVersion", platform_latest as "platformLatest", customized,
              revision::int as revision, created_by as "createdBy"
-      from sineobex.team_presets where team_id = ${teamId} order by origin_key`;
+      from sineobex.team_presets where team_id = ${teamId} order by origin_key collate "C"`;
     expect(heads).toEqual(
       [...newest]
         .sort((a, b) => (a.originKey < b.originKey ? -1 : 1))

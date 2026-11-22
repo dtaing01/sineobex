@@ -171,12 +171,13 @@ describe('installing the platform presets', () => {
   const asTeam = <T>(teamId: string, run: (tx: TransactionSql) => Promise<T>) =>
     asApp(db.appUrl, { teamId, userId: user }, run);
 
+  // Keys in code-point order, as the lists the tests build: CI's databases sort text by en_US rules, which pass over '_'.
   const headsOf = (teamId: string) =>
     db.owner<Head[]>`
       select id, kind, name, state, current_version as "currentVersion", origin_key as "originKey",
              origin_version as "originVersion", platform_latest as "platformLatest", customized,
              revision::int as revision, created_by as "createdBy", updated_by as "updatedBy"
-      from sineobex.team_presets where team_id = ${teamId} order by origin_key, id`;
+      from sineobex.team_presets where team_id = ${teamId} order by origin_key collate "C", id`;
   const versionsOf = (teamId: string) =>
     db.owner<Version[]>`
       select preset_id as "presetId", version, body, source, created_by as "createdBy"
@@ -777,10 +778,11 @@ describe('the seed', () => {
   afterAll(() => db.drop());
 
   it('gives both seeded teams every platform preset, and a second seed changes nothing', async () => {
+    // Keys in code-point order, as the sorted list below: CI's databases sort text by en_US rules, which pass over '_'.
     const snapshot = async (teamId: string) => ({
       heads: await db.owner<{ originKey: string; kind: string; currentVersion: number; revision: string }[]>`
         select origin_key as "originKey", kind, current_version as "currentVersion", revision::text as revision
-        from sineobex.team_presets where team_id = ${teamId} order by origin_key`,
+        from sineobex.team_presets where team_id = ${teamId} order by origin_key collate "C"`,
       versions: await db.owner<{ n: number }[]>`
         select count(*)::int as n from sineobex.team_preset_versions where team_id = ${teamId}`,
       events: await db.owner<{ n: number }[]>`

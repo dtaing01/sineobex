@@ -564,10 +564,12 @@ describe('0023 team presets', () => {
       await insertEvent(
         event({ note_type_key: key, act: 'updated', version: 2, reason: 'Demo: a new field' }),
       );
+      // Acts in code-point order: CI's databases sort text by en_US rules, which pass over '_'.
       const rows = await inTeam(
         (tx) => tx`
           select preset_id, note_type_key, act, version, reason, created_by
-          from sineobex.team_preset_events where preset_id = ${id} or note_type_key = ${key} order by act`,
+          from sineobex.team_preset_events where preset_id = ${id} or note_type_key = ${key}
+          order by act collate "C"`,
       );
       expect(rows).toEqual([
         {
@@ -1452,6 +1454,7 @@ describe('0023 team presets', () => {
     });
 
     it('gives the app role every right but delete, no update of a version or an event, and of a state row only its revision', async () => {
+      // Names in code-point order, as the list below: CI's databases sort text by en_US rules, which pass over '_'.
       const rights = await db.owner<
         { table: string; read: boolean; add: boolean; change: boolean; remove: boolean }[]
       >`
@@ -1460,7 +1463,7 @@ describe('0023 team presets', () => {
                has_table_privilege('sineobex_app', 'sineobex.' || t, 'insert') as add,
                has_table_privilege('sineobex_app', 'sineobex.' || t, 'update') as change,
                has_table_privilege('sineobex_app', 'sineobex.' || t, 'delete') as remove
-        from unnest(${TABLES}::text[]) t order by t`;
+        from unnest(${TABLES}::text[]) t order by t collate "C"`;
       expect(rights).toEqual([
         { table: 'note_types', read: true, add: true, change: true, remove: false },
         { table: 'team_preset_events', read: true, add: true, change: false, remove: false },
