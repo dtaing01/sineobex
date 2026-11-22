@@ -5,6 +5,7 @@ import {
   type Preset,
   type ResolvedNoteType,
 } from '@sineobex/forms';
+import { installTeamPresets, totalsOf } from '@sineobex/presets';
 import type { Sql } from 'postgres';
 import { DEMO_ENVIRONMENTS, getEnvironment } from '../src/migrate.ts';
 import { seedDemoEncounters } from './demo-encounters.ts';
@@ -164,10 +165,16 @@ export async function seed(
     log(`  ${patients} made-up patients`);
 
     // Every note type version the platform ships, in both teams, as team creation does (forms
-    // 3.2). Platform scope is set above; a second run writes nothing.
+    // 3.2), and then every platform preset, whose maps read those note types (phase 5 design 5.2).
+    // Platform scope is set above; a second run writes nothing.
     for (const teamId of [DEMO_TEAM_ID, NEIGHBOUR_TEAM_ID]) {
       const { installed } = await installPresets(tx, teamId, { presets: options.presets });
       log(`  ${installed.length} note type version(s) installed in team ${teamId}`);
+      const presets = totalsOf(await installTeamPresets(tx, teamId));
+      log(
+        `  platform presets in team ${teamId}: ${presets.install} installed, ${presets.update} updated, ` +
+          `${presets.offer} offered, ${presets.skipped} skipped`,
+      );
     }
 
     // Visits need the note types above, and staff whose credentials sign them: the preview has

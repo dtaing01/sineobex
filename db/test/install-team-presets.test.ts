@@ -8,6 +8,8 @@ import {
 } from '@sineobex/presets';
 import postgres, { type ReservedSql, type Sql, type TransactionSql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { NEIGHBOUR_TEAM_ID } from '../seed/demo-patients.ts';
+import { DEMO_TEAM_ID, seed } from '../seed/seed.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
 import { asApp, makeTeam, makeUser } from './helpers.ts';
 
@@ -17,8 +19,9 @@ import { asApp, makeTeam, makeUser } from './helpers.ts';
 // offered. Each install and update writes its team_preset_events row with no reason and no author;
 // an offer writes none. A run takes one revision, plans again under the team lock, writes nothing
 // a second time, leaves other teams alone, and skips and counts what validatePreset refuses. A map
-// is checked against the note types the team offers, each at its current version. The plan itself
-// is held in packages/presets/test/install.test.ts. Made-up teams, people and presets.
+// is checked against the note types the team offers, each at its current version, and the seed
+// gives both its teams the same. The plan itself is held in packages/presets/test/install.test.ts.
+// Made-up teams, people and presets.
 //
 // The signature these tests call (P0-install), from '@sineobex/presets':
 //
@@ -606,5 +609,40 @@ describe('installing the platform presets', () => {
       expect(await revisionOf(team)).toBe(2);
       expect((await headsOf(team))[0]!.revision).toBe(2);
     });
+  });
+});
+
+describe('the seed', () => {
+  let db: ScratchDatabase;
+  beforeAll(async () => {
+    db = await createScratchDatabase();
+  });
+  afterAll(() => db.drop());
+
+  it('gives both seeded teams every platform preset, and a second seed changes nothing', async () => {
+    const snapshot = async (teamId: string) => ({
+      heads: await db.owner<{ originKey: string; kind: string; currentVersion: number; revision: string }[]>`
+        select origin_key as "originKey", kind, current_version as "currentVersion", revision::text as revision
+        from sineobex.team_presets where team_id = ${teamId} order by origin_key`,
+      versions: await db.owner<{ n: number }[]>`
+        select count(*)::int as n from sineobex.team_preset_versions where team_id = ${teamId}`,
+      events: await db.owner<{ n: number }[]>`
+        select count(*)::int as n from sineobex.team_preset_events where team_id = ${teamId}`,
+      state: await db.owner<{ revision: string }[]>`
+        select revision::text as revision from sineobex.team_preset_state where team_id = ${teamId}`,
+    });
+    const newest = newestOf(PLATFORM);
+    await seed(db.owner);
+    const first = [await snapshot(DEMO_TEAM_ID), await snapshot(NEIGHBOUR_TEAM_ID)];
+    for (const team of first) {
+      // Every entry, the maps among them: the seed installs the note types first.
+      expect(team.heads.map((h) => h.originKey)).toEqual(newest.map((e) => e.originKey).sort());
+      expect(team.heads.every((h) => h.currentVersion === 1 && h.revision === '1')).toBe(true);
+      expect(team.versions).toEqual([{ n: newest.length }]);
+      expect(team.events).toEqual([{ n: newest.length }]);
+      expect(team.state).toEqual([{ revision: '1' }]);
+    }
+    await seed(db.owner);
+    expect([await snapshot(DEMO_TEAM_ID), await snapshot(NEIGHBOUR_TEAM_ID)]).toEqual(first);
   });
 });
