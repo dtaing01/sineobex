@@ -2,9 +2,12 @@ import { createElement, Fragment, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ActionForm } from '@/components/ActionForm';
+import { CheckField } from './CheckField';
 import { ChoiceGroup } from './ChoiceGroup';
+import { FixedFact } from './FixedFact';
 import { FreeText } from './FreeText';
 import { ItemLines, type ItemLinesProps } from './ItemLines';
+import { LongText } from './LongText';
 import { PresetNotice } from './PresetNotice';
 import { ReasonBox } from './ReasonBox';
 import { RemovedList, RestorePresetForm } from './RemovedList';
@@ -115,6 +118,89 @@ describe('a choice made once', () => {
     expect(html).not.toContain('checked');
     expect(tagOf(html, 'f-behaviour')).toContain('tabindex="-1"');
     expect(tagOf(html, 'f-behaviour-supply')).toContain('name="behaviour"');
+  });
+
+  it('starts an edit form from the preset’s own choice', () => {
+    const html = inForm(
+      createElement(ChoiceGroup, {
+        name: 'medical',
+        legend: 'Medical or Non-Medical',
+        hint: 'Demo: a bundle’s tag.',
+        options: [
+          { value: 'true', label: 'Medical' },
+          { value: 'false', label: 'Non-Medical' },
+        ],
+        defaultValue: 'false',
+      }),
+    );
+    expect(tagOf(html, 'f-medical-false')).toContain('checked=""');
+    expect(tagOf(html, 'f-medical-true')).not.toContain('checked');
+  });
+});
+
+describe('a tick box', () => {
+  it('reads its line on what ticking it means with it, and starts from the preset’s own', () => {
+    const html = inForm(
+      createElement(CheckField, { name: 'medical', label: 'Medical', hint: 'Demo: offered at a visit.' }),
+      createElement(CheckField, {
+        name: 'captureLot',
+        label: 'Capture lot and expiry',
+        defaultChecked: true,
+      }),
+    );
+    const medical = tagOf(html, 'f-medical');
+    for (const attribute of ['name="medical"', 'type="checkbox"', 'aria-describedby="f-medical-hint"'])
+      expect(medical).toContain(attribute);
+    expect(medical).not.toContain('checked');
+    expect(html).toContain('<label for="f-medical">Medical</label>');
+    expect(html).toContain('<span id="f-medical-hint" class="sx-help">Demo: offered at a visit.</span>');
+    const lot = tagOf(html, 'f-captureLot');
+    expect(lot).toContain('checked=""');
+    expect(lot).not.toContain('aria-describedby');
+  });
+});
+
+describe('a box for a sentence or two', () => {
+  it('may be left empty, says what it is for under it, then the warning, and is never filled in', () => {
+    const html = inForm(
+      createElement(LongText, {
+        name: 'prompt',
+        label: 'Ask before applying',
+        defaultValue: 'Demo: ask first.',
+        hint: 'Demo: what it is for.',
+      }),
+    );
+    expect(html).toContain('<label for="f-prompt">Ask before applying (optional)</label>');
+    const box = tagOf(html, 'f-prompt');
+    expect(box.startsWith('<textarea')).toBe(true);
+    for (const attribute of [
+      'name="prompt"',
+      'autoComplete="off"',
+      'aria-describedby="f-prompt-hint f-prompt-warning"',
+    ])
+      expect(box).toContain(attribute);
+    expect(box).not.toContain('required');
+    expect(html).toContain('>Demo: ask first.</textarea>');
+    const hint = html.indexOf('<p id="f-prompt-hint" class="sx-help">Demo: what it is for.</p>');
+    const warning = html.indexOf(
+      '<p id="f-prompt-warning" class="sx-help">Don’t put patient names here.</p>',
+    );
+    expect(hint).toBeGreaterThan(html.indexOf('<textarea'));
+    expect(warning).toBeGreaterThan(hint);
+  });
+});
+
+describe('a field fixed at creation', () => {
+  it('is shown in the form, read-only and never sent, with why under its label', () => {
+    const html = inForm(
+      createElement(FixedFact, { name: 'unit', label: 'Counted in', value: 'tablet', hint: 'Demo: fixed.' }),
+    );
+    expect(html).toContain('<label for="f-unit">Counted in</label>');
+    const input = tagOf(html, 'f-unit');
+    for (const attribute of ['readOnly=""', 'value="tablet"', 'aria-describedby="f-unit-hint"'])
+      expect(input).toContain(attribute);
+    expect(input).not.toContain('name=');
+    expect(html).toContain('<p id="f-unit-hint" class="sx-help">Demo: fixed.</p>');
   });
 });
 

@@ -47,13 +47,16 @@ export interface PresetRefusalContext {
   act: PresetAct;
   /**
    * The form's words for the body paths its fields are named by, for the error summary: `name`,
-   * `categoryId`, or a line's field as `lines.*.qty`. A path with none is named by its sentence alone.
+   * `categoryId`, a line's field as `lines.*.qty` ("Quantity on line 3"), or a list's own entries
+   * as `result.options.*` ("Option 2"). A path with none is named by its sentence alone.
    */
   labels?: Readonly<Record<string, string>>;
   /**
-   * What a problem at a field says beside it whatever the API's code, by the same paths as
-   * `labels`: for a field where every problem asks the person one thing, such as a choice nothing
-   * was chosen for ("Choose what it holds.") or a number out of its range.
+   * What a problem at a field says beside it when the API's code is one of the body schema's own
+   * bounds or types (too_small, too_big, invalid_type, …), by the same paths as `labels`: for a
+   * field where each of those asks the person one thing, such as a choice nothing was chosen for
+   * ("Choose what it holds.") or a number out of its range. A rule's problem at the field, such as
+   * bundle_not_medical or option_twice, keeps its own sentence, which says what to change.
    */
   sentences?: Readonly<Record<string, string>>;
 }
@@ -165,22 +168,46 @@ function problemSentence(code: string, path: string): string {
   return /(^|\.)(itemId|categoryId)$/.test(path) ? 'Choose one from the list.' : 'Check this.';
 }
 
-/** A line's field: `lines.2.qty` is line 3's `qty`, written `lines.*.qty` in a form's words. */
-const LINE_FIELD = /^([^.]+)\.(\d+)\.(.+)$/;
+/**
+ * Whether a code is one of the body schema's bounds or types, which a form's own sentence for the
+ * field says better: too_small, too_big, or a code PROBLEMS has no sentence for (invalid_type,
+ * invalid_value, …). Every other code names what to change, and keeps its own sentence.
+ */
+const schemaBound = (code: string) =>
+  code === 'too_small' || code === 'too_big' || !Object.hasOwn(PROBLEMS, code);
 
-/** The form's word for a path: `lines.2.qty` is the label of `lines.*.qty`, on line 3. */
+/**
+ * An entry of a list in a body: a line's field (`lines.2.qty`, written `lines.*.qty` in a form's
+ * words) or an entry of its own (`result.options.1`, written `result.options.*`).
+ */
+const IN_LIST = /^(.+?)\.(\d+)(?:\.([^\d].*))?$/;
+
+/** A list entry's pattern in a form's words, and which entry it is, counted from 1. */
+function listEntry(path: string): { pattern: string; nth: number; field: boolean } | null {
+  const m = IN_LIST.exec(path);
+  if (!m) return null;
+  const [, list, index, field] = m;
+  return {
+    pattern: field === undefined ? `${list}.*` : `${list}.*.${field}`,
+    nth: Number(index) + 1,
+    field: field !== undefined,
+  };
+}
+
+/** The form's word for a path: `lines.2.qty` is the label of `lines.*.qty` on line 3, `result.options.1` Option 2. */
 function labelOf(path: string, labels: Readonly<Record<string, string>>): string | undefined {
   if (labels[path]) return labels[path];
-  const line = LINE_FIELD.exec(path);
-  const lineLabel = line && labels[`${line[1]}.*.${line[3]}`];
-  if (line && lineLabel) return `${lineLabel} on line ${Number(line[2]) + 1}`;
+  const entry = listEntry(path);
+  const entryLabel = entry && labels[entry.pattern];
+  if (entry && entryLabel)
+    return entry.field ? `${entryLabel} on line ${entry.nth}` : `${entryLabel} ${entry.nth}`;
   return labels[path.split('.')[0]!];
 }
 
-/** The form's own sentence for a path, a line's field's by its `lines.*.qty` pattern. */
+/** The form's own sentence for a path, a list entry's by its pattern (`lines.*.qty`). */
 function sentenceOf(path: string, sentences: Readonly<Record<string, string>>): string | undefined {
-  const line = LINE_FIELD.exec(path);
-  return sentences[path] ?? (line ? sentences[`${line[1]}.*.${line[3]}`] : undefined);
+  const entry = listEntry(path);
+  return sentences[path] ?? (entry ? sentences[entry.pattern] : undefined);
 }
 
 type Problem = { path: string; code: string };
@@ -213,7 +240,8 @@ export function presetRefusalState(
       if (p.path === '' || fieldErrors[p.path]) continue;
       const said = sentence
         ? sentence(p)
-        : (sentenceOf(p.path, sentences) ?? problemSentence(p.code, p.path));
+        : ((schemaBound(p.code) ? sentenceOf(p.path, sentences) : undefined) ??
+          problemSentence(p.code, p.path));
       const label = labelOf(p.path, labels);
       fieldErrors[p.path] = label ? `${label}: ${said}` : said;
     }

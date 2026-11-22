@@ -448,6 +448,24 @@ export function readLines(
   });
 }
 
+/**
+ * The texts a list of boxes posted under `name` (`result.options.0`, `result.options.1`), in order,
+ * each without the spaces around it, which the API refuses and never trims. A box left empty is
+ * sent empty, so the API answers its path.
+ */
+export function readTexts(form: FormData, name: string): string[] {
+  const prefix = `${name}.`;
+  let count = 0;
+  for (const key of form.keys()) {
+    const index = key.startsWith(prefix) ? key.slice(prefix.length) : '';
+    if (/^\d{1,3}$/.test(index)) count = Math.max(count, Number(index) + 1);
+  }
+  return Array.from({ length: count }, (_, i) => {
+    const v = form.get(`${prefix}${i}`);
+    return typeof v === 'string' ? v.trim() : '';
+  });
+}
+
 /** A page under /team/presets, by path alone: where an act on a preset comes back to. */
 const PRESET_PAGE = /^\/team\/presets(\/[a-z0-9-]+)*$/;
 
