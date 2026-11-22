@@ -12,6 +12,7 @@ import {
   presetPage,
   readHub,
   readLines,
+  readTexts,
   sentValues,
   wholeNumber,
   type HubLists,
@@ -196,6 +197,19 @@ describe('what a preset form sent', () => {
     form.set('minimums.0.min', '12');
     expect(readLines(form, 'minimums', { quantity: 'min' })).toEqual([{ itemId: ITEM, min: 12 }]);
     expect(readLines(form, 'lines', { quantity: 'qty', core: true })).toEqual([]);
+  });
+
+  it('reads a list of boxes in order, each without the spaces around it, an empty one as empty', () => {
+    const form = new FormData();
+    form.set('result.options.count', '3');
+    form.set('result.options.1', ' Negative ');
+    form.set('result.options.0', 'Positive');
+    form.set('result.options.2', '');
+    form.set('result.unit', 'mg/dL');
+    expect(readTexts(form, 'result.options')).toEqual(['Positive', 'Negative', '']);
+    // Only the list's own numbered boxes: neither the unit nor the options are entries of `result`.
+    expect(readTexts(form, 'result')).toEqual([]);
+    expect(readTexts(new FormData(), 'result.options')).toEqual([]);
   });
 });
 

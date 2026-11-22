@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useFieldId, useFormState } from '@/components/ActionForm';
 import type { LineQuantity } from '@/lib/presets';
+import { answerKey } from './answer';
 import styles from './presets.module.css';
 
 /** An item a line may name: the team's items, an archived one shown only on the lines that hold it. */
@@ -72,8 +73,11 @@ export interface ItemLinesProps {
 export function ItemLines(props: ItemLinesProps) {
   const state = useFormState();
   const sent = sentLines(state.values, props.name, props.quantity.field);
-  // A refused form starts again from what it sent; a saved one from what is stored now.
-  const key = sent ? `sent:${JSON.stringify(sent)}` : `stored:${JSON.stringify(props.lines)}`;
+  // A refused form starts again from what it sent; a saved one from what is stored now, and an
+  // add form, once its preset is added, from none.
+  const key = sent
+    ? `sent:${JSON.stringify(sent)}`
+    : `stored:${answerKey(state)}:${JSON.stringify(props.lines)}`;
   return <Lines key={key} {...props} start={sent ?? props.lines} />;
 }
 

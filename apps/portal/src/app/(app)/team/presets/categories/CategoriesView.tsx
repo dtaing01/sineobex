@@ -5,6 +5,7 @@ import { BaseVersion } from '@/components/presets/BaseVersion';
 import { ChoiceGroup } from '@/components/presets/ChoiceGroup';
 import { Disclosure } from '@/components/presets/Disclosure';
 import { FreeText } from '@/components/presets/FreeText';
+import { inPlace } from '@/components/presets/order';
 import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
@@ -38,15 +39,13 @@ const HOLDS = (Object.keys(BEHAVIOURS) as CategoryBody['behaviour'][]).map((valu
 
 const PLACE_HINT = 'A whole number. Categories are listed from the lowest number up.';
 
-// By place, then by name as the API sorts names, so two categories at one place keep one order.
-const byName = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
-
-/** The team's categories as the list shows them: by place in the list, lowest first. */
+/**
+ * The team's categories as the list shows them: by place in the list, lowest first, then by name as
+ * the API sorts names, so two categories at one place keep one order. Every page that lists
+ * categories, or items by category, orders them so (components/presets/order.ts).
+ */
 export function inOrder(rows: readonly Category[]): Category[] {
-  return [...rows].sort(
-    (a, b) =>
-      a.body.sort - b.body.sort || byName.compare(a.name, b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-  );
+  return inPlace(rows);
 }
 
 // The highest place the body takes (packages/presets/src/schemas.ts): a list that ends there adds

@@ -209,6 +209,59 @@ describe('a preset form the API refused', () => {
     });
   });
 
+  it('keeps a rule’s own sentence at a field that has a sentence of the form’s own', () => {
+    const context: PresetRefusalContext = {
+      kind: 'bundle',
+      act: 'save',
+      labels: { medical: 'Medical or Non-Medical', 'lines.*.itemId': 'Item' },
+      sentences: { medical: 'Choose Medical or Non-Medical.', 'lines.*.itemId': 'Choose an item.' },
+    };
+    // Nothing chosen: the schema's own code, which the form's sentence says better.
+    expect(
+      refused('invalid', context, { problems: [{ path: 'medical', code: 'invalid_type' }] }).fieldErrors,
+    ).toEqual({ medical: 'Medical or Non-Medical: Choose Medical or Non-Medical.' });
+    // A rule's problem there says what to change, whatever the form's sentence for the field.
+    expect(
+      refused('invalid', context, {
+        problems: [
+          { path: 'medical', code: 'bundle_not_medical' },
+          { path: 'lines.1.itemId', code: 'item_twice' },
+          { path: 'lines.2.itemId', code: 'reference_archived' },
+        ],
+      }).fieldErrors,
+    ).toEqual({
+      medical: 'Medical or Non-Medical: This bundle holds a medication, so it must be Medical.',
+      'lines.1.itemId': 'Item on line 2: This item is on the list twice.',
+      'lines.2.itemId': 'Item on line 3: This was removed. Choose another, or restore it first.',
+    });
+  });
+
+  it('names a list’s own entry by its place in the list, with its own sentence', () => {
+    const r = refused(
+      'invalid',
+      {
+        kind: 'item',
+        act: 'save',
+        labels: { 'result.options': 'Options', 'result.options.*': 'Option', 'result.unit': 'Unit' },
+        sentences: { 'result.options.*': 'Enter 1 to 40 characters.' },
+      },
+      {
+        problems: [
+          { path: 'result.options', code: 'too_small' },
+          { path: 'result.options.0', code: 'too_big' },
+          { path: 'result.options.2', code: 'option_twice' },
+          { path: 'result.unit', code: 'too_small' },
+        ],
+      },
+    );
+    expect(r.fieldErrors).toEqual({
+      'result.options': 'Options: This is too short or too small.',
+      'result.options.0': 'Option 1: Enter 1 to 40 characters.',
+      'result.options.2': 'Option 3: This option is on the list twice.',
+      'result.unit': 'Unit: This is too short or too small.',
+    });
+  });
+
   it('says a problem with the whole body as the summary', () => {
     expect(refused('invalid', save('bundle'), { problems: [{ path: '', code: 'too_large' }] }).error).toBe(
       'This is too long to save. Make it shorter.',
