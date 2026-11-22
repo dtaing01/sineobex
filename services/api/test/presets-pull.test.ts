@@ -486,6 +486,65 @@ describe('the pull and a kind the phone does not read (design 6.1)', () => {
   });
 });
 
+describe('the pull and a head whose current version is missing (design 4.1, 6.1)', () => {
+  // 0023 cannot hold a head to its version, so only its writers do. One that breaks that is a fault
+  // the pull answers as every other reader does, a 500, never by leaving the head out under a
+  // revision above it, after which no phone would ask for it again, repaired or not.
+  const spy = logSpy();
+  let h: Harness;
+  let team: PresetsTeam;
+
+  beforeAll(async () => {
+    h = await createHarness({ log: spy.log });
+    team = await presetsTeam(h, 'Pull Broken');
+  });
+  afterAll(() => h?.close());
+
+  it('answers a fault while one is missing, and the head with its version once it is there', async () => {
+    const { epoch, revision: r0 } = (await stateOf(h, team.teamId))!;
+    const api = presetsApi(h, team.teamId, team.staff);
+    // A writer that moves a head on and writes no version for it, then an ordinary write after it.
+    const broken = idOf(team, 'item.handwarmers');
+    const [held] = (await heldAbove(h, team.teamId)).filter((p) => p.id === broken);
+    await asWriter(h, team.teamId, async (tx, revision) => {
+      await tx`
+        update sineobex.team_presets
+        set current_version = current_version + 1, customized = true, revision = ${revision}
+        where id = ${broken}`;
+    });
+    const after = await insertPreset(
+      h,
+      team.teamId,
+      'flag',
+      flagBody('Demo: pulled after'),
+      team.admin.userId,
+    );
+    expect(after.revision).toBe(r0 + 2);
+
+    for (const query of [{ since: r0, epoch }, {}]) {
+      const mark = await auditMark(h);
+      const r = await api.pull(query);
+      expect(r.status, JSON.stringify(query)).toBe(500);
+      expect(errorOf(r).code).toBe('internal');
+      expect(await auditAfter(h, mark)).toEqual([]);
+    }
+    // The fault is logged by its class alone, never the preset's name or its text.
+    const faults = spy.lines.filter((l) => (JSON.parse(l) as { event: string }).event === 'unhandled_error');
+    expect(faults).toHaveLength(2);
+    spy.expectClean(['Handwarmers', 'item.handwarmers', 'Demo: pulled after', 'version is missing']);
+
+    // Repaired: the version written. The next pull since what the phone holds brings the head.
+    await h.scratch.owner`
+      insert into sineobex.team_preset_versions (team_id, preset_id, version, body, source, created_by)
+      values (${team.teamId}, ${broken}, ${held!.version + 1}, ${h.scratch.owner.json(held!.body as never)},
+              'team', ${team.admin.userId})`;
+    const answer = pulled(await api.pull({ since: r0, epoch }));
+    expect(answer).toMatchObject({ reset: false, revision: r0 + 2 });
+    expect(idsOf(answer.presets)).toEqual([broken, after.id].sort());
+    expect(answer.presets.find((p) => p.id === broken)).toMatchObject({ version: held!.version + 1 });
+  });
+});
+
 function flagBody(name: string): Body {
   return { name, tier: 'secondary', criteria: '', color: 'grey', rank: 90, sensitive: false };
 }
