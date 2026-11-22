@@ -323,56 +323,78 @@ describe('the platform data', () => {
       expect(ofKind('bag')).toEqual([]);
     });
 
-    it('stocks the items of 4.6’s table, each in its category and counted in its unit', () => {
+    it('stocks the items of 4.6’s table, each in its category, counted in its unit, Medical or not', () => {
       const VACCINES = ['Flu', 'COVID', 'Tdap', 'Hep A', 'Hep B', 'Pneumococcal', 'HPV', 'Shingles'];
-      const KITS = [
-        'Advanced wound care',
-        'Abscess and drainage',
-        'Safe smoking',
-        'Safer crack use',
-        'Injection',
-        'Sexual health',
-        'Menstrual care',
-        'Foot fungus',
-        'Dry skin and chafing',
-        'Foot protection',
+      // A kit takes its bundle's tag (BM-79): the safer-use, menstrual and foot protection kits are
+      // Non-Medical (BM-63), as every other supply is. Phase 6 offers a Medical item only to a
+      // credential that charts Medical, so the switch decides who may give each.
+      const KITS: Record<string, boolean> = {
+        'Advanced wound care': true,
+        'Abscess and drainage': true,
+        'Safe smoking': false,
+        'Safer crack use': false,
+        Injection: false,
+        'Sexual health': true,
+        'Menstrual care': false,
+        'Foot fungus': true,
+        'Dry skin and chafing': true,
+        'Foot protection': false,
+      };
+      type Expected = [
+        category: string,
+        unit: string,
+        result: unknown,
+        captureLot: boolean,
+        medical: boolean,
       ];
-      const expected: Record<string, [category: string, unit: string, result: unknown, captureLot: boolean]> =
-        {
-          'Pregnancy test': ['Labs', 'test', { type: 'choice', options: ['Positive', 'Negative'] }, false],
-          'Glucose test': ['Labs', 'test', { type: 'number', unit: 'mg/dL' }, false],
-          'Doxycycline 100 mg': ['Rx', 'tablet', null, false],
-          Acetaminophen: ['OTC', 'tablet', null, false],
-          'Hydrocortisone cream': ['OTC', 'each', null, false],
-          'Naloxone kit': ['OTC', 'kit', null, false],
-          'Electrolyte packet': ['Supplies', 'packet', null, false],
-          Gauze: ['Supplies', 'each', null, false],
-          Bandage: ['Supplies', 'each', null, false],
-          Xeroform: ['Supplies', 'each', null, false],
-          Mepilex: ['Supplies', 'each', null, false],
-          ABD: ['Supplies', 'each', null, false],
-          Hydrocolloid: ['Supplies', 'each', null, false],
-          Aquacel: ['Supplies', 'each', null, false],
-          Compression: ['Supplies', 'each', null, false],
-          'Food kit': ['Supplies', 'kit', null, false],
-          'Hygiene kit': ['Supplies', 'kit', null, false],
-          Socks: ['Supplies', 'each', null, false],
-          Handwarmers: ['Supplies', 'each', null, false],
-          // The two kits that hold a medication (main 447) are in OTC.
-          'Allergy kit': ['OTC', 'kit', null, false],
-          'Cold and flu kit': ['OTC', 'kit', null, false],
-          ...Object.fromEntries(VACCINES.map((v) => [`${v} vaccine`, ['Rx', 'dose', null, true]])),
-          ...Object.fromEntries(KITS.map((k) => [`${k} kit`, ['Supplies', 'kit', null, false]])),
-        };
+      const expected: Record<string, Expected> = {
+        'Pregnancy test': [
+          'Labs',
+          'test',
+          { type: 'choice', options: ['Positive', 'Negative'] },
+          false,
+          true,
+        ],
+        'Glucose test': ['Labs', 'test', { type: 'number', unit: 'mg/dL' }, false, true],
+        'Doxycycline 100 mg': ['Rx', 'tablet', null, false, true],
+        Acetaminophen: ['OTC', 'tablet', null, false, true],
+        'Hydrocortisone cream': ['OTC', 'each', null, false, true],
+        'Naloxone kit': ['OTC', 'kit', null, false, true],
+        'Electrolyte packet': ['Supplies', 'packet', null, false, false],
+        Gauze: ['Supplies', 'each', null, false, false],
+        Bandage: ['Supplies', 'each', null, false, false],
+        Xeroform: ['Supplies', 'each', null, false, false],
+        Mepilex: ['Supplies', 'each', null, false, false],
+        ABD: ['Supplies', 'each', null, false, false],
+        Hydrocolloid: ['Supplies', 'each', null, false, false],
+        Aquacel: ['Supplies', 'each', null, false, false],
+        Compression: ['Supplies', 'each', null, false, false],
+        'Food kit': ['Supplies', 'kit', null, false, false],
+        'Hygiene kit': ['Supplies', 'kit', null, false, false],
+        Socks: ['Supplies', 'each', null, false, false],
+        Handwarmers: ['Supplies', 'each', null, false, false],
+        // The two kits that hold a medication (main 447) are in OTC.
+        'Allergy kit': ['OTC', 'kit', null, false, true],
+        'Cold and flu kit': ['OTC', 'kit', null, false, true],
+        ...Object.fromEntries(
+          VACCINES.map((v): [string, Expected] => [`${v} vaccine`, ['Rx', 'dose', null, true, true]]),
+        ),
+        ...Object.fromEntries(
+          Object.entries(KITS).map(([k, medical]): [string, Expected] => [
+            `${k} kit`,
+            ['Supplies', 'kit', null, false, medical],
+          ]),
+        ),
+      };
       const items = ofKind('item').map((e) => e.body as Record<string, unknown>);
       const actual = Object.fromEntries(
         items.map((b) => [
           b.name,
-          [newest.get(b.categoryId as string)?.body.name, b.unit, b.result, b.captureLot],
+          [newest.get(b.categoryId as string)?.body.name, b.unit, b.result, b.captureLot, b.medical],
         ]),
       );
       expect(actual).toEqual(expected);
-      // A medication or a Labs item is Medical (validatePreset holds it, so a supply's switch is the data's).
+      // A medication or a Labs item is Medical, as validatePreset holds it: a supply's switch is the data's.
       for (const b of items)
         if (['OTC', 'Rx', 'Labs'].includes(String(newest.get(b.categoryId as string)?.body.name)))
           expect(b.medical, String(b.name)).toBe(true);
