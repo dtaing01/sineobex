@@ -19,6 +19,22 @@ create table sineobex.team_preset_state (
 );
 insert into sineobex.team_preset_state (team_id) select id from sineobex.teams;
 
+-- A team's revision only moves forward. A phone holding revision N asks for what changed after N,
+-- so a revision taken again at or below N, once the row went back, would never reach it. Class 23,
+-- as 0018's guards; it holds for the owner too.
+create function sineobex.keep_revision_forward() returns trigger
+language plpgsql as $$
+begin
+  if new.revision < old.revision then
+    raise exception 'a team revision never goes back'
+      using errcode = 'check_violation', constraint = 'team_preset_state_revision_forward';
+  end if;
+  return new;
+end $$;
+
+create trigger team_preset_state_revision_forward before update of revision on sineobex.team_preset_state
+  for each row execute function sineobex.keep_revision_forward();
+
 -- One head per preset. Its body is its current version's; name, state and the platform columns are
 -- what lists, the pull and the installer read without opening a body.
 create table sineobex.team_presets (
@@ -183,3 +199,8 @@ end $$;
 revoke delete on sineobex.team_preset_state, sineobex.team_presets, sineobex.team_preset_versions,
   sineobex.note_types, sineobex.team_preset_events from sineobex_app;
 revoke update on sineobex.team_preset_versions, sineobex.team_preset_events from sineobex_app;
+-- Of a state row the app role changes its revision only, through takeRevision. The epoch is renewed
+-- after a restore, as the owner (docs/setup.md), and a new one makes every phone of the team
+-- download its presets again; a row never moves to another team.
+revoke update on sineobex.team_preset_state from sineobex_app;
+grant update (revision) on sineobex.team_preset_state to sineobex_app;

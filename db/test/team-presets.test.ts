@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { takeRevision } from '@sineobex/forms';
 import type { Sql, TransactionSql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, MIGRATIONS_DIR } from '../src/migrate.ts';
@@ -703,14 +704,18 @@ describe('0023 team presets', () => {
           as(fresh, (tx) => tx`insert into sineobex.team_preset_state (team_id) values (${fresh})`),
         ),
       ).toEqual({ code: UNIQUE, constraint: 'team_preset_state_pkey' });
-      // The app role moves it; it is never below 0.
+      // The app role moves it forward; it is never below 0.
       await as(
         fresh,
         (tx) => tx`update sineobex.team_preset_state set revision = revision + 1 where team_id = ${fresh}`,
       );
+      const below = await makeTeam(db.owner, 'Preset Revision Below Team');
       expect(
         await refusal(
-          as(fresh, (tx) => tx`update sineobex.team_preset_state set revision = -1 where team_id = ${fresh}`),
+          as(
+            below,
+            (tx) => tx`insert into sineobex.team_preset_state (team_id, revision) values (${below}, -1)`,
+          ),
         ),
       ).toEqual({ code: CHECK, constraint: 'team_preset_state_revision_check' });
       expect((await columnsOf(db.owner, 'team_preset_state')).map((c) => `${c.name} ${c.type}`)).toEqual([
@@ -721,6 +726,72 @@ describe('0023 team presets', () => {
       expect(
         await refusal(db.owner`insert into sineobex.team_preset_state (team_id) values (${randomUUID()})`),
       ).toEqual({ code: FOREIGN_KEY, constraint: 'team_preset_state_team_id_fkey' });
+    });
+
+    // A phone holding revision N asks for what changed after N (phase 5 design 6.1): a revision
+    // taken again at or below N, after the team's revision went back, would never reach it.
+    it('never moves back, whoever moves it', async () => {
+      const fresh = await makeTeam(db.owner, 'Preset Revision Forward Team');
+      for (let i = 0; i < 5; i++) await as(fresh, (tx) => takeRevision(tx, fresh));
+      const back = { code: CHECK, constraint: 'team_preset_state_revision_forward' };
+      for (const to of [4, 1, 0])
+        expect(
+          await refusal(
+            as(
+              fresh,
+              (tx) => tx`update sineobex.team_preset_state set revision = ${to} where team_id = ${fresh}`,
+            ),
+          ),
+          `to ${to}`,
+        ).toEqual(back);
+      expect(
+        await refusal(db.owner`update sineobex.team_preset_state set revision = 1 where team_id = ${fresh}`),
+      ).toEqual(back);
+      // Standing still is no step back, and takeRevision still takes the next.
+      await as(
+        fresh,
+        (tx) => tx`update sineobex.team_preset_state set revision = revision where team_id = ${fresh}`,
+      );
+      expect(await as(fresh, (tx) => takeRevision(tx, fresh))).toBe(6);
+    });
+
+    // The epoch is renewed after a restore, as the owner (docs/setup.md): a new one makes every
+    // phone download its team's presets again, so the app role never writes one.
+    it('lets the app role write only the revision of a state row', async () => {
+      const fresh = await makeTeam(db.owner, 'Preset Revision Rights Team');
+      const elsewhere = await makeTeam(db.owner, 'Preset Revision Elsewhere Team');
+      await as(fresh, (tx) => takeRevision(tx, fresh));
+      const [before] = await db.owner<{ epoch: string }[]>`
+        select epoch from sineobex.team_preset_state where team_id = ${fresh}`;
+      expect(
+        await refusal(
+          as(
+            fresh,
+            (tx) =>
+              tx`update sineobex.team_preset_state set epoch = ${randomUUID()} where team_id = ${fresh}`,
+          ),
+        ),
+      ).toEqual({ code: DENIED });
+      expect(
+        await refusal(
+          as(
+            fresh,
+            (tx) => tx`update sineobex.team_preset_state set team_id = ${elsewhere} where team_id = ${fresh}`,
+          ),
+        ),
+      ).toEqual({ code: DENIED });
+      expect(
+        await db.owner`select epoch, revision::int as revision from sineobex.team_preset_state
+                       where team_id = ${fresh}`,
+      ).toEqual([{ epoch: before!.epoch, revision: 1 }]);
+      const rights = await db.owner<{ column: string; change: boolean }[]>`
+        select c as column, has_column_privilege('sineobex_app', 'sineobex.team_preset_state', c, 'update') as change
+        from unnest(array['team_id', 'revision', 'epoch']) c`;
+      expect(rights).toEqual([
+        { column: 'team_id', change: false },
+        { column: 'revision', change: true },
+        { column: 'epoch', change: false },
+      ]);
     });
 
     it('gives a team its own epoch, renewed by the restore step', async () => {
@@ -936,7 +1007,7 @@ describe('0023 team presets', () => {
       expect(seen.map((r) => r.teamId).sort()).toEqual([team, fresh].sort());
     });
 
-    it('gives the app role every right but delete, and no update of a version or an event', async () => {
+    it('gives the app role every right but delete, no update of a version or an event, and of a state row only its revision', async () => {
       const rights = await db.owner<
         { table: string; read: boolean; add: boolean; change: boolean; remove: boolean }[]
       >`
@@ -949,7 +1020,8 @@ describe('0023 team presets', () => {
       expect(rights).toEqual([
         { table: 'note_types', read: true, add: true, change: true, remove: false },
         { table: 'team_preset_events', read: true, add: true, change: false, remove: false },
-        { table: 'team_preset_state', read: true, add: true, change: true, remove: false },
+        // Its revision only: the rows themselves are not the app role's to change.
+        { table: 'team_preset_state', read: true, add: true, change: false, remove: false },
         { table: 'team_preset_versions', read: true, add: true, change: false, remove: false },
         { table: 'team_presets', read: true, add: true, change: true, remove: false },
       ]);
