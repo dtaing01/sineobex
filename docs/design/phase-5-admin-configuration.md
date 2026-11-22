@@ -542,34 +542,54 @@ The portal's half adds the three through the pages, then asks `GET /v1/presets?s
 | A version 2 database file keeps its work through `_v3` | `local_db_test.dart` |
 | Screens | Playwright with axe in the three themes and at 320 px for each page, `expectNothingStored` and the address check, and the sweep in `e2e/a11y.spec.ts`; phone widget tests in the three themes, at 200% text and at 320 px, offline, and for roles without `patients.edit` or without sight of sensitive flags; the flags sheet with the store frozen while it is open draws nothing; `test/security/dialog_gates_test.dart` passes with the new sheets |
 
-## 11. Defaults chosen (PLAN-OPEN) and questions for people
-| # | Question the PRD leaves open | Default | Who decides |
-|---|---|---|---|
-| 1 | Is an unused preset deleted or archived? | Always archived: one rule, and a platform update can’t bring it back | Project lead |
-| 2 | Can an item’s unit change later? | No. Archive and add a new item, so old counts keep their meaning | Brooke and Mercy |
-| 3 | Which category holds gauze and kits? | A fourth platform category, Supplies | Brooke and Mercy |
-| 4 | What can a Labs result be? | A choice from a list, or a number with a unit | Brooke and Mercy |
-| 5 | Which flags ship? | Primary: Red, Yellow, Green. Secondary: the six suggested criteria of `main.md:319`, plus Pregnancy (sensitive) | Brooke and Mercy |
-| 6 | Are criteria rules the app runs, or text for people? | Text. Nothing flags a patient automatically in V1 | Brooke and Mercy |
-| 7 | Which colours can a flag have? | Eight named colours that pass contrast in all three themes; no free colour picker | The team |
-| 8 | Who may flag a patient? Must clearing give a reason? | `patients.edit`; yes | Brooke and Mercy |
-| 9 | Is reading presets audited, and who may read? | Any active member; not audited, as it shows no patient | Counsel |
-| 10 | Do preset writes need a recent sign-in, as user changes do? | No | Project lead |
-| 11 | Does a draft move to a new note type version? | No. It stays on the version it began on | Brooke and Mercy |
-| 12 | Which fields may be mapped to supplies? | Any choice, yes or no, or number field; the platform’s own mappings use action fields only | Brooke and Mercy |
-| 13 | Does a condition mapping match a code family (L30 and all below it)? | No, exact codes only | Brooke and Mercy |
-| 14 | Are bags defined in this phase? | Yes: a name and minimums. Phase 6 adds stock and owners | Project lead |
-| 15 | Naloxone and safer-use supplies: Medical or not? | The item’s `medical` switch (`IMPLEMENTATION_PLAN.md:207`) | Brooke and Mercy |
-| 16 | Is flagging patients part of this phase? | Yes (unit P5). It can move to the start of phase 7 without touching units P0 to P4 | Project lead |
-| 17 | How does a team's edit keep "one master list per field" (`main.md:410`) when stored definitions have no lists? | An option edit follows `mapsTo` between the quick form and the full modules (5.4, rule 5). Other fields that shared a list are edited one by one | Project lead; Brooke and Mercy |
-| 18 | May an admin hide a required field, a consent or chaperone field, or anything in the Red flags note? May an edit change who may read a section? | No to both: these parts are protected and no operation writes a mark (5.4). A note type never changes between Medical and Non-Medical, nor its timeline group or sensitivity; add a new one (D56) | Brooke and Mercy; counsel |
-| 19 | A flag change from someone whose role was lowered while offline | Held for a Program Admin, never refused (D59) | Project lead |
+## 11. Defaults chosen (PLAN-OPEN), and who decides
+Each row is built as its default, marked `PLAN-OPEN` in the code where the PRD leaves it open, and listed in `docs/decisions-for-review.md` with its recommendation and where it lives ("How this phase is built"). No question blocks a unit.
 
-Questions with no default; each blocks only the card named:
+| # | Question the PRD leaves open | Default built | Who decides | A later change costs |
+|---|---|---|---|---|
+| 1 | Is an unused preset deleted or archived? | Always archived: one rule, and a platform update can’t bring it back | Project lead | Little: a delete of a never-used preset can be added |
+| 2 | Can an item’s unit change later? | No. Archive and add a new item, so old counts keep their meaning | Brooke and Mercy | Much, once counts exist: every past order and count would have to read its unit from its version |
+| 3 | Which category holds gauze and kits? | A fourth platform category, Supplies | Brooke and Mercy | Little: a platform update, offered to teams that edited theirs |
+| 4 | What can a Labs result be? | A choice from a list, or a number with a unit | Brooke and Mercy | Some: a new result type is a new body shape, optional in both parsers |
+| 5 | Which flags ship? | Primary: Red · High, Yellow · Medium and Green · Low, each carrying the six suggested starting criteria of `main.md:319` as text for the team to rewrite. Secondary: Frost risk, Dehydration risk, and Pregnancy (sensitive) (4.6) | Brooke and Mercy | Little: platform data |
+| 6 | Are criteria rules the app runs, or text for people? | Text. Nothing flags a patient by itself (`main.md:512` puts automatic raising in V2; `:322`) | Brooke and Mercy | Much: rules need an engine, and a decision on who is told |
+| 7 | Which colours can a flag have? | Eight named colours that pass contrast in all three themes, each with a plain name shown in the pill; no free colour picker | The team | Little |
+| 8 | Who may flag a patient? | `patients.edit` | Brooke and Mercy | Little: one key in the entity's rules and the route |
+| 9 | Is reading presets audited, and who may read them? | Any active member; not audited, since presets hold no patient data (`main.md:621` logs access to patient data) | Project lead | Little: an audit line on the read |
+| 10 | Does every preset write need a reason? | Yes, every write by a person: 3 to 300 characters, kept with the act and shown in the history, never audited. The PRD asks for one on items, bags and minimums (`main.md:930`, `:951`, `:955`) | Project lead | Little |
+| 11 | What does intake offer of flags? | The risk level, optional, None by default, with a required reason; no conditions (`main.md:944` lists "priority flag") | Brooke and Mercy | Little: conditions can join the same step |
+| 12 | Which fields may be mapped to supplies? | A field or a grid cell of kind choice, number or flag (any answered field, for "answered"), or every note of a type; never a part only some readers may see (row 22). The platform's own mappings use action fields only (4.6) | Brooke and Mercy | Little |
+| 13 | Does a condition mapping match a code family (L30 and all below it)? | No, exact codes only | Brooke and Mercy | Some: phases 6 and 7 read the codes |
+| 14 | Are bags defined in this phase? | Yes: a name and minimums. Phase 6 adds stock and owners | Project lead | Little |
+| 15 | Naloxone and safer-use supplies: Medical or not (`main.md:447`)? | The platform puts the Naloxone kit in OTC, so it is Medical, and the safer-use kits in Supplies, Non-Medical (`IMPLEMENTATION_PLAN.md:285`). A team that treats naloxone as Non-Medical moves it to a supply category, where the switch is free | Brooke and Mercy | Little: a team moves the item; past orders keep their version |
+| 16 | Is flagging patients part of this phase? | Yes (unit P5). It can move to the start of phase 7 without touching units P0 to P4 | Project lead | Some |
+| 17 | How does a team's edit keep "one master list per field" (`main.md:410`) when stored definitions have no lists? | An option edit follows `mapsTo` between the quick form and the full modules (5.4, rule 5). Other fields that shared a list are edited one by one | Project lead; Brooke and Mercy | Some: stored definitions would need list references |
+| 18 | May an admin hide a required field, a consent or chaperone field, or anything in the Red flags note? May an edit change who may read a section? | No to both: these parts are protected and no operation writes a mark (5.4; `main.md:409`, `:415`, `:945`). A note type never changes between Medical and Non-Medical, nor its timeline group or sensitivity; add a new one (D56) | Brooke and Mercy; counsel | Much, if loosened: who may read a note rests on it |
+| 19 | What does a bundle's prompt say, and which bundles have one? | Optional text of up to 300 characters, asked before the bundle is applied (phase 6 asks it); the platform's Summer/dehydration, Winter/frostbite and Cold/flu carry one each, in plain words (4.6; `main.md:445`) | Brooke and Mercy | Little: platform data |
+| 20 | What may a team copy into one of its note types? | One section at a time, unchanged with its marks, from a platform note type or another of the team's, only from a type with the same kinds, group, sensitivity, quick and auto, and never a section with `needs` (5.4) | Brooke and Mercy | Little to loosen; each loosening is a question of who may read what |
+| 21 | When is a problem due a status check? | When it is New or Ongoing and its status was not checked within the team's window, 90 days by default: "Status check due" on the phone's and the portal's problem lists, offline (`main.md:476`) | Brooke and Mercy | Little |
+| 22 | May a supply mapping read a sensitive answer? | No: a map is refused on any part `visibleAnswers` may take out and in a sensitive note type (`sensitive_path`), so the PRD's naloxone example is not mapped. A condition map may name a sensitive code; phases 6 and 7 count it only for readers who may see sensitive problems. Suggestions read what the suggesting person may see (4.4, 5.3) | Brooke and Mercy; counsel | Some: allowing it needs a reader rule on every supply line of phases 6 and 7 |
+| 23 | What happens to a flag change made on the wrong patient? | It is marked entered in error, once, with a reason. It drops out of the current flags; its history row shows Entered in error with who and when; its reasons are shown only to its author and Program Admins | Project lead | Little |
+| 24 | Who counts as a Program Admin for row 23, with no new keys? | A holder of `team.manage_users`, as phase 4's assign reads it | Project lead | Little |
+| 25 | May a flag's sensitive change after creation, and may a platform update change a fixed field? | No to both: sensitive is fixed as the tier is; such an update is offered, and taken only as a new preset | Project lead | Much, if loosened: history hidden from some readers would become theirs to read |
+| 26 | What happens to patients when their flag is archived? | It stays on every patient who carries it, shown with its name and "No longer on the team’s list"; it can be cleared and is not offered to be set again | Brooke and Mercy | Little |
+| 27 | Where do team settings live? | In the settings preset, versioned, audited and sent to phones; `teams.settings` stays unused; a setting a later phase builds joins the body, optional with a default | Project lead | Some: moving them later means a migration and two readers |
+| 28 | Are alert rules configurable (`main.md:190`)? | Not in the MVP: the PRD defines none | Project lead | Some: a new kind and its pages |
+| 29 | Who sees a sensitive flag? | Whoever sees a sensitive problem: `patients.view_sensitive` with the problem list (`Projection.sensitive`). Among the standard roles, Program Admin, Logistics and Healthcare Staff, as `main.md:121` says | Project lead | Little in code; every phone's index downloads again |
+| 30 | Which time orders flag changes, and do they pause with the clock? | The change's own time (corrected, else the device's), never later than the server's receipt (D90's rule); they pause with the clock, as ID links do (D35) | Project lead | Little |
+| 31 | What do the platform's 18 bundles and its starter items hold (`main.md:439` names only)? | What the PRD's words give (4.6). A bundle the PRD names with no contents (Advanced wound care, Abscess/drainage, Safe smoking, Safer crack use, Injection, Sexual health, Menstrual care, Allergy, Cold/flu, Foot fungus, Dry skin/chafing, Foot protection) holds one kit named after it. Every line is core but the antibiotic in Basic wound care. An item the PRD gives no unit for is counted "each" | Brooke and Mercy | Little: platform data, offered to teams that edited theirs |
+| 32 | Which fields drive the platform's default mappings (`main.md:431`)? | Fields that record something given: a vaccine given, a dressing applied and its type, food, hygiene, socks and handwarmers given (4.6). Not the naloxone example (row 22), not "Social needs tapped" (it asks what is needed), not a map for every wound care note | Brooke and Mercy | Little |
+| 33 | Does a flag about substance use fall under 42 CFR Part 2 (`main.md:435`)? | The platform ships no such flag until counsel answers | Counsel | Little: platform data |
+| 34 | A team first opened offline after a sign-out holds no presets | As with its team index: Team setup, the flags sheet and intake's risk level ask to connect (6.1) | Project lead | Some: fetching every team at sign-in means opening every team's database then |
+| 35 | Are bag minimums on or off for a new team? | Off, with an empty template (`main.md:477` makes them optional) | Brooke and Mercy | Little |
+| 36 | What does a blank note type start with? | One section, Notes, holding one text field, Notes; the admin adds or copies sections | Brooke and Mercy | Little |
 
-1. The contents of the 18 platform bundles and the starter item list (`main.md:439` gives names only). Brooke and Mercy. Blocks card P0-data-catalog; until then it ships the items the PRD names.
-2. Which field in each note type is the action field for the default mappings (`main.md:431`). Brooke and Mercy. Blocks card P0-data-maps.
-3. Whether a flag about substance use falls under 42 CFR Part 2 (`main.md:435`). Counsel. Until answered the platform ships no such flag.
+**Settled by the PRD**, so not PLAN-OPEN:
+
+- Clearing a flag records who and why, as setting one does (`main.md:320`).
+- Preset and note type writes ask for a recent sign-in (`main.md:600`).
+- A draft stays on the note type version it began on (`main.md:387`; forms 2.6).
+- A flag change from someone whose role was lowered while offline is held for a Program Admin, never refused (`main.md:560`, `:562`; D59).
 
 ## 12. Risks and departures from the PRD
 ### 12.1 Risks
