@@ -282,7 +282,10 @@ BM-1, BM-13, BM-25 and BM-79; CO-4, CO-6, CO-11, CO-12 and CO-13.
   about one question are one row, naming all their files. Most markers at `c307a0b` name their
   design item instead (lifecycle 12.1 #4, design 14.1 #2), and the rest only their question. Each
   row's Where names every file that holds one of its markers, and every marker belongs to exactly
-  one row.
+  one row. `node tools/decisions-check.mjs` checks this, in CI and in `tools/ci-local.sh`: a marker
+  that names its row must name one that exists and whose Where names the marker's file; an older
+  marker without a row id is matched to its row by `tools/decisions-check-rules.mjs`, which only
+  shrinks; and a marker with neither fails the check.
 - A row whose Where says "no marker" has none in code, for one of three reasons: nothing is built
   for it yet (a later phase's default, or a question with no default); it is a policy or a way of
   working, not code; or its default sits in a released definition or its piece's files, which the
