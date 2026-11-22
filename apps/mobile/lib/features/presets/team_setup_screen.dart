@@ -27,6 +27,8 @@ const teamSetupTitle = 'Team setup';
 
 /// Where the phone holds no copy of the team's presets (phase 5 design 6.1): a team first opened
 /// offline. Team setup, the flags sheet and intake's risk level each say it.
+// PLAN-OPEN (PL-25): what does a team first opened offline after a sign-out offer of its presets?
+// Nothing until it is opened online, as with its team index: each place that needs them says so.
 const setupNotDownloaded = 'Your team’s setup hasn’t downloaded yet. Connect to finish.';
 
 const teamSetupRowDetail = 'Orders, bundles and flags';
@@ -142,7 +144,10 @@ class TeamSetupRow extends StatelessWidget {
 
 /// Whether a person with [permissions] sees a sensitive flag: the flag rule's reader half (6.2,
 /// D136), the server's projection for a sensitive problem (`mayViewProblems` and
-/// `patients.view_sensitive`).
+/// `patients.view_sensitive`). Team setup lists the team's flags as every other list does, so a
+/// sensitive one is absent for a reader the rule hides it from.
+// PLAN-OPEN (PL-23): who sees a sensitive flag? Whoever sees a sensitive problem. Phase 5's unit P5
+// gives the phone one copy of the flag rule, which this then calls.
 bool _seesSensitiveFlags(List<String> permissions) =>
     mayViewProblems(permissions) && permissions.contains('patients.view_sensitive');
 
