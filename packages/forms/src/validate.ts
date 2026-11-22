@@ -96,7 +96,7 @@ function checkConditions(model: PathModel, report: Report) {
           'condition_reads_restricted',
           `"${test.field}" is in a section marked ${key}, and this condition is not: a reader who may not see that answer would learn it from what this shows`,
         );
-      else if (holdsDiagnosis(named.leaf.node.section, from))
+      else if (holdsDiagnosis(model, named.leaf.node.section, from))
         report(
           `${at}.field`,
           'condition_reads_restricted',
@@ -151,7 +151,7 @@ function checkConditions(model: PathModel, report: Report) {
         'condition_reads_restricted',
         `the rows are picked in a section marked ${key}, and this grid's section is not: its rows would show those answers`,
       );
-    else if (holdsDiagnosis(node.picked.node.section, from))
+    else if (holdsDiagnosis(model, node.picked.node.section, from))
       report(
         at,
         'condition_reads_restricted',
@@ -176,12 +176,13 @@ function checkConditions(model: PathModel, report: Report) {
 
 /**
  * Whether `target` is a section, other than `from`, that holds a diagnosis outside a repeating
- * section. A reader without view_sensitive gets none of its answers when the diagnosis is sensitive
- * (visibleAnswers), so a field elsewhere that any of them shows would say that one is there.
+ * section, at any depth: visibleAnswers finds one in a group too. A reader without view_sensitive
+ * gets none of the section's answers when the diagnosis is sensitive, so a field elsewhere that any
+ * of them shows would say that one is there.
  */
-function holdsDiagnosis(target: SectionNode, from: ResolvedSection): boolean {
+function holdsDiagnosis(model: PathModel, target: SectionNode, from: ResolvedSection): boolean {
   if (target.section === from || target.section.repeat) return false;
-  return target.nodes.some((node) => node.field.kind === 'problem');
+  return model.nodes.some((node) => node.section === target && node.field.kind === 'problem');
 }
 
 /**

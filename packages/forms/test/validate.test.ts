@@ -1175,6 +1175,38 @@ describe('a condition that reads restricted content', () => {
       files.noteTypes[file].sections.pop();
       expect(found(files, file)).toEqual([]);
     });
+    it('read from another section, when the diagnosis sits in a group', () => {
+      // visibleAnswers takes the whole section all the same: it finds a diagnosis at any depth.
+      const file = 'note-types/dx_grouped/v1.json';
+      const files: LooseFiles = {
+        noteTypes: {
+          [file]: {
+            key: 'dx_grouped',
+            version: 1,
+            title: 'Grouped diagnosis (test)',
+            kinds: ['medical'],
+            group: 'clinical',
+            sensitivity: 'none',
+            sections: [
+              { id: 'assess', title: 'Assess', fields: [GROUP('found', DX), TEXT('notes')] },
+              {
+                id: 'plan',
+                title: 'Plan',
+                fields: [{ ...TEXT('more'), showWhen: { field: 'assess.notes', filled: true } }],
+              },
+            ],
+          },
+        },
+        modules: {},
+        lists: {},
+      };
+      expect(found(files, file)).toEqual([
+        [file, '$.sections[1].fields[0].showWhen.field', RESTRICTED].join('  '),
+      ]);
+      // Read from inside the section, it tells nothing.
+      files.noteTypes[file].sections[0].fields.push(files.noteTypes[file].sections[1].fields.pop());
+      expect(found(files, file)).toEqual([]);
+    });
     fits('read from inside the section itself', (f) => {
       checks(f).sections[4].fields.push(DX, {
         ...TEXT('more'),
