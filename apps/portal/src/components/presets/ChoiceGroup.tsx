@@ -1,12 +1,16 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useFieldId, useFormState } from '@/components/ActionForm';
+import styles from './presets.module.css';
 
 /** One of a choice's options, with an optional line under it on what choosing it means. */
 export interface ChoiceOption {
   value: string;
   label: string;
   hint?: string;
+  /** Drawn before the label, such as a colour's swatch (aria-hidden): the label alone names it. */
+  mark?: ReactNode;
 }
 
 /**
@@ -69,7 +73,10 @@ export function ChoiceGroup({
             // added one with none.
             key={`${state.values ? 'sent' : 'stored'}:${sent ?? ''}`}
           />
-          <label htmlFor={`${id}-${o.value}`}>{o.label}</label>
+          <label htmlFor={`${id}-${o.value}`} className={o.mark ? styles.marked : undefined}>
+            {o.mark}
+            {o.label}
+          </label>
           {o.hint && (
             <span id={`${id}-${o.value}-hint`} className="sx-help">
               {o.hint}

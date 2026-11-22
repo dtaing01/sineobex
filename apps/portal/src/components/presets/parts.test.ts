@@ -136,6 +136,24 @@ describe('a choice made once', () => {
     expect(tagOf(html, 'f-medical-false')).toContain('checked=""');
     expect(tagOf(html, 'f-medical-true')).not.toContain('checked');
   });
+
+  it('draws an option’s mark before its label, so the label alone names it', () => {
+    const html = inForm(
+      createElement(ChoiceGroup, {
+        name: 'color',
+        legend: 'Colour',
+        hint: 'Demo: a colour.',
+        options: [
+          { value: 'red', label: 'Red', mark: createElement('span', { 'aria-hidden': 'true' }) },
+          { value: 'blue', label: 'Blue' },
+        ],
+      }),
+    );
+    expect(html).toMatch(
+      /<label for="f-color-red" class="[^"]+"><span aria-hidden="true"><\/span>Red<\/label>/,
+    );
+    expect(html).toContain('<label for="f-color-blue">Blue</label>');
+  });
 });
 
 describe('a tick box', () => {

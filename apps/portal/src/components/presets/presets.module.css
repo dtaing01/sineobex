@@ -119,6 +119,31 @@
   gap: var(--space-2);
   font-weight: 700;
 }
+/* A list whose order is the point, such as a tier's flags: numbered by place, each entry's moves
+   under its name. */
+.order {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-wrap: anywhere;
+}
+.moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.moves:empty {
+  display: none;
+}
+/* A choice's label with a mark before it, such as a colour's swatch before its name. */
+.marked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 /* A select of its own in a form, such as an item's Category: a percentage width keeps its longest
    option from widening the page at 320 px (a box sized to its content would push the column wider
    than a phone held upright), and its cap keeps it from spanning a desktop's form. */
