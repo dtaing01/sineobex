@@ -3,7 +3,8 @@ import { OfferForm } from './OfferForm';
 import styles from './presets.module.css';
 import { reviewRows, type Described, type ReviewRow } from './review';
 
-function Value({ value }: { value: Described }) {
+/** A field's value in words (review.ts): a text, or a list of lines, or None for a list of none. */
+export function DescribedValue({ value }: { value: Described }) {
   if (typeof value === 'string') return value;
   if (value.length === 0) return 'None';
   return (
@@ -40,10 +41,10 @@ export function ReviewTable({ rows, name }: { rows: readonly ReviewRow[]; name: 
               )}
             </th>
             <td>
-              <Value value={row.now} />
+              <DescribedValue value={row.now} />
             </td>
             <td>
-              <Value value={row.update} />
+              <DescribedValue value={row.update} />
             </td>
           </tr>
         ))}
