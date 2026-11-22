@@ -12,6 +12,8 @@ export * from './spec-check.ts';
 export * from './shape-check.ts';
 // Installing the presets in a team (3.2): the API and the seed hand it their own transaction.
 export * from './install.ts';
+// The team lock and the revision every preset and note type write takes (phase 5 design 4.2).
+export * from './revision.ts';
 // The interpreter (7.1): pure functions of a definition and a note's answers.
 export * from './interp/field-at.ts';
 export * from './interp/check-answer.ts';
