@@ -135,7 +135,10 @@ describe('0023 team presets', () => {
   const insertAsOwner = (table: 'team_presets' | 'note_types', row: Row) =>
     asOwner(async (tx) => tx`insert into sineobex.${tx(table)} ${values(tx, await stamped(tx, team, row))}`);
 
-  /** The team's revision row, as its first write makes it (takeRevision's upsert). */
+  /**
+   * The team's revision row where it has none, at revision 0, as 0023 makes the row of every team it
+   * finds; takeRevision's upsert would make it at 1, its first step.
+   */
   const firstWrite = (teamId: string) =>
     as(
       teamId,
