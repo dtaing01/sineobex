@@ -166,6 +166,14 @@ void main() {
     expect([presets.revision, presets.epoch], [14, epochB]);
   });
 
+  test('the epoch held, sent back in capitals, is no other epoch: each row is put by its id', () {
+    // The server compares epochs as UUIDs. Taken for another, a part answer would replace the copy.
+    holdPlatform();
+    presets.apply(answer(epoch: epochA.toUpperCase(), revision: 13, rows: [pulled(frostRiskId, 'flag', frostRisk())]));
+    expect(rows().keys, unorderedEquals([labsId, suppliesId, gauzeId, highId, settingsId, frostRiskId]));
+    expect(presets.revision, 13);
+  });
+
   test('any other answer puts each row by its id and leaves the rest', () {
     holdPlatform();
     presets.apply(
@@ -303,5 +311,20 @@ void main() {
     expect([presets.revision, presets.epoch, presets.updatedAt, presets.downloaded], [null, null, null, false]);
     // What isn't the copy's stays.
     expect([store.kv('intake.draft'), store.kv('index.version')], ['{}', '7.idx1']);
+  });
+
+  test('a clear cut short leaves the copy whole: its rows without their revision', () {
+    // Rows gone with the revision kept would be a copy that no later pull fills in again.
+    holdPlatform();
+    final held = copy();
+    db.db.execute(
+      "CREATE TRIGGER fail_clear BEFORE DELETE ON kv WHEN OLD.key LIKE 'presets.%' "
+      "BEGIN SELECT RAISE(ABORT, 'demo: the delete failed'); END",
+    );
+    expect(() => presets.clear(), throwsA(isA<SqliteException>()));
+    expect(copy(), held);
+    db.db.execute('DROP TRIGGER fail_clear');
+    presets.clear();
+    expect(copy(), {'rows': <String, Object?>{}, 'keys': <String, Object?>{}});
   });
 }

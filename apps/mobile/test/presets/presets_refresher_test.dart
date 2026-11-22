@@ -318,6 +318,39 @@ void main() {
         openStore = store;
       }
     });
+
+    test('an answer, or a 403, for an earlier sign-in goes nowhere once the same file is open again', () async {
+      // A sign-in again opens the file with a connection and a store of its own. The first
+      // connection stays open here, so only the refresher's check can stop the write: in the app the
+      // controller closes it first, which stops it too.
+      final againDb = LocalDatabase.open(LocalDatabase.fileFor(dir.path, userId, team), key);
+      addTearDown(againDb.close);
+      final again = storeOf(againDb);
+      LocalStore? openStore = store;
+      final wired = presetRefreshers(
+        OpenTeam(
+          userId: userId,
+          teamId: team,
+          store: store,
+          api: SineobexApi(standIn.transportFor(team)),
+          clock: ClockSync(boot: FakeBootClock(), references: DatabaseClockReferences(db), wallNow: () => wall),
+          permissions: const ['encounters.chart'],
+        ),
+        openStore: () => openStore,
+      ).single;
+      standIn.answers[team] = pullAnswer(reset: true, revision: 3, presets: [pulled(labsId, 'order_category', labs())]);
+      await runQuietly(wired, RefreshReason.opened);
+      final held = copyIn(againDb.db);
+      expect(PresetStore(again).revision, 3);
+      for (final arriving in <Object>[
+        pullAnswer(reset: true, epoch: epochB, revision: 9, presets: [pulled(frostRiskId, 'flag', frostRisk())]),
+        const ApiException(403, 'not_a_member', 'You are not a member of this team.'),
+      ]) {
+        await answeredAfter(arriving, () => openStore = again, by: wired);
+        expect(copyIn(againDb.db), held);
+        openStore = store;
+      }
+    });
   });
 
   group('as the app wires it (appRefreshers):', () {
