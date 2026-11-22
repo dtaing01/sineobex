@@ -36,8 +36,9 @@ const kindParam = z.object({ kind: Kind });
 const presetParam = z.object({ kind: Kind, id: Uuid });
 
 /**
- * The body as it is sent: the store parses it by its kind's schema and answers 422 invalid with the
- * path of each problem, so a body this schema took is never refused for its shape here.
+ * The body as it is sent, whatever it is: the store parses it by its kind's schema and answers 422
+ * invalid with the path of each problem, a body that is no object among them, so the admin is shown
+ * where it is wrong.
  */
 const SentBody = z.unknown().openapi({
   description:
