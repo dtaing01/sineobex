@@ -78,7 +78,8 @@ void main() {
     expect(() => LocalDatabase.migrate(db, sqliteVersion: '3.41.2'), throwsStateError);
     expect(version(db), 1);
     expect(hasTable(db, 'patient_names'), isFalse);
-    LocalDatabase.migrate(db, sqliteVersion: '3.42.0');
+    // To v2 only: the steps after it are their own tests', and the file's app version moves on.
+    LocalDatabase.migrate(db, target: 2, sqliteVersion: '3.42.0');
     expect(version(db), 2);
   });
 
