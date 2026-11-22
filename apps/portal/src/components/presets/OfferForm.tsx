@@ -75,7 +75,9 @@ export function OfferForm({
   return (
     <section aria-labelledby={`offer-${id}`} className="px-panel">
       <Heading id={`offer-${id}`} className={headingClass}>
-        Update available<span className="sr-only"> for {name}</span>
+        {/* Drawn with no offer only to say why a take was refused: the offer went meanwhile. */}
+        {offer ? 'Update available' : 'Sineobex’s update'}
+        <span className="sr-only"> for {name}</span>
       </Heading>
       <ActionForm id={`take-${id}`} action={take} label={`Take Sineobex’s update to ${name}`}>
         {offer ? (
