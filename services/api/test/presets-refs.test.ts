@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { PRESET_KINDS, type PresetKind } from '@sineobex/presets';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  heldBy,
+  PRESET_KINDS,
+  presetRefs,
+  validatePreset,
+  type PresetBody,
+  type PresetKind,
+} from '@sineobex/presets';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHarness, type Harness } from './harness.ts';
 import {
   bodies,
@@ -11,9 +18,12 @@ import {
   headOf,
   idOf,
   idsNamedBy,
+  nextVersion,
   presetsApi,
   presetsTeam,
   referencesOf,
+  releasePlatform,
+  runInstaller,
   versionsOf,
   type Answer,
   type Body,
@@ -28,6 +38,12 @@ import {
 // (wrong_kind), and not archived (409 reference_archived); and an archive is refused while an
 // active preset names the preset (409 referenced, with the counts by kind), so no active body is
 // left naming an archived preset or nothing at all. The shapes are presets-routes.test.ts's.
+
+// This file's platform is its own copy, so a platform update can be released into it.
+vi.mock('../../../packages/presets/data/platform.json', async (importOriginal) => {
+  const real = (await importOriginal()) as { default: unknown[] };
+  return { default: [...real.default] };
+});
 
 /** Each field of a body that names a preset, the kind it must name, and how a body is made with it. */
 interface IdField {
@@ -128,12 +144,17 @@ async function write(field: IdField, body: Body): Promise<Answer> {
   return api.edit('settings', settings, await currentVersion(settings), body);
 }
 
-async function refusedUnwritten(act: () => Promise<Answer>, status: number, code: string) {
-  const before = await footprint(h, team.teamId);
+async function refusedUnwritten(
+  act: () => Promise<Answer>,
+  status: number,
+  code: string,
+  teamId = team.teamId,
+) {
+  const before = await footprint(h, teamId);
   const r = await act();
   expect(r.status, JSON.stringify(r.body)).toBe(status);
   expect(errorOf(r).code).toBe(code);
-  await expectNothingWritten(h, team.teamId, before);
+  await expectNothingWritten(h, teamId, before);
   return errorOf(r).details ?? {};
 }
 
@@ -366,4 +387,98 @@ describe('the team’s presets as a whole, after every act (design 4.4, risk 1)'
         expect(row.referencedBy, `${kind} ${row.id}`).toEqual(refs.get(row.id) ?? {});
     }
   });
+});
+
+describe('a bundle holding a medication is Medical, whatever moves the item (design 4.4; PRD main 447)', () => {
+  // A Medical bundle needs a Medical encounter and an ordering credential, and runs the allergy
+  // check first. A bundle's own write checks the rule; an item's category may change between a
+  // supply and a medication one (only a lab move is fixed), so moving the item checks every active
+  // bundle that names it, and a restored bundle is checked as a written one is.
+  let m: PresetsTeam;
+  let a: PresetsApi;
+
+  beforeAll(async () => {
+    m = await presetsTeam(h, 'Refs Medication');
+    a = presetsApi(h, m.teamId, m.admin);
+  });
+
+  /** Every active bundle of the team that holds a medication and is not Medical. */
+  async function bundlesNotMedical(): Promise<string[]> {
+    const held = await heldBy(h.scratch.owner as never, m.teamId);
+    const refs = presetRefs(held);
+    return held
+      .filter((p) => p.kind === 'bundle' && p.state === 'active')
+      .filter((p) =>
+        validatePreset({ kind: 'bundle', body: p.body as PresetBody, refs, definitions: {}, id: p.id }).some(
+          (x) => x.code === 'bundle_not_medical',
+        ),
+      )
+      .map((p) => p.id);
+  }
+  const inOtc = (body: Body) => ({ ...body, categoryId: idOf(m, 'order_category.otc'), medical: true });
+  const head = async (id: string) => (await headOf(h, id))!.currentVersion;
+
+  it('refuses an edit that moves an item into a medication category while a Non-Medical bundle holds it', async () => {
+    // Socks are in the platform's Winter/frostbite, a Non-Medical bundle (design 4.6).
+    const socks = idOf(m, 'item.socks');
+    const moved = inOtc(await bodyOf(socks));
+    const details = await refusedUnwritten(
+      async () => a.edit('item', socks, await head(socks), moved),
+      409,
+      'bundle_not_medical',
+      m.teamId,
+    );
+    expect(details).toEqual({ bundles: 1 });
+    // Tagged Medical first, the bundle lets the item move.
+    const winter = idOf(m, 'bundle.winter_frostbite');
+    expect(
+      (await a.edit('bundle', winter, await head(winter), { ...(await bodyOf(winter)), medical: true }))
+        .status,
+    ).toBe(200);
+    expect((await a.edit('item', socks, await head(socks), moved)).status).toBe(200);
+    expect(await bundlesNotMedical()).toEqual([]);
+  });
+
+  it('refuses in place a platform update that moves an item so, and takes it once no such bundle holds it', async () => {
+    // The team edited its Hygiene kit, so the platform's next version, in OTC, is only offered.
+    const kit = idOf(m, 'item.hygiene_kit');
+    const ours = { ...(await bodyOf(kit)), captureLot: true };
+    expect((await a.edit('item', kit, await head(kit), ours)).status).toBe(200);
+    const undo = releasePlatform([
+      nextVersion('item.hygiene_kit', (b) => ({ ...inOtc(b), categoryId: 'order_category.otc' })),
+    ]);
+    try {
+      expect((await runInstaller(h, m.teamId)).offer).toEqual({ item: 1 });
+      const details = await refusedUnwritten(
+        async () => a.takeUpdate('item', kit, await head(kit), false),
+        409,
+        'bundle_not_medical',
+        m.teamId,
+      );
+      expect(details).toEqual({ bundles: 1 });
+      const hygiene = idOf(m, 'bundle.hygiene');
+      expect((await a.archive('bundle', hygiene, await head(hygiene))).status).toBe(200);
+      expect((await a.takeUpdate('item', kit, await head(kit), false)).status).toBe(200);
+      expect(await bundlesNotMedical()).toEqual([]);
+    } finally {
+      undo();
+    }
+  });
+
+  it('refuses to restore a Non-Medical bundle whose item became a medication while it was archived', async () => {
+    const summer = idOf(m, 'bundle.summer_dehydration');
+    const packet = idOf(m, 'item.electrolyte_packet');
+    expect((await a.archive('bundle', summer, await head(summer))).status).toBe(200);
+    // No active bundle holds the packet now, so it moves.
+    expect((await a.edit('item', packet, await head(packet), inOtc(await bodyOf(packet)))).status).toBe(200);
+    const details = await refusedUnwritten(() => a.restore('bundle', summer), 422, 'invalid', m.teamId);
+    expect(details.problems).toEqual([{ path: 'medical', code: 'bundle_not_medical' }]);
+    expect(await bundlesNotMedical()).toEqual([]);
+  });
+
+  /** A preset's current body, as stored. */
+  async function bodyOf(id: string): Promise<Body> {
+    const version = await head(id);
+    return (await versionsOf(h, id)).find((v) => v.version === version)!.body;
+  }
 });

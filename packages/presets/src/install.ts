@@ -18,7 +18,7 @@ import type { InstallSql, PlatformUpdateInput, ResolvedNoteType } from '@sineobe
 import PLATFORM_FILE from '../data/platform.json' with { type: 'json' };
 import { changedFixedFields } from './rules.ts';
 import type { ItemBody, OrderCategoryBody, PresetBody, PresetKind } from './schemas.ts';
-import { validatePreset, type PresetProblem, type PresetRef } from './validate.ts';
+import { bundlesLeftNotMedical, validatePreset, type PresetProblem, type PresetRef } from './validate.ts';
 
 /** One entry of data/platform.json: its body names another entry by origin key wherever it holds an id. */
 export type PlatformEntry = {
@@ -158,6 +158,17 @@ export function planTeamPresets(input: {
     const renamed = copy === undefined || name !== nameKey(copy.kind, copy.name);
     if (problems.length === 0 && renamed && takenNames().has(name))
       problems.push({ path: 'name', code: 'name_taken' });
+    // An item the update moves into a medication category would leave an active Non-Medical bundle
+    // naming it holding a medication, which only that bundle's own check would see (4.4): it waits,
+    // skipped, until no such bundle names it, as one the platform tags Medical then no longer does.
+    // The bundles are the team's as held: the file puts a bundle after the items it names, so none
+    // that names this item is planned yet.
+    if (problems.length === 0 && effect === 'update' && entry.kind === 'item') {
+      const after = { ...refs };
+      putRef(after, copy!.id, entry.kind, 'active', body);
+      if (bundlesLeftNotMedical({ itemId: copy!.id, presets: input.held, before: refs, after }).length > 0)
+        problems.push({ path: 'categoryId', code: 'bundle_not_medical' });
+    }
     if (problems.length > 0) {
       steps.push({ ...step, effect: 'skipped', problems });
       continue;

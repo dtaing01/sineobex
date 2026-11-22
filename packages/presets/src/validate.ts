@@ -161,6 +161,36 @@ export function validatePreset(input: {
   return problems;
 }
 
+/**
+ * The active bundles a change to an item leaves holding a medication while Non-Medical (design 4.4;
+ * PRD main 447: such a bundle needs a Medical encounter, an ordering credential and the allergy
+ * check): each that names the item and that validatePreset finds bundle_not_medical against the
+ * team's refs as the change leaves them (`after`), and not against them as they were (`before`). A
+ * bundle checks the rule on its own write; an item moved into a medication category is checked
+ * here, as the store's edit and update taken in place and the installer's update move one. A bundle
+ * that breaks the rule already, by another of its items, is not this change's to answer for.
+ */
+export function bundlesLeftNotMedical(input: {
+  itemId: string;
+  /** The team's presets as the change finds them; only its active bundles are read. */
+  presets: Iterable<{ id: string; kind: PresetKind; state: 'active' | 'archived'; body: PresetBody | null }>;
+  before: Readonly<Record<string, PresetRef>>;
+  after: Readonly<Record<string, PresetRef>>;
+}): string[] {
+  const notMedical = (id: string, body: BundleBody, refs: Readonly<Record<string, PresetRef>>) =>
+    validatePreset({ kind: 'bundle', body, refs, definitions: {}, id }).some(
+      (p) => p.code === 'bundle_not_medical',
+    );
+  const left: string[] = [];
+  for (const p of input.presets) {
+    if (p.kind !== 'bundle' || p.state !== 'active' || p.body === null) continue;
+    const body = p.body as BundleBody;
+    if (!body.lines.some((line) => line.itemId === input.itemId)) continue;
+    if (notMedical(p.id, body, input.after) && !notMedical(p.id, body, input.before)) left.push(p.id);
+  }
+  return left;
+}
+
 // An entry's ID, any one: fieldAt finds a field of a repeating section only by an answer's path,
 // and a map fires alike in every entry.
 const AN_ENTRY = 'e0000000';

@@ -2,6 +2,7 @@ import { z } from '@hono/zod-openapi';
 import { takeRevision } from '@sineobex/forms';
 import {
   BODY_SCHEMAS,
+  bundlesLeftNotMedical,
   changedFixedFields,
   definitionsOf,
   heldBy,
@@ -446,6 +447,23 @@ async function problemsOf(w: Write, kind: PresetKind, body: PresetBody, id: stri
   };
 }
 
+/**
+ * Refuses an item's next body that would leave an active Non-Medical bundle naming it holding a
+ * medication (design 4.4; PRD main 447): a bundle checks the rule on its own write, so moving the
+ * item into a medication category asks it again of each such bundle, against the team's refs as
+ * this write leaves them. The person tags those bundles Medical first, so it is a conflict.
+ */
+function refuseBundlesLeftNotMedical(team: TeamPresets, item: HeldPreset, body: PresetBody): void {
+  const after = presetRefs(team.all.map((p) => (p.id === item.id ? { ...p, body } : p)));
+  const left = bundlesLeftNotMedical({ itemId: item.id, presets: team.all, before: team.refs, after });
+  if (left.length > 0)
+    throw conflict(
+      'bundle_not_medical',
+      'Non-Medical bundles hold this item, and a bundle that holds a medication must be Medical. Make them Medical first.',
+      { bundles: left.length },
+    );
+}
+
 /** An act's input to presetWriteEffect, every field the act does not read at its neutral value. */
 const effectInput = (
   input: Partial<PresetWriteInput> & Pick<PresetWriteInput, 'act' | 'kind'>,
@@ -623,6 +641,7 @@ export function editPreset(
       }),
     );
     if ('refuse' in effect) throw refusal(effect.refuse, { act: 'edit', preset, fields: fixed, archived });
+    if (kind === 'item') refuseBundlesLeftNotMedical(w.team, preset, body);
     const version = effect.versionAfter;
     return {
       changes: {
@@ -680,7 +699,7 @@ export function restorePreset(
 ): Promise<{ revision: number }> {
   return presetWrite(scope, input.reason, async (w) => {
     const preset = presetOf(w.team, input.kind, input.id);
-    const { archived } = await problemsOf(w, preset.kind, bodyOf(preset), preset.id);
+    const { archived, others } = await problemsOf(w, preset.kind, bodyOf(preset), preset.id);
     const effect = presetWriteEffect(
       effectInput({
         act: 'restore',
@@ -693,6 +712,11 @@ export function restorePreset(
       }),
     );
     if ('refuse' in effect) throw refusal(effect.refuse, { preset, archived });
+    // A bundle comes back checked as a write of it is for what holds a medication (4.4): an item
+    // may have moved into a medication category while it was archived. Its other problems, a map
+    // whose note type changed since, leave a preset that fires on nothing, and keep nothing away.
+    const medication = others.filter((p) => p.code === 'bundle_not_medical');
+    if (medication.length > 0) throw refusedBody(medication);
     return {
       changes: stateChange(preset, effect, 'restored', 'preset.restored'),
       answer: (revision) => ({ revision }),
@@ -775,6 +799,8 @@ export function takePlatformUpdate(
     // An update the team's presets refuse for anything else is not written either.
     if (checked!.others.length > 0) throw refusedBody(checked!.problems);
     const { body, entry } = update!;
+    // As new, the item is a new one no bundle names yet; in place, its bundles hold it as it moves.
+    if (!input.asNew && kind === 'item') refuseBundlesLeftNotMedical(w.team, preset, body);
     if (!input.asNew) {
       const version = effect.versionAfter;
       return {

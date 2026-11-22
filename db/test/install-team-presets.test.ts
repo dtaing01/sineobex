@@ -500,6 +500,51 @@ describe('installing the platform presets', () => {
       expect((await byOrigin(team)).has(BUNDLE.originKey)).toBe(false);
     });
 
+    it('holds back an item it would move into a medication category while a Non-Medical bundle the team holds names it', async () => {
+      // A bundle holding a medication is Medical (design 4.4; PRD main 447). The team edited its
+      // bundle, so the platform's Medical tag for it is only offered, and the item waits, skipped
+      // and counted, until the team makes the bundle Medical.
+      const team = await makeTeam(db.owner, 'Install Presets Medication Team');
+      const MEDS: PlatformEntry = {
+        originKey: 'order_category.demo_otc',
+        platformVersion: 1,
+        kind: 'order_category',
+        body: { name: 'Demo: OTC', behaviour: 'medication', sort: 20 },
+      };
+      const first = [CATEGORY, MEDS, GAUZE, BUNDLE];
+      await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: first }));
+      const ids = new Map([...(await byOrigin(team))].map(([key, h]) => [key, h.id]));
+      const bundle = ids.get(BUNDLE.originKey)!;
+      const ours = withTeamIds({ ...BUNDLE.body, prompt: 'Demo: ask first.' }, ids) as Record<
+        string,
+        unknown
+      >;
+      await editAsTeam(team, bundle, ours);
+      const second = [
+        ...first,
+        next(GAUZE, { categoryId: MEDS.originKey, medical: true }),
+        next(BUNDLE, { medical: true }),
+      ];
+      expect(await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: second }))).toEqual({
+        install: {},
+        update: {},
+        offer: { bundle: 1 },
+        skipped: { item: 1 },
+      });
+      const gauze = (await byOrigin(team)).get(GAUZE.originKey)!;
+      expect(gauze).toMatchObject({ currentVersion: 1, platformLatest: 1 });
+      // The team makes its bundle Medical: the next run moves the item.
+      await editAsTeam(team, bundle, { ...ours, medical: true });
+      expect(await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: second }))).toEqual({
+        install: {},
+        update: { item: 1 },
+        offer: {},
+        skipped: {},
+      });
+      const moved = (await versionsOf(team)).filter((v) => v.presetId === gauze.id).at(-1)!;
+      expect(moved.body).toMatchObject({ categoryId: ids.get(MEDS.originKey), medical: true });
+    });
+
     it('writes an update as the platform’s: its head names no person as its last writer', async () => {
       const team = await makeTeam(db.owner, 'Install Presets Update Writer Team');
       await asTeam(team, (tx) => installTeamPresets(tx, team, { platform: [CATEGORY] }));

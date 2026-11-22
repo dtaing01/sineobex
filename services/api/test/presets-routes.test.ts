@@ -91,6 +91,9 @@ import {
 //       no_update
 //   409 fixed_field      take-update in place, details.fields; 422 fixed_field on an edit,
 //                        details.fields: changedFixedFields(kind, current, sent) either way.
+//   409 bundle_not_medical  details.bundles: an item's edit, or an update of it taken in place,
+//                        would leave that many active Non-Medical bundles holding a medication
+//                        (4.4); a restored bundle holding one is 422 invalid, as a written one is.
 //   422 no_change        the body sent, as its schema parses it, is the current one.
 //   422 ids_mismatch     a reorder's ids are not exactly the tier's active flags (an archived one,
 //                        another tier's, one twice, one left out, one unknown).
