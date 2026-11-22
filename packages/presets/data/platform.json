@@ -952,6 +952,504 @@
     }
   },
   {
+    "originKey": "field_supply_map.flu_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Flu vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.flu",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.flu_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.covid_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: COVID vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.covid",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.covid_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.tdap_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Tdap vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.tdap",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.tdap_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.hep_a_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Hep A vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.hep_a",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.hep_a_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.hep_b_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Hep B vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.hep_b",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.hep_b_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.pneumococcal_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Pneumococcal vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.pneumococcal",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.pneumococcal_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.hpv_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: HPV vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.hpv",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.hpv_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.shingles_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Shingles vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.shingles",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.shingles_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_dressing_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: dressing applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "answered": true
+      },
+      "lines": [
+        {
+          "itemId": "item.gauze",
+          "qty": 1
+        },
+        {
+          "itemId": "item.bandage",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_xeroform_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Xeroform applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "xeroform"
+      },
+      "lines": [
+        {
+          "itemId": "item.xeroform",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_mepilex_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Mepilex applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "mepilex"
+      },
+      "lines": [
+        {
+          "itemId": "item.mepilex",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_abd_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: ABD applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "abd"
+      },
+      "lines": [
+        {
+          "itemId": "item.abd",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_hydrocolloid_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Hydrocolloid applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "hydrocolloid"
+      },
+      "lines": [
+        {
+          "itemId": "item.hydrocolloid",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_aquacel_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Aquacel applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "aquacel"
+      },
+      "lines": [
+        {
+          "itemId": "item.aquacel",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_compression_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Compression applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "compression"
+      },
+      "lines": [
+        {
+          "itemId": "item.compression",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_dressing_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: dressing applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "answered": true
+      },
+      "lines": [
+        {
+          "itemId": "item.gauze",
+          "qty": 1
+        },
+        {
+          "itemId": "item.bandage",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_abd_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: ABD applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "includes": "abd"
+      },
+      "lines": [
+        {
+          "itemId": "item.abd",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_xeroform_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: Xeroform applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "includes": "xeroform"
+      },
+      "lines": [
+        {
+          "itemId": "item.xeroform",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_compression_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: Compression applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "includes": "compression"
+      },
+      "lines": [
+        {
+          "itemId": "item.compression",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.outreach_food_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Outreach: food given",
+      "noteTypeKey": "outreach",
+      "path": "outreach.support",
+      "when": {
+        "includes": "food"
+      },
+      "lines": [
+        {
+          "itemId": "item.food_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.outreach_hygiene_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Outreach: hygiene given",
+      "noteTypeKey": "outreach",
+      "path": "outreach.support",
+      "when": {
+        "includes": "hygiene"
+      },
+      "lines": [
+        {
+          "itemId": "item.hygiene_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_food_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: food given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "food"
+      },
+      "lines": [
+        {
+          "itemId": "item.food_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_hygiene_kit_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: hygiene kit given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "hygiene_kit"
+      },
+      "lines": [
+        {
+          "itemId": "item.hygiene_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_socks_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: socks given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "socks"
+      },
+      "lines": [
+        {
+          "itemId": "item.socks",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_handwarmers_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: handwarmers given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "handwarmers"
+      },
+      "lines": [
+        {
+          "itemId": "item.handwarmers",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "condition_supply_map.rash_dermatitis",
+    "platformVersion": 1,
+    "kind": "condition_supply_map",
+    "body": {
+      "name": "Rash or dermatitis",
+      "codes": ["R21", "L30.9"],
+      "lines": [
+        {
+          "itemId": "item.hydrocortisone_cream",
+          "qtyPerPatient": 1
+        }
+      ]
+    }
+  },
+  {
     "originKey": "settings.team",
     "platformVersion": 1,
     "kind": "settings",
