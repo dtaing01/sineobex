@@ -188,6 +188,15 @@ describe('taking Sineobex’s update', () => {
     expect(revalidated).toEqual([]);
   });
 
+  it('says in 8.1’s words that Non-Medical bundles hold an item an update taken in place would move', async () => {
+    answer = refusal(409, 'bundle_not_medical', { bundles: 2 });
+    const r = await run(takePresetUpdateAction, { ...fields, kind: 'item' });
+    expect(r.state?.error).toBe(
+      'Non-Medical bundles hold this item, and a bundle that holds a medication must be Medical. Make them Medical first.',
+    );
+    expect(revalidated).toEqual([]);
+  });
+
   it('asks nothing of the API for a take no page writes', async () => {
     for (const bad of [
       { ...fields, asNew: 'yes' },
