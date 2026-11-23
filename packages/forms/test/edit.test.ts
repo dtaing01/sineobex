@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { answerSets } from '../scripts/golden.ts';
 import { checkFile } from '../src/schema.ts';
 import {
+  applyNoteTypeEdit,
   applyNoteTypeEdits,
   canonicalJson,
   editNoteTypes,
@@ -863,6 +864,74 @@ describe('hiding, showing and rewording (edit.ts)', () => {
       expectStorable(reworded.definition, [v1, v2], reworded.renames, () => undefined, 'reworded');
   });
 
+  it('shows a part back as the last version that had it wrote it, after the nearest part before it still there', () => {
+    // Version 2 rewords kits; version 3 hides it and the field it followed.
+    const v1 = named('demo_visit@1');
+    const v2 = nextOf(v1, (d) => {
+      (d.sections[0]!.fields[3] as { label: string }).label = 'Demo: Kits handed out';
+    });
+    const v3 = nextOf(v2, (d) => {
+      d.sections[0]!.fields = d.sections[0]!.fields.filter((f) => f.id !== 'kits' && f.id !== 'details');
+    });
+    const outcome = applyNoteTypeEdits(
+      [{ op: 'set_hidden', path: 'visit.kits', hidden: false }],
+      contextOn([v1, v2, v3]),
+    );
+    expect(outcome.ok && outcome.definition.sections[0]!.fields.map((f) => [f.id, f.label])).toEqual([
+      ['reason', 'Demo: Reason for the visit'],
+      ['seen', 'Demo: Seen before?'],
+      ['kits', 'Demo: Kits handed out'],
+      ['refer', 'Demo: Add a referral'],
+      ['tip', 'Demo: Offer water first.'],
+    ]);
+  });
+
+  it('refuses to reword a protected section’s title, a title the schema refuses, and a section that is not there', () => {
+    const exam = named('demo_exam@1');
+    expect(refusedWith([{ op: 'rename_label', path: 'meds', label: 'Demo: Medicines given' }], [exam])).toBe(
+      'protected',
+    );
+    expect(refusedWith([{ op: 'rename_label', path: 'exam', label: '\t' }], [exam])).toBe('label_invalid');
+    expect(refusedWith([{ op: 'rename_label', path: 'nowhere', label: 'Demo: Lost' }], [exam])).toBe(
+      'not_found',
+    );
+  });
+
+  it('yields for one operation the renames versionProblems reads of it: a field’s, each side’s, none for a group or a section', () => {
+    const visit = named('demo_visit@1');
+    const step = (edit: NoteTypeEdit) => {
+      const answer = applyNoteTypeEdit(visit, edit, contextOn([visit]));
+      return answer.ok ? answer.renames : answer.refusal.code;
+    };
+    expect(step({ op: 'rename_label', path: 'supplies.pack', label: 'Demo: Packed' })).toEqual([]);
+    expect(step({ op: 'rename_label', path: 'stops', label: 'Demo: Places' })).toEqual([]);
+    expect(step({ op: 'rename_type', title: 'Demo: Evening' })).toEqual([]);
+    expect(step({ op: 'rename_label', path: 'supplies.size', label: 'Demo: Size' })).toEqual([
+      { path: 'supplies.size', from: 'Demo: Glove size', to: 'Demo: Size' },
+    ]);
+    expect(
+      step({ op: 'rename_option', path: 'supplies.size', code: 'small', label: 'Demo: Little' }),
+    ).toEqual([
+      { path: 'supplies.size.right', code: 'small', from: 'Demo: Small', to: 'Demo: Little' },
+      { path: 'supplies.size.left', code: 'small', from: 'Demo: Small', to: 'Demo: Little' },
+    ]);
+  });
+
+  it('publishes a definition of its own: changing it changes nothing it was made from', () => {
+    const context = contextOn([named('demo_visit@1')]);
+    const before = canonicalJson(context);
+    const outcome = applyNoteTypeEdits(
+      [{ op: 'rename_label', path: 'visit.kits', label: 'Demo: Kits out' }],
+      context,
+    );
+    if (!outcome.ok) throw new Error('refused');
+    for (const section of outcome.definition.sections) {
+      section.title = 'Demo: Changed';
+      for (const field of section.fields) field.label = 'Demo: Changed';
+    }
+    expect(canonicalJson(context)).toBe(before);
+  });
+
   it('takes a title of 1 to 80 characters, counted as code points, that the schema takes', () => {
     expect(isNoteTypeTitle('Demo: 🩹'.padEnd(6 + 2 * 74, '🩹'))).toBe(true);
     expect(isNoteTypeTitle('Demo: '.padEnd(80, 'x'))).toBe(true);
@@ -953,6 +1022,23 @@ describe('the option operations (edit-options.ts)', () => {
     expect(outcome).toEqual({ ok: true, definition: { ...visit, version: 2 }, renames: [] });
   });
 
+  it('refuses words the schema refuses for an option, and a field or a code that is not there', () => {
+    const visit = named('demo_visit@1');
+    const codeOf = (edit: NoteTypeEdit) => {
+      const outcome = applyNoteTypeEdits([edit], contextOn([visit]));
+      return outcome.ok ? 'published' : outcome.refusal.code;
+    };
+    expect(
+      codeOf({ op: 'rename_option', path: 'supplies.given', code: 'water', label: 'Demo: \u0007' }),
+    ).toBe('label_invalid');
+    expect(codeOf({ op: 'add_option', path: 'supplies.given', label: ' ' })).toBe('label_invalid');
+    expect(codeOf({ op: 'retire_option', path: 'supplies.given', code: 'hats' })).toBe('not_found');
+    expect(codeOf({ op: 'move_option', path: 'supplies.given', code: 'hats', before: null })).toBe(
+      'not_found',
+    );
+    expect(codeOf({ op: 'add_option', path: 'supplies.nowhere', label: 'Demo: Hat' })).toBe('not_found');
+  });
+
   it('takes no option operation on a field that is not a choice: a region, a grid or a flag', () => {
     const quick = PRESETS.find((p) => p.key === 'quick_encounter')!.definition;
     for (const [definition, edit] of [
@@ -983,6 +1069,12 @@ describe('adding and copying (edit-add.ts)', () => {
     return outcome.ok ? 'published' : outcome.refusal.code;
   };
   const text = { kind: 'text', label: 'Demo: Note', lines: 'one', maxLength: 200 } as const;
+  const nextOf2 = (from: ResolvedNoteType, change: (d: ResolvedNoteType) => void): ResolvedNoteType => {
+    const next = structuredClone(from);
+    next.version = from.version + 1;
+    change(next);
+    return next;
+  };
 
   it('builds a field and a section of what the request gives for them alone: no mark is ever written (rule 1)', () => {
     const marks = {
@@ -1139,6 +1231,25 @@ describe('adding and copying (edit-add.ts)', () => {
       ),
     ).toBe('too_many_sections');
     expect(codeOf([copy], contextOf2([named('t_000000000003@1')], [source]))).toBe('too_many_fields');
+  });
+
+  it('copies only after a section the target has, and from the platform’s version of a key both hold', () => {
+    const visit = named('demo_visit@1');
+    const street = named('demo_street@1');
+    const teams = nextOf2(street, (d) => {
+      d.sections[0]!.title = 'Demo: The team’s water';
+    });
+    const copy = (afterSectionId: string | null): NoteTypeEdit => ({
+      op: 'copy_section',
+      fromKey: 'demo_street',
+      sectionId: 'water',
+      afterSectionId,
+    });
+    expect(codeOf([copy('nowhere')], contextOf2([visit], [teams], [street]))).toBe('not_found');
+    const fromPlatform = applyNoteTypeEdits([copy('visit')], contextOf2([visit], [teams], [street]));
+    expect(fromPlatform.ok && fromPlatform.definition.sections[1]).toEqual(street.sections[0]);
+    const fromTeam = applyNoteTypeEdits([copy('visit')], contextOf2([visit], [teams]));
+    expect(fromTeam.ok && fromTeam.definition.sections[1]!.title).toBe('Demo: The team’s water');
   });
 
   it('refuses a copy for what it brings, never for what an earlier operation of the publish left', () => {
