@@ -15,15 +15,15 @@ import {
   readTexts,
   sentValues,
   wholeNumber,
+  type HubKind,
   type HubLists,
-  type PresetKind,
 } from './presets';
 
 // What the portal's preset pages read of the admin routes (phase 5 design 7, 8.1). The API answers
 // every list here; `answers` stands in for it, kind by kind, and `asked` records the order the
 // hub asks in. Every value is made up.
 const asked: string[] = [];
-let answers: (kind: PresetKind) => Promise<unknown>;
+let answers: (kind: HubKind) => Promise<unknown>;
 
 // The page a refused act was sent from, as the proxy names it in x-pathname, and what it read again.
 let pathname = '/team/presets';
@@ -33,8 +33,10 @@ vi.mock('next/cache', () => ({ revalidatePath: (path: string) => void reread.pus
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof Api>()),
   api: async () => ({
-    GET: async (_path: string, init: { params: { path: { kind: PresetKind } } }) => {
-      const { kind } = init.params.path;
+    // The note types' list has no kind in its address (GET /v1/admin/note-types): the hub counts it
+    // as `note_type`.
+    GET: async (path: string, init?: { params: { path: { kind: HubKind } } }) => {
+      const kind = path === '/v1/admin/note-types' ? 'note_type' : init!.params.path.kind;
       asked.push(`ask ${kind}`);
       try {
         return await answers(kind);
@@ -49,38 +51,68 @@ vi.mock('./api', async (importOriginal) => ({
 
 const row = (state: 'active' | 'archived', updateOnOffer = false) => ({ state, updateOnOffer });
 
-/** The hub's lists with nothing on offer: 4 categories, 2 items (1 archived), and 1 of each other kind. */
+/**
+ * The hub's lists with nothing on offer: 4 categories, 2 items (1 archived), 2 field supply
+ * mappings, 3 note types (1 archived), and 1 of each other kind.
+ */
 const lists = (): HubLists => ({
   order_category: [row('active'), row('active'), row('active'), row('active')],
   item: [row('active'), row('archived')],
   bundle: [row('active')],
   flag: [row('active')],
+  field_supply_map: [row('active'), row('active')],
   condition_supply_map: [row('active')],
   bag: [row('active')],
   settings: [row('active')],
+  note_type: [row('active'), row('active'), row('archived')],
 });
 
 const card = (areas: ReturnType<typeof hubAreas>, key: string) => areas.find((a) => a.key === key)!;
 
 describe('the hub’s cards', () => {
   it('count the active presets of each area, and offer nothing when nothing is on offer', () => {
+    // The field supplies and note types cards are unit P4's (phase 5 design 13.4), in 8.1's order.
     const areas = hubAreas(lists());
     expect(areas.map((a) => a.key)).toEqual([
       'categories',
       'items',
       'bundles',
       'flags',
+      'field-supplies',
       'condition-supplies',
       'bag-minimums',
+      'note-types',
     ]);
     expect(areas.map((a) => (a.loaded ? [a.count, a.updateAvailable] : null))).toEqual([
       [4, false],
       [1, false],
       [1, false],
       [1, false],
+      [2, false],
       [1, false],
       [1, false],
+      [2, false],
     ]);
+  });
+
+  it('give the note types and field supplies cards their pages, counted in their own words', () => {
+    const areas = hubAreas(lists());
+    expect(card(areas, 'note-types')).toMatchObject({
+      title: 'Note types',
+      href: '/team/presets/note-types',
+      noun: ['note type', 'note types'],
+    });
+    expect(card(areas, 'field-supplies')).toMatchObject({
+      title: 'Field supplies',
+      href: '/team/presets/field-supplies',
+      noun: ['mapping', 'mappings'],
+    });
+  });
+
+  it('say an update is available where a note type is offered one, a removed one too', () => {
+    const areas = hubAreas({ ...lists(), note_type: [row('active'), row('archived', true)] });
+    expect(card(areas, 'note-types')).toMatchObject({ loaded: true, count: 1, updateAvailable: true });
+    expect(areas.filter((a) => a.loaded && a.updateAvailable).map((a) => a.key)).toEqual(['note-types']);
   });
 
   it('say an update is available where an active preset of the area is offered one', () => {
@@ -131,9 +163,17 @@ describe('reading the hub', () => {
     const first = PRESET_AREAS[0]!.kinds[0]!;
     expect(asked.slice(0, 2)).toEqual([`ask ${first}`, `answered ${first}`]);
     expect(asked.filter((a) => a.startsWith('ask')).toSorted()).toEqual(
-      ['bag', 'bundle', 'condition_supply_map', 'flag', 'item', 'order_category', 'settings'].map(
-        (k) => `ask ${k}`,
-      ),
+      [
+        'bag',
+        'bundle',
+        'condition_supply_map',
+        'field_supply_map',
+        'flag',
+        'item',
+        'note_type',
+        'order_category',
+        'settings',
+      ].map((k) => `ask ${k}`),
     );
     expect(areas.every((a) => a.loaded)).toBe(true);
   });

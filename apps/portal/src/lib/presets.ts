@@ -270,15 +270,18 @@ export async function reorderFlags(order: Schemas['ReorderFlags']) {
 // The hub (8.1): a card per area, with its count and "Update available"
 // ------------------------------------------------------------------------------------------------
 
+/** What a card of the hub counts: a kind of preset, or the team's note types (unit P4). */
+export type HubKind = PresetKind | 'note_type';
+
 /** One area of Team setup: a page under /team/presets and the kinds of preset it shows. */
 export interface PresetArea {
   key: string;
   title: string;
   href: string;
   /** The kind its count counts. */
-  counted: PresetKind;
+  counted: HubKind;
   /** Every kind the page shows, whose update on offer it offers: the settings show on two pages. */
-  kinds: readonly PresetKind[];
+  kinds: readonly HubKind[];
   noun: readonly [one: string, many: string];
 }
 
@@ -341,7 +344,7 @@ export type HubArea = Pick<PresetArea, 'key' | 'title' | 'href' | 'noun'> &
 
 /** Each kind's list as the hub read it, or 'error' where the API could not be read. */
 export type HubLists = Partial<
-  Record<PresetKind, readonly Pick<PresetRow, 'state' | 'updateOnOffer'>[] | 'error'>
+  Record<HubKind, readonly Pick<PresetRow, 'state' | 'updateOnOffer'>[] | 'error'>
 >;
 
 /**
@@ -356,7 +359,7 @@ export function hubAreas(lists: HubLists, areas: readonly PresetArea[] = PRESET_
     const read = area.kinds.map((kind) => lists[kind]);
     if (read.some((list) => list === undefined || list === 'error'))
       return { key, title, href, noun, loaded: false };
-    const rows = (kind: PresetKind) => lists[kind] as Pick<PresetRow, 'state' | 'updateOnOffer'>[];
+    const rows = (kind: HubKind) => lists[kind] as Pick<PresetRow, 'state' | 'updateOnOffer'>[];
     return {
       key,
       title,
@@ -377,9 +380,9 @@ export function hubAreas(lists: HubLists, areas: readonly PresetArea[] = PRESET_
  */
 export async function readHub(areas: readonly PresetArea[] = PRESET_AREAS): Promise<HubArea[]> {
   const kinds = [...new Set(areas.flatMap((a) => a.kinds))];
-  const settle = async (kind: PresetKind) => {
+  const settle = async (kind: HubKind) => {
     try {
-      return [kind, await listPresets(kind)] as const;
+      return [kind, kind === 'note_type' ? await listNoteTypes() : await listPresets(kind)] as const;
     } catch (err) {
       unstable_rethrow(err);
       return [kind, 'error'] as const;
@@ -546,4 +549,131 @@ export async function presetFailure(
     redirect(refusedPath(page, err.code, id.toLowerCase()));
   }
   return presetRefusalState(err, values, context);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Note types (phase 5 design 5.4, 7, 8.1): unit P4's pages read and change them here. Written ahead
+// of their code (card P4-tests): each call throws until card P4-list-page (and, for Publish,
+// P4-editor) builds it on the generated contract, as the actions' and the pages' tests hold.
+// ------------------------------------------------------------------------------------------------
+
+/** Which encounters offer a note type: Medical only, Non-Medical only, or both (D56). */
+export type NoteTypeKind = 'medical' | 'non_medical';
+/** A note type's timeline group, fixed at creation. */
+export type NoteTypeGroup = 'clinical' | 'psych' | 'social' | 'outreach' | 'harm_reduction' | 'wound';
+
+/** An option of a choice, with phase 4's marks as it carries them (forms 2.2). */
+export interface NoteTypeOption {
+  code: string;
+  label: string;
+  [mark: string]: unknown;
+}
+
+/** A field of a note type, a group's fields among them. */
+export interface NoteTypeField {
+  id: string;
+  kind: string;
+  label: string;
+  options?: NoteTypeOption[];
+  fields?: NoteTypeField[];
+  [mark: string]: unknown;
+}
+
+export interface NoteTypeSection {
+  id: string;
+  title: string;
+  fields: NoteTypeField[];
+  [mark: string]: unknown;
+}
+
+/** A resolved definition, as GET /v1/admin/note-types answers each one (packages/forms). */
+export interface NoteTypeDefinition {
+  key: string;
+  version: number;
+  title: string;
+  kinds: NoteTypeKind[];
+  group: NoteTypeGroup;
+  sensitivity: 'none' | 'sensitive';
+  quick?: true;
+  auto?: 'medical';
+  sections: NoteTypeSection[];
+}
+
+/** What an edit may not touch (design 5.4): sections by id, fields by path, options by path and code. */
+export interface ProtectedParts {
+  sections: string[];
+  fields: string[];
+  options: { path: string; code: string }[];
+}
+
+/** A row of the admin list of note types (design 7). */
+export interface NoteTypeRow {
+  key: string;
+  title: string;
+  state: 'active' | 'archived';
+  /** Its current version: a publish, a Remove and a take send it back. */
+  version: number;
+  customized: boolean;
+  updateOnOffer: boolean;
+  updateChangesFixed: boolean;
+  /** The platform version on offer, as taking it in place would write it; null when none is. */
+  update: { platformVersion: number; definition: NoteTypeDefinition; changesFixed: string[] } | null;
+  /** The active field supply maps that name it ({field_supply_map: n}); it can't be removed while any do. */
+  referencedBy: Record<string, number>;
+  definition: NoteTypeDefinition;
+  protected: ProtectedParts;
+}
+
+/** One operation of a publish (design 5.4), as packages/forms writes it. */
+export type NoteTypeEdit = { op: string } & Record<string, unknown>;
+
+/** Every note type of the team, removed ones included, by title; reading them is not audited (PL-13). */
+export async function listNoteTypes(): Promise<NoteTypeRow[]> {
+  throw new Error('P4-list-page');
+}
+
+/** Adds a note type: blank, with its kinds and timeline group, or a copy of one the team has. */
+export async function createNoteType(
+  body: { title: string; reason: string } & ({ copyOf: string } | { kinds: NoteTypeKind[]; group: string }),
+): Promise<{ key: string; version: 1 }> {
+  void body;
+  throw new Error('P4-list-page');
+}
+
+/** Removes a note type (it is archived, never deleted), at the version the person was shown. */
+export async function archiveNoteType(
+  key: string,
+  baseVersion: number,
+  reason: string,
+): Promise<{ revision: number }> {
+  void key;
+  void baseVersion;
+  void reason;
+  throw new Error('P4-list-page');
+}
+
+export async function restoreNoteType(key: string, reason: string): Promise<{ revision: number }> {
+  void key;
+  void reason;
+  throw new Error('P4-list-page');
+}
+
+/** Takes the platform update on offer, in place or as a new note type; as for presets (5.1). */
+export async function takeNoteTypeUpdate(
+  key: string,
+  take: { baseVersion: number; platformVersion: number; asNew: boolean; reason: string },
+): Promise<{ key: string; version: number; revision: number }> {
+  void key;
+  void take;
+  throw new Error('P4-list-page');
+}
+
+/** Publishes the operations the editor held, as the note type's next version (design 5.4). */
+export async function publishNoteType(
+  key: string,
+  body: { baseVersion: number; ops: NoteTypeEdit[]; reason: string },
+): Promise<{ version: number; alsoPublished: string[] }> {
+  void key;
+  void body;
+  throw new Error('P4-editor');
 }
