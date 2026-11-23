@@ -1,11 +1,13 @@
 import type { TeamScope } from '../auth/context.ts';
+import { flagHidden } from '../sync/read-rules.ts';
 import { groupRedirects } from './charts.ts';
-import { birthFromRow, duplicateHints } from './projection.ts';
+import { birthFromRow, currentFlagsOf, duplicateHints } from './projection.ts';
 import type { IndexEntryValue, TeamIndexInput, TeamIndexPageValue } from './schemas.ts';
 
 /**
- * The projection every eligible role gets in phase 3 (design 6.1). Phase 5 adds `idx1+sens` for
- * sensitive secondary flags; a role change that changes the key forces a new download.
+ * The projection every eligible role gets (phase 3 design 6.1), and with `+sens` the one of a reader
+ * who sees sensitive flags (phase 5 design 6.1): a role change that changes the key forces a new
+ * download, as the version names it.
  */
 export const INDEX_PROJECTION = 'idx1';
 
@@ -25,15 +27,22 @@ const isoDay = (d: Date) => d.toISOString().slice(0, 10);
  *
  * An entry holds only the PRD's list plus bookkeeping: never a legal name or anything derived from
  * one (D40), living situation, language, consents, problems, notes (a duplicate pair's included),
- * tokens or history.
+ * tokens or history. Its flags are IDs only, never a change's reason.
  */
 export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Promise<TeamIndexPageValue> {
+  // PLAN-OPEN (BM-83): may the phone's offline team index hold secondary flags, sensitive ones
+  // included (D29: no clinical content)? Yes: each entry carries the patient's current flags of both
+  // tiers, so both filter offline, and a sensitive one only for a reader the flag rule shows it to,
+  // whose copy is another projection (idx1+sens), so a role that loses sight of it downloads anew.
+  const projection = flagHidden(scope.team.permissions, { sensitive: true })
+    ? INDEX_PROJECTION
+    : `${INDEX_PROJECTION}+sens`;
   return scope.tx(async (tx, audit) => {
     const [counter] = await tx<{ version: string }[]>`
       select version::text from sineobex.team_index_versions where team_id = sineobex.current_team_id()`;
-    const version = `${counter?.version ?? '0'}.${INDEX_PROJECTION}`;
+    const version = `${counter?.version ?? '0'}.${projection}`;
     const generatedAt = scope.deps.now().toISOString();
-    const base = { version, projection: INDEX_PROJECTION, generatedAt };
+    const base = { version, projection, generatedAt };
     if (input.after === undefined && input.have === version)
       return { ...base, status: 'unchanged', entries: [], next: null, redirects: [] };
 
@@ -101,6 +110,12 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
       tx,
       page.map((r) => r.id),
     );
+    // 0024's triggers move the version at every flag change, so a phone's copy follows them.
+    const flags = await currentFlagsOf(
+      tx,
+      scope,
+      page.map((r) => r.id),
+    );
     const entries: IndexEntryValue[] = page.map((r) => {
       // A merged record's preferred name finds the survivor offline, but it is no street name record:
       // no ID, so a phone can't send a removal the server could never apply.
@@ -123,6 +138,7 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
         idLinks: r.idLinks,
         // Never the reviewer's note: free text may hold a legal name (D40). Charts carry it.
         duplicate: hint ? { status: hint.status } : null,
+        flags: flags.get(r.id)!,
         reviews: r.reviews,
         versions: {
           preferredName: r.fieldVersions.preferredName ?? 0,

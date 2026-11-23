@@ -634,7 +634,7 @@ export interface paths {
         put?: never;
         /**
          * The team search index for a phone, a page at a time. Field roles only. Gzipped.
-         * @description Needs patients.view and one of patients.edit, encounters.chart, checkins.create; otherwise 403 index_not_permitted, and the phone deletes any index it holds. `have` equal to the current version answers `unchanged`. No legal name, no token, no clinical content.
+         * @description Needs patients.view and one of patients.edit, encounters.chart, checkins.create; otherwise 403 index_not_permitted, and the phone deletes any index it holds. `have` equal to the current version answers `unchanged`. No legal name, no token, and of clinical content only the current flags, a sensitive one only for a reader who sees sensitive problems (projection idx1+sens).
          */
         post: operations["downloadTeamIndex"];
         delete?: never;
@@ -1950,6 +1950,7 @@ export interface components {
             allergyScreen: components["schemas"]["AllergyScreen"];
             birth: components["schemas"]["BirthView"] | null;
             duplicate: components["schemas"]["IndexDuplicateHint"] | null;
+            flags?: components["schemas"]["IndexFlags"];
             idLinks: {
                 /** Format: date-time */
                 effectiveAt: string;
@@ -1974,6 +1975,16 @@ export interface components {
                 visualDescriptor: number;
             };
             visualDescriptor: string | null;
+        };
+        /** @description The patient’s current flags by ID, as the reader may see them: a sensitive one only under idx1+sens. Sent with every entry; an entry without it, kept from before, holds none */
+        IndexFlags: {
+            /**
+             * Format: uuid
+             * @description The risk level, or none
+             */
+            primary: string | null;
+            /** @description The conditions, by rank, then name, then ID */
+            secondary: string[];
         };
         InviteMember: {
             credential?: components["schemas"]["Credential"];
@@ -3010,6 +3021,7 @@ export interface components {
             generatedAt: string;
             /** Format: uuid */
             next: string | null;
+            /** @description idx1, or idx1+sens for a reader who sees sensitive flags: another copy, sent whole */
             projection: string;
             /** @description First page only: the team’s complete list */
             redirects: components["schemas"]["PatientRedirect"][];

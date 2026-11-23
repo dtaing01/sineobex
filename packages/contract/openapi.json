@@ -2232,6 +2232,9 @@
               }
             ]
           },
+          "flags": {
+            "$ref": "#/components/schemas/IndexFlags"
+          },
           "idLinks": {
             "items": {
               "properties": {
@@ -2328,6 +2331,32 @@
           "duplicate",
           "reviews",
           "versions"
+        ],
+        "type": "object"
+      },
+      "IndexFlags": {
+        "description": "The patient’s current flags by ID, as the reader may see them: a sensitive one only under idx1+sens. Sent with every entry; an entry without it, kept from before, holds none",
+        "properties": {
+          "primary": {
+            "description": "The risk level, or none",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "secondary": {
+            "description": "The conditions, by rank, then name, then ID",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "primary",
+          "secondary"
         ],
         "type": "object"
       },
@@ -5734,6 +5763,7 @@
             ]
           },
           "projection": {
+            "description": "idx1, or idx1+sens for a reader who sees sensitive flags: another copy, sent whole",
             "type": "string"
           },
           "redirects": {
@@ -8910,7 +8940,7 @@
     },
     "/v1/patients/index": {
       "post": {
-        "description": "Needs patients.view and one of patients.edit, encounters.chart, checkins.create; otherwise 403 index_not_permitted, and the phone deletes any index it holds. `have` equal to the current version answers `unchanged`. No legal name, no token, no clinical content.",
+        "description": "Needs patients.view and one of patients.edit, encounters.chart, checkins.create; otherwise 403 index_not_permitted, and the phone deletes any index it holds. `have` equal to the current version answers `unchanged`. No legal name, no token, and of clinical content only the current flags, a sensitive one only for a reader who sees sensitive problems (projection idx1+sens).",
         "operationId": "downloadTeamIndex",
         "requestBody": {
           "content": {

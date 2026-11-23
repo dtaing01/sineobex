@@ -690,6 +690,16 @@ export const TeamIndexRequest = z
   })
   .openapi('TeamIndexRequest');
 
+export const IndexFlags = z
+  .object({
+    primary: Uuid.nullable().openapi({ description: 'The risk level, or none' }),
+    secondary: z.array(Uuid).openapi({ description: 'The conditions, by rank, then name, then ID' }),
+  })
+  .openapi('IndexFlags', {
+    description:
+      'The patient’s current flags by ID, as the reader may see them: a sensitive one only under idx1+sens. Sent with every entry; an entry without it, kept from before, holds none',
+  });
+
 /** One canonical, active patient in the phone's search index. No legal name, ever (D40). */
 export const IndexEntry = z
   .object({
@@ -719,6 +729,7 @@ export const IndexEntry = z
     ),
     idLinks: z.array(z.object({ id: Uuid, effectiveAt: DateTime })),
     duplicate: z.union([IndexDuplicateHint, z.null()]),
+    flags: IndexFlags.optional(),
     reviews: z.array(z.string()).openapi({ description: 'Fields with an open review' }),
     versions: z.object({
       preferredName: z.number().int(),
@@ -733,7 +744,9 @@ export const TeamIndexPage = z
   .object({
     status: z.enum(['unchanged', 'page']),
     version: z.string(),
-    projection: z.string(),
+    projection: z.string().openapi({
+      description: 'idx1, or idx1+sens for a reader who sees sensitive flags: another copy, sent whole',
+    }),
     generatedAt: DateTime,
     entries: z.array(IndexEntry),
     next: Uuid.nullable(),

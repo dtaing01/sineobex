@@ -101,7 +101,8 @@ const indexRoute = createRoute({
   description:
     'Needs patients.view and one of patients.edit, encounters.chart, checkins.create; otherwise 403 ' +
     'index_not_permitted, and the phone deletes any index it holds. `have` equal to the current version ' +
-    'answers `unchanged`. No legal name, no token, no clinical content.',
+    'answers `unchanged`. No legal name, no token, and of clinical content only the current flags, a sensitive ' +
+    'one only for a reader who sees sensitive problems (projection idx1+sens).',
   security: [{ bearer: [] }],
   request: { body: { required: true, ...json(TeamIndexRequest) } },
   responses: {
