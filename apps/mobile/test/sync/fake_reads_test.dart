@@ -1269,6 +1269,246 @@ void main() {
       },
     );
   });
+
+  // Phase 5's flags (design 6.1, 6.3, 7): the chart's flagChanges and flags, the index's flags and
+  // search's flagIds, read through the fake's routes as JSON, each case named after the API test that
+  // holds the same rule (patients-charts.test.ts, patients-flags-sensitive.test.ts,
+  // patients-index.test.ts, patients-search.test.ts). Written ahead of P5-phone-entity and
+  // P5-fake-reads: each case fails until they land. Alex is Healthcare Staff, who sees sensitive
+  // flags; Casey the CHW preset, who does not; Dana another member of staff; the admin manages the
+  // team's people.
+  group('phase 5: flags on the chart, in the index and in search', () {
+    const casey = 'c0000000-0000-4000-8000-00000000000c';
+    const dana = 'd0000000-0000-4000-8000-00000000000d';
+    const admin = 'ad000000-0000-4000-8000-0000000000ad';
+    late Map<String, String> flags;
+    late String winter;
+    late String survivor;
+    late String merged;
+    late Map<String, String> changes;
+
+    Map<String, Object?> flagBody(String name, String tier, String color, int rank, {bool sensitive = false}) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': sensitive,
+    };
+    DateTime ago(int minutes) => now.subtract(Duration(minutes: minutes));
+    String flagChange(String patientId, String flagId, int minutesAgo, {String by = alex, String action = 'set'}) =>
+        server.seed(
+          entityFlagChange,
+          {'patientId': patientId, 'flagId': flagId, 'action': action, 'reason': 'Demo: seen at the van'},
+          by: by,
+          at: ago(minutesAgo),
+        );
+
+    Future<Map<String, Object?>> json(String user, String method, String path, [Object? body]) async =>
+        (await server.handle(user, team, method, path, body))! as Map<String, Object?>;
+    Future<Map<String, Object?>> chartOf(String user, String patientId) => json(user, 'GET', '/v1/patients/$patientId');
+    Map<String, Object?> flagsOf(Map<String, Object?> chart) => chart['flags']! as Map<String, Object?>;
+    List<Map<String, Object?>> listOf(Object? v) => (v! as List<Object?>).cast<Map<String, Object?>>();
+
+    Map<String, Object?> view(String key, {bool archived = false}) {
+      const shown = {
+        'flag.high': ('High', 'primary', 'red', 'Red', 10),
+        'flag.medium': ('Medium', 'primary', 'yellow', 'Yellow', 20),
+        'flag.frost_risk': ('Frost risk', 'secondary', 'blue', 'Blue', 10),
+        'flag.pregnancy': ('Pregnancy', 'secondary', 'purple', 'Purple', 30),
+      };
+      final (name, tier, color, colorName, rank) = shown[key]!;
+      return {
+        'flagId': flags[key],
+        'name': name,
+        'tier': tier,
+        'color': color,
+        'colorName': colorName,
+        'rank': rank,
+        'archived': archived,
+      };
+    }
+
+    setUp(() {
+      server.permissions
+        ..[casey] = FakeSyncServer.chw
+        ..[admin] = {...FakeSyncServer.healthcareStaff, 'team.manage_users'};
+      server.names
+        ..[alex] = 'Alex (demo)'
+        ..[dana] = 'Dana (demo)';
+      flags = {
+        for (final (key, body) in [
+          ('flag.high', flagBody('High', 'primary', 'red', 10)),
+          ('flag.medium', flagBody('Medium', 'primary', 'yellow', 20)),
+          ('flag.frost_risk', flagBody('Frost risk', 'secondary', 'blue', 10)),
+          ('flag.dehydration_risk', flagBody('Dehydration risk', 'secondary', 'orange', 20)),
+          ('flag.pregnancy', flagBody('Pregnancy', 'secondary', 'purple', 30, sensitive: true)),
+        ])
+          key: server.addPreset(team, 'flag', body, originKey: key),
+      };
+      winter = server.addPreset(team, 'flag', flagBody('Demo: Winter outreach', 'secondary', 'teal', 40));
+      survivor = server.seedPatient(preferredName: 'Demo Wren');
+      merged = server.seedPatient(preferredName: 'Demo Wren two');
+      server.merge(merged, survivor);
+      changes = {
+        'medium': flagChange(survivor, flags['flag.medium']!, 60),
+        'high': flagChange(merged, flags['flag.high']!, 50, by: dana),
+        'frost': flagChange(merged, flags['flag.frost_risk']!, 40),
+        'pregnancy': flagChange(survivor, flags['flag.pregnancy']!, 35),
+        'dehydration': flagChange(survivor, flags['flag.dehydration_risk']!, 30),
+        'cleared': flagChange(survivor, flags['flag.dehydration_risk']!, 20, action: 'clear'),
+        'winter': flagChange(survivor, winter, 10),
+      };
+      server.archivePreset(team, winter);
+    });
+
+    test('works out the group’s flags on the server, both records of a merged chart, an archived flag kept', () async {
+      final chart = await chartOf(alex, survivor);
+      expect(flagsOf(chart)['primary'], view('flag.high'));
+      expect(listOf(flagsOf(chart)['secondary']), [
+        view('flag.frost_risk'),
+        view('flag.pregnancy'),
+        {
+          'flagId': winter,
+          'name': 'Demo: Winter outreach',
+          'tier': 'secondary',
+          'color': 'teal',
+          'colorName': 'Teal',
+          'rank': 40,
+          'archived': true,
+        },
+      ]);
+      expect(flagsOf(await chartOf(alex, merged)), flagsOf(chart));
+    });
+
+    test(
+      'lists every change in the history, oldest first, as the flag is now, with who made it by their name now',
+      () async {
+        final chart = await chartOf(alex, survivor);
+        final history = listOf(flagsOf(chart)['history']);
+        expect([for (final r in history) r['changeId']], changes.values.toList());
+        expect(history[1], {
+          'changeId': changes['high'],
+          'flagId': flags['flag.high'],
+          'name': 'High',
+          'tier': 'primary',
+          'action': 'set',
+          'effectiveAt': ago(50).toIso8601String(),
+          'authorName': 'Dana (demo)',
+          'reason': 'Demo: seen at the van',
+          'enteredInError': null,
+        });
+        // Each change is there as the record snapshot the phone imports.
+        final snapshots = listOf(chart['flagChanges']);
+        expect(
+          [for (final c in snapshots) (c['entity'], c['id'])],
+          [for (final id in changes.values) (entityFlagChange, id)],
+        );
+        expect((snapshots.first['attributes']! as Map<String, Object?>).keys.toSet(), {
+          'patientId',
+          'flagId',
+          'action',
+          'reason',
+          'effectiveAt',
+          'clockVerified',
+        });
+      },
+    );
+
+    test('leaves out a hidden flag and every history row of it, its reason included, never blanked', () async {
+      final chart = await chartOf(casey, survivor);
+      expect([for (final f in listOf(flagsOf(chart)['secondary'])) f['flagId']], [flags['flag.frost_risk'], winter]);
+      expect(
+        [for (final r in listOf(flagsOf(chart)['history'])) r['changeId']],
+        [
+          for (final MapEntry(:key, :value) in changes.entries)
+            if (key != 'pregnancy') value,
+        ],
+      );
+      expect(jsonEncode(chart), isNot(contains(flags['flag.pregnancy']!)));
+      expect(jsonEncode(chart), isNot(contains(changes['pregnancy']!)));
+    });
+
+    test('gives an entered-in-error change’s reasons only to its author and Program Admins', () async {
+      server.serverEdit(changes['frost']!, 'enteredInError', const {
+        'reason': 'Demo: set on the wrong patient',
+      }, by: alex);
+      Map<String, Object?> rowOf(Map<String, Object?> chart) =>
+          listOf(flagsOf(chart)['history']).firstWhere((r) => r['changeId'] == changes['frost']);
+      for (final user in [alex, admin]) {
+        expect(rowOf(await chartOf(user, survivor)), containsPair('reason', 'Demo: seen at the van'));
+        expect(
+          rowOf(await chartOf(user, survivor))['enteredInError'],
+          allOf(containsPair('byName', 'Alex (demo)'), containsPair('reason', 'Demo: set on the wrong patient')),
+        );
+      }
+      for (final user in [dana, casey]) {
+        final chart = await chartOf(user, survivor);
+        expect(rowOf(chart).containsKey('reason'), isFalse);
+        expect((rowOf(chart)['enteredInError']! as Map<String, Object?>).containsKey('reason'), isFalse);
+        final snapshot = listOf(chart['flagChanges']).firstWhere((s) => s['id'] == changes['frost']);
+        expect((snapshot['attributes']! as Map<String, Object?>).containsKey('reason'), isFalse);
+        expect(jsonEncode(chart), isNot(contains('wrong patient')));
+      }
+      // Out of the flags for everyone.
+      expect(
+        listOf(flagsOf(await chartOf(alex, survivor))['secondary']).map((f) => f['flagId']),
+        isNot(contains(flags['flag.frost_risk'])),
+      );
+    });
+
+    test('gives each entry its group’s current flags, ids only, both records of a merged patient', () async {
+      final page = await json(alex, 'POST', '/v1/patients/index', const <String, Object?>{});
+      final entry = listOf(page['entries']).firstWhere((e) => e['patientId'] == survivor);
+      expect(entry['flags'], {
+        'primary': flags['flag.high'],
+        'secondary': [flags['flag.frost_risk'], flags['flag.pregnancy'], winter],
+      });
+    });
+
+    test('holds a sensitive flag only for a reader who sees it, under idx1+sens; anyone else gets idx1', () async {
+      final staff = await json(alex, 'POST', '/v1/patients/index', const <String, Object?>{});
+      final forChw = await json(casey, 'POST', '/v1/patients/index', const <String, Object?>{});
+      expect([staff['projection'], forChw['projection']], ['idx1+sens', 'idx1']);
+      expect(staff['version'], matches(RegExp(r'^\d+\.idx1\+sens$')));
+      final entry = listOf(forChw['entries']).firstWhere((e) => e['patientId'] == survivor);
+      expect((entry['flags']! as Map<String, Object?>)['secondary'], [flags['flag.frost_risk'], winter]);
+      expect(jsonEncode(forChw), isNot(contains(flags['flag.pregnancy']!)));
+    });
+
+    test('narrows a name search to the patients carrying every flag named, a risk level or a condition', () async {
+      final other = server.seedPatient(preferredName: 'Demo Wren Birch');
+      flagChange(other, flags['flag.frost_risk']!, 5);
+      Future<List<String>> hits(List<String> flagIds) async => [
+        for (final h in listOf(
+          (await json(alex, 'POST', '/v1/patients/search', {
+            'name': 'Demo Wren',
+            'surface': 'portal',
+            'flagIds': flagIds,
+          }))['hits'],
+        ))
+          h['patientId']! as String,
+      ]..sort();
+      expect(await hits([flags['flag.high']!]), [survivor]);
+      expect(await hits([flags['flag.frost_risk']!]), ([survivor, other]..sort()));
+      expect(await hits([flags['flag.high']!, flags['flag.frost_risk']!]), [survivor]);
+      expect(await hits([flags['flag.high']!, flags['flag.medium']!]), isEmpty);
+      expect(await hits([winter]), [survivor]);
+    });
+
+    test('refuses a flag hidden from the caller, or one the team does not hold, with 403 logged without it', () async {
+      for (final flagId in [flags['flag.pregnancy']!, 'f1a90000-0000-4000-8000-0000000000ff']) {
+        await expectLater(
+          server.handle(casey, team, 'POST', '/v1/patients/search', {
+            'name': 'Demo Wren',
+            'surface': 'portal',
+            'flagIds': [flagId],
+          }),
+          throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)),
+        );
+      }
+    });
+  });
 }
 
 extension on FetchCharts {
