@@ -61,11 +61,13 @@ export function ReviewTable({ rows, name }: { rows: readonly ReviewRow[]; name: 
  * A take sends back the version shown and the update's platform version, so only what was reviewed
  * is taken (5.1).
  *
- * Place it for every active preset the page shows, whether or not one is on offer: it draws
- * nothing while none is, and a take refused stale stays to say so when the page is read again.
- * A removed preset is offered nothing: it is restored first. `names` names the team's presets the
- * bodies name (an item's category, a line's item), from the lists the page read; `back` is the page
- * to land on after an update taken as new, when not this one.
+ * Place it for every preset the page shows, removed ones too, whether or not one is on offer: it
+ * draws nothing while none is, and a take refused stale stays to say so when the page is read
+ * again. A removed copy is offered its update as a new preset only, since the API refuses it in
+ * place (`archived`) and takes it as new from a removed copy (5.1): so a copy that can't be
+ * restored (its name taken since, say) can still take Sineobex's version. `names` names the team's
+ * presets the bodies name (an item's category, a line's item), from the lists the page read;
+ * `back` is the page to land on after an update taken as new, when not this one.
  */
 export function UpdateOffer({
   kind,
@@ -80,8 +82,8 @@ export function UpdateOffer({
   back?: string;
   headingLevel?: 2 | 3;
 }) {
-  if (preset.state !== 'active') return null;
   const { update } = preset;
+  const removed = preset.state === 'archived';
   return (
     <OfferForm
       kind={kind}
@@ -92,8 +94,9 @@ export function UpdateOffer({
         update
           ? {
               platformVersion: update.platformVersion,
-              asNew: update.changesFixed.length > 0,
+              asNew: removed || update.changesFixed.length > 0,
               customized: preset.customized,
+              removed,
             }
           : null
       }

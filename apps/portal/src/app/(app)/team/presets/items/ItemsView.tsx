@@ -3,7 +3,7 @@ import { addItemAction } from '@/app/actions/presets-items';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
 import { CheckField } from '@/components/presets/CheckField';
 import { FreeText } from '@/components/presets/FreeText';
-import { inPlace } from '@/components/presets/order';
+import { inPlace, namesOf } from '@/components/presets/order';
 import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
@@ -99,7 +99,8 @@ export function ItemsView({
         <ItemList groups={groups} />
       )}
       <AddItem categories={categoryChoices(categories)} />
-      <RemovedList kind={KIND} presets={items} />
+      {/* A removed item's update is reviewed against its category's name. */}
+      <RemovedList kind={KIND} presets={items} names={namesOf(categories)} />
     </Fragment>
   );
 }

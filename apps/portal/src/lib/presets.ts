@@ -344,8 +344,9 @@ export type HubLists = Partial<
 
 /**
  * The hub's cards from the lists it read. A card counts its kind's active presets, and offers an
- * update when an active preset it shows has one: an archived one is restored before anything is
- * offered of it, so a badge never points at an offer its page does not show.
+ * update when a preset it shows has one, a removed one too: its page offers that one as a new
+ * preset, in its Removed list (UpdateOffer), so a badge never points at an offer its page does not
+ * show, and never hides one the API would take.
  */
 export function hubAreas(lists: HubLists, areas: readonly PresetArea[] = PRESET_AREAS): HubArea[] {
   return areas.map((area) => {
@@ -353,15 +354,14 @@ export function hubAreas(lists: HubLists, areas: readonly PresetArea[] = PRESET_
     const read = area.kinds.map((kind) => lists[kind]);
     if (read.some((list) => list === undefined || list === 'error'))
       return { key, title, href, noun, loaded: false };
-    const rows = (kind: PresetKind) =>
-      (lists[kind] as Pick<PresetRow, 'state' | 'updateOnOffer'>[]).filter((r) => r.state === 'active');
+    const rows = (kind: PresetKind) => lists[kind] as Pick<PresetRow, 'state' | 'updateOnOffer'>[];
     return {
       key,
       title,
       href,
       noun,
       loaded: true,
-      count: rows(area.counted).length,
+      count: rows(area.counted).filter((r) => r.state === 'active').length,
       updateAvailable: area.kinds.some((kind) => rows(kind).some((r) => r.updateOnOffer)),
     };
   });

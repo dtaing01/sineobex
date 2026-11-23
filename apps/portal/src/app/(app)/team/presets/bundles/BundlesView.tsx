@@ -3,7 +3,7 @@ import { Fragment } from 'react';
 import { addBundleAction } from '@/app/actions/presets-bundles';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
 import type { ItemChoice } from '@/components/presets/ItemLines';
-import { aToZ } from '@/components/presets/order';
+import { aToZ, namesOf } from '@/components/presets/order';
 import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
 import styles from '@/components/presets/presets.module.css';
 import { ReasonBox } from '@/components/presets/ReasonBox';
@@ -79,7 +79,8 @@ export function BundlesView({
         </section>
       )}
       <AddBundle items={items} />
-      <RemovedList kind={KIND} presets={bundles} />
+      {/* A removed bundle's update is reviewed naming each line's item. */}
+      <RemovedList kind={KIND} presets={bundles} names={namesOf(items)} />
     </Fragment>
   );
 }

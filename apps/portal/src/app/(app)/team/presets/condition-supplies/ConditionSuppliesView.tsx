@@ -255,7 +255,7 @@ export function ConditionSuppliesView({
         ))
       )}
       <AddMapping items={items} />
-      <RemovedList kind={KIND} presets={maps} />
+      <RemovedList kind={KIND} presets={maps} names={names} />
       <StatusCheck settings={settings} history={settingsHistory} names={names} />
     </Fragment>
   );

@@ -269,7 +269,7 @@ export function BagMinimumsView({
         ))
       )}
       <AddBag items={items} sources={sources} />
-      <RemovedList kind={KIND} presets={bags} />
+      <RemovedList kind={KIND} presets={bags} names={names} />
     </Fragment>
   );
 }

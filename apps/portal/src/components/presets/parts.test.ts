@@ -351,10 +351,16 @@ describe('a list of short texts', () => {
 });
 
 describe('the Removed list', () => {
-  const presets = [
-    { id: GAUZE, name: 'Demo: Gauze', state: 'active' as const },
-    { id: OLD, name: 'Demo: Old kit', state: 'archived' as const },
-  ];
+  const row = (id: string, name: string, state: 'active' | 'archived') => ({
+    id,
+    name,
+    state,
+    version: 2,
+    customized: true,
+    body: { name, behaviour: 'supply' as const, sort: 10 },
+    update: null,
+  });
+  const presets = [row(GAUZE, 'Demo: Gauze', 'active'), row(OLD, 'Demo: Old kit', 'archived')];
 
   it('lists the removed presets, each with Restore, and none of the others', () => {
     const html = renderToStaticMarkup(createElement(RemovedList, { kind: 'item', presets }));
@@ -378,6 +384,32 @@ describe('the Removed list', () => {
     );
     expect(html).toContain('<label for="restore-' + OLD + '-reason">Reason</label>');
     expect(html).toContain('Restore</button>');
+  });
+
+  it('offers a removed copy Sineobex’s update beside it, as a new one only', () => {
+    const offered = presets.map((p) =>
+      p.state === 'archived'
+        ? { ...p, update: { platformVersion: 2, body: { ...p.body, sort: 20 }, changesFixed: [] } }
+        : p,
+    );
+    const html = renderToStaticMarkup(
+      createElement(RemovedList, { kind: 'order_category', presets: offered }),
+    );
+    const entry = html.slice(html.indexOf('Demo: Old kit</span>'));
+    expect(entry).toContain('Update available<span class="sr-only"> for Demo: Old kit</span></h3>');
+    expect(entry).toContain('<p>Sineobex updated this preset.</p>');
+    expect(entry).toContain(
+      '<p>This one is removed, so add the update as a new one: this one stays removed, and kept in the history.</p>',
+    );
+    expect(entry).toContain(
+      'Add as new<span class="sr-only"> from Sineobex’s update to Demo: Old kit</span></button>',
+    );
+    expect(entry).toContain('<input type="hidden" name="asNew" value="true"/>');
+    expect(entry).not.toContain('Replace with the new version');
+    // Without an update, a removed one has Restore alone.
+    expect(renderToStaticMarkup(createElement(RemovedList, { kind: 'item', presets }))).not.toContain(
+      'Update available',
+    );
   });
 
   it('draws nothing while nothing is removed', () => {

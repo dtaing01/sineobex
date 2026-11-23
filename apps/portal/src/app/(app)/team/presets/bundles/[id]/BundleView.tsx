@@ -85,13 +85,17 @@ export function BundleView({
           </section>
         </>
       ) : (
-        <section aria-labelledby="removed-bundle" className="px-panel">
-          <h2 id="removed-bundle" className="px-h2">
-            Removed
-          </h2>
-          <p>This bundle isn’t offered for new work. Restore it to offer it again.</p>
-          <RestorePresetForm kind={KIND} preset={bundle} />
-        </section>
+        <>
+          {/* A removed copy takes Sineobex's update only as a new bundle, whether or not it can be restored. */}
+          <UpdateOffer kind={KIND} preset={bundle} names={names} back={LIST} />
+          <section aria-labelledby="removed-bundle" className="px-panel">
+            <h2 id="removed-bundle" className="px-h2">
+              Removed
+            </h2>
+            <p>This bundle isn’t offered for new work. Restore it to offer it again.</p>
+            <RestorePresetForm kind={KIND} preset={bundle} />
+          </section>
+        </>
       )}
       <HistoryTable events={history} id={bundle.id} />
     </Fragment>

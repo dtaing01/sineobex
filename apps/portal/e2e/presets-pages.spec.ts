@@ -83,20 +83,20 @@ async function deniedOf(email: string) {
 
 type Listed = { state: 'active' | 'archived'; updateOnOffer: boolean };
 
-/** What each card should say, read from the API as a Program Admin: its count, and any update. */
+/**
+ * What each card should say, read from the API as a Program Admin: its count of active presets,
+ * and any update on offer, a removed copy's too, which its page offers as a new one.
+ */
 async function expectedCards() {
   const token = await staffToken('admin@example.com');
   const lists = new Map<string, Listed[]>();
   for (const kind of new Set(AREAS.flatMap((a) => a.kinds))) {
     const res = await apiCall(token, 'GET', `/v1/admin/presets/${kind}`);
     expect(res.status, kind).toBe(200);
-    lists.set(
-      kind,
-      ((await res.json()) as Listed[]).filter((p) => p.state === 'active'),
-    );
+    lists.set(kind, (await res.json()) as Listed[]);
   }
   return AREAS.map((a) => {
-    const count = lists.get(a.kinds[0])!.length;
+    const count = lists.get(a.kinds[0])!.filter((p) => p.state === 'active').length;
     return {
       ...a,
       count: `${count} ${count === 1 ? a.noun[0] : a.noun[1]}`,
@@ -3792,7 +3792,8 @@ const OFFERED: [kind: string, id: string][] = [];
 
 /**
  * Whatever a case left on offer, taken back as another admin would take it, so a case that stopped
- * short leaves nothing for the hub's and Flags' "nothing on offer" in the narrow run.
+ * short leaves nothing for the hub's and Flags' "nothing on offer" in the narrow run. A removed copy
+ * takes it as a new preset, the one way the API takes it from a removed copy.
  */
 async function noOfferLeft() {
   for (const [kind, id] of OFFERED.splice(0)) {
@@ -3805,7 +3806,7 @@ async function noOfferLeft() {
       {
         baseVersion: row.version,
         platformVersion: row.update.platformVersion,
-        asNew: false,
+        asNew: row.state === 'archived',
         reason: 'Demo: nothing left on offer',
       },
     );
@@ -4145,6 +4146,90 @@ test.describe('Sineobex’s update, on a flag the team ranked', () => {
     ).toHaveText(after.map(pillOf));
     expect(after.at(-1)!.id).not.toBe(flag.id);
     await expectNothingStored(page, 'A flag’s update taken');
+    expectOnlyIds(traffic.addresses);
+  });
+});
+
+test.describe('Sineobex’s update, to a removed flag', () => {
+  test.afterEach(noOfferLeft);
+  test('a removed copy that can’t be restored is offered its update as a new flag, badged on the hub, in the Removed list and on its page, and takes it so', async ({
+    page,
+  }) => {
+    test.slow();
+    const LIST = '/team/presets/flags';
+    const REMOVED_OFFER =
+      'This one is removed, so add the update as a new one: this one stays removed, and kept in the history.';
+    // Review A's E2: the team renamed a platform condition and removed it, and another flag has taken
+    // that name since, so Restore is refused; Sineobex then offers the platform's version.
+    const before = await named<FlagBody>('flag', 'Dehydration risk');
+    await changedMeanwhile<FlagBody>('flag', before.id, (b) => ({ ...b, name: 'Demo: Thirst watch' }));
+    await actedMeanwhile('flag', before.id, 'archive');
+    await madeCondition('Demo: Thirst watch', 'teal');
+    offerPlatformVersion('flag', before.id);
+    expect(await offeredOf<FlagBody>('flag', before.id)).toMatchObject({
+      state: 'archived',
+      updateOnOffer: true,
+      update: { platformVersion: 1, body: before.body },
+    });
+
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto('/team/presets');
+    const cards = page.getByRole('main').getByRole('listitem');
+    const flagsCard = cards.filter({ has: page.getByRole('heading', { name: 'Flags', exact: true }) });
+    await expect(flagsCard.getByText('Update available', { exact: true })).toBeVisible();
+    await flagsCard.getByRole('link', { name: 'Flags', exact: true }).click();
+
+    // The Removed list offers it beside the removed flag, as a new one only; Restore is refused.
+    const removed = page.getByRole('region', { name: /^Removed \(\d+\)$/ });
+    const beside = removed.getByRole('region', { name: 'Update available for Demo: Thirst watch' });
+    await expect(beside).toContainText('Sineobex updated this preset.');
+    await expect(beside).toContainText(REMOVED_OFFER);
+    await expect(beside.getByRole('button')).toHaveText([
+      'Add as new from Sineobex’s update to Demo: Thirst watch',
+    ]);
+    await removed.getByRole('button', { name: 'Restore Demo: Thirst watch', exact: true }).click();
+    const restore = page.getByRole('form', { name: 'Restore Demo: Thirst watch' });
+    await restore.getByLabel('Reason').fill('Demo: thirst is back');
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(restore.getByRole('alert')).toHaveText(
+      'Another flag has this name now. Rename that one first.',
+    );
+    await expectAccessible(page, 'Flags, a removed flag offered its update', { inPlace: true });
+    await expectReflow(page, 'Flags, a removed flag offered its update');
+
+    // Its own page offers it too, above its Removed section; taken as a new flag, the removed one
+    // stays removed, and nothing is on offer any more.
+    await page.goto(`${LIST}/${before.id}`);
+    const own = page.getByRole('region', { name: 'Update available for Demo: Thirst watch' });
+    await expect(own).toContainText(REMOVED_OFFER);
+    await own.locator('summary').click();
+    await expect(own.getByRole('row', { name: /^Name Changes/ }).getByRole('cell')).toHaveText([
+      'Demo: Thirst watch',
+      'Dehydration risk',
+    ]);
+    await expectAccessible(page, 'A removed flag’s page, its update reviewed', { inPlace: true });
+    await expectReflow(page, 'A removed flag’s page, its update reviewed');
+    const take = page.getByRole('form', { name: 'Take Sineobex’s update to Demo: Thirst watch' });
+    await take.getByLabel('Reason').fill('Demo: Sineobex’s dehydration flag again');
+    await take
+      .getByRole('button', { name: 'Add as new from Sineobex’s update to Demo: Thirst watch', exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}\\?done=added&preset=[0-9a-f-]{36}$`));
+    await expect(page.getByRole('heading', { name: 'Added as a new one: Dehydration risk' })).toBeFocused();
+    const flags = await listed<FlagBody>('flag');
+    const added = flags.find((f) => f.name === 'Dehydration risk' && f.state === 'active');
+    expect(added).toMatchObject({ version: 1, body: before.body });
+    expect(new URL(page.url()).searchParams.get('preset')).toBe(added!.id);
+    expect(flags.find((f) => f.id === before.id)).toMatchObject({
+      name: 'Demo: Thirst watch',
+      state: 'archived',
+      updateOnOffer: false,
+    });
+    await expect(page.getByRole('region', { name: /^Update available/ })).toHaveCount(0);
+    await page.goto('/team/presets');
+    await expect(flagsCard.getByText('Update available', { exact: true })).toHaveCount(0);
+    await expectNothingStored(page, 'A removed flag’s update taken as new');
     expectOnlyIds(traffic.addresses);
   });
 });

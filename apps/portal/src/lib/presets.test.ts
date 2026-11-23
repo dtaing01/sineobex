@@ -95,9 +95,13 @@ describe('the hub’s cards', () => {
     expect(card(areas, 'bag-minimums')).toMatchObject({ count: 1 });
   });
 
-  it('never point at an update of a removed preset: it is restored before anything is offered', () => {
+  it('point at an update of a removed preset too, which its page offers as a new one, and count only active ones', () => {
     const areas = hubAreas({ ...lists(), flag: [row('active'), row('archived', true)] });
-    expect(card(areas, 'flags')).toMatchObject({ loaded: true, count: 1, updateAvailable: false });
+    expect(card(areas, 'flags')).toMatchObject({ loaded: true, count: 1, updateAvailable: true });
+    expect(card(hubAreas({ ...lists(), flag: [row('active'), row('archived')] }), 'flags')).toMatchObject({
+      count: 1,
+      updateAvailable: false,
+    });
   });
 
   it('leave unloaded every card whose list could not be read, and only those', () => {
