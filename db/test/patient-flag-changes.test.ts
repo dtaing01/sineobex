@@ -972,7 +972,13 @@ describe('0024 on a database that already answers for held changes', () => {
     heldMarkBefore = await heldMark();
     noticeBefore = await noticeRow();
     commentBefore = await comment();
-    await migrate(db.owner);
+    // 0024 alone: what a later migration changes is that one's to test.
+    await copyFile(
+      join(MIGRATIONS_DIR, '0024_patient_flag_changes.sql'),
+      join(dir, '0024_patient_flag_changes.sql'),
+    );
+    const applied = await migrate(db.owner, { dir });
+    expect(applied.applied).toEqual(['0024']);
   });
   afterAll(async () => {
     await db.drop();
