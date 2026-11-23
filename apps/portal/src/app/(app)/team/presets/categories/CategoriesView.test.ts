@@ -118,7 +118,7 @@ describe('the list', () => {
     expect(labs).toContain(
       '<th scope="row">Place in the list <span class="sx-pill sx-pill--info">Changes</span></th><td>30</td><td>25</td>',
     );
-    expect(labs).toContain('Replace with the new version</button>');
+    expect(labs).toContain('Replace with the new version<span class="sr-only"> of Labs</span></button>');
   });
 
   it('offers an update that changes what a category holds only as a new one', () => {
@@ -140,7 +140,7 @@ describe('the list', () => {
     expect(otc).toContain(
       '<p>This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.</p>',
     );
-    expect(otc).toContain('Add as new</button>');
+    expect(otc).toContain('Add as new<span class="sr-only">: OTC</span></button>');
   });
 
   it('lists the removed ones under Removed, with Restore, and none of them above', () => {
