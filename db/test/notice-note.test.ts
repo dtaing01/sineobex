@@ -123,7 +123,9 @@ describe('0022 on a database that holds notices already', () => {
       values (${team}, ${worker}, 'late_change_kept', 'encounter_note', ${note}, now()) returning id`;
     id = row!.id;
     before = await rowOf();
-    await migrate(db.owner);
+    // 0022 alone: a column a later migration adds to notices (0024's patient_id) is that one's to test.
+    await copyFile(join(MIGRATIONS_DIR, '0022_notice_note.sql'), join(dir, '0022_notice_note.sql'));
+    await migrate(db.owner, { dir });
   });
   afterAll(async () => {
     await db.drop();
