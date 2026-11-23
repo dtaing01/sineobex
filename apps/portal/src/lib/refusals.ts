@@ -143,13 +143,22 @@ export function usedBy(referencedBy: Readonly<Record<string, number>>): string {
   ]);
 }
 
-/** The referenced refusal (8.1): "Still used by 2 bundles and 1 mapping. Take it out of those first." */
+/**
+ * The referenced refusal (8.1): "Still used by 2 bundles and 1 mapping. Take it out of those
+ * first.", and "… of that first." when one thing uses it: one preset, or the template for new bags
+ * alone (the settings, which name an item there only).
+ */
 export function referencedSentence(referencedBy: unknown): string {
   const counts =
     referencedBy !== null && typeof referencedBy === 'object' ? (referencedBy as Record<string, number>) : {};
   const used = usedBy(counts);
+  const users = Object.entries(counts).reduce(
+    (n, [kind, count]) =>
+      n + (typeof count === 'number' && count > 0 ? (kind === 'settings' ? 1 : count) : 0),
+    0,
+  );
   return used
-    ? `Still used by ${used}. Take it out of those first.`
+    ? `Still used by ${used}. Take it out of ${users === 1 ? 'that' : 'those'} first.`
     : 'Still used. Take it out of those first.';
 }
 

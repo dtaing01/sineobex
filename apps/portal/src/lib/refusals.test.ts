@@ -134,6 +134,23 @@ describe('a preset form the API refused', () => {
     expect(referencedSentence(undefined)).toBe('Still used. Take it out of those first.');
   });
 
+  it('says "that" when one thing uses a preset, and keeps 8.1’s "those" for more', () => {
+    expect(referencedSentence({ bundle: 1 })).toBe('Still used by 1 bundle. Take it out of that first.');
+    expect(referencedSentence({ settings: 1 })).toBe(
+      'Still used by the template for new bags. Take it out of that first.',
+    );
+    expect(referencedSentence({ bundle: 2, field_supply_map: 1 })).toBe(
+      'Still used by 2 bundles and 1 mapping. Take it out of those first.',
+    );
+    expect(referencedSentence({ bundle: 2 })).toBe('Still used by 2 bundles. Take it out of those first.');
+    expect(referencedSentence({ bag: 1, settings: 1 })).toBe(
+      'Still used by 1 bag and the template for new bags. Take it out of those first.',
+    );
+    expect(referencedSentence({ bundle: 1, item: 0 })).toBe(
+      'Still used by 1 bundle. Take it out of that first.',
+    );
+  });
+
   it('tells an item’s save from a bundle’s, and a bundle’s save from its restore, on bundle_not_medical', () => {
     // An item moved into a medication category under Non-Medical bundles: 409, with their count.
     expect(refused('bundle_not_medical', save('item'), { bundles: 2 }).error).toBe(
