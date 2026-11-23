@@ -352,6 +352,23 @@ describe('the review queue (D87)', () => {
     expect((await decide(t.adminToken, byChange(forAdmin, create).id, 'accept')).status).toBe(200);
     expect((await decide(t.adminToken, byChange(forAdmin, mark).id, 'reject')).status).toBe(200);
   });
+
+  it('hides a held change naming a flag the team does not hold from every reviewer, who may still reject it', async () => {
+    // The flag rule's team half: a flag that is none of the team's is shown to nobody, a Program
+    // Admin included, so nothing of the change is read and it cannot be accepted.
+    const stray = await bo.phone.change({
+      entity: FLAG_CHANGE,
+      op: 'create',
+      value: { patientId: patient, flagId: randomUUID(), action: 'set', reason: WHY },
+    });
+    expect((await bo.send(stray)).map((r) => [r.reason, r.quarantined])).toEqual([['permission', true]]);
+    const item = (await queueFor(t.adminToken)).find((i) => i.changeId === stray.changeId)!;
+    expect(item).toMatchObject({ field: null, value: null, hidden: true });
+    expect(JSON.stringify(item)).not.toContain(WHY);
+    const accepted = await decide(t.adminToken, item.id, 'accept');
+    expect([accepted.status, (accepted.body.error as { code: string }).code]).toEqual([403, 'change_hidden']);
+    expect((await decide(t.adminToken, item.id, 'reject')).status).toBe(200);
+  });
 });
 
 describe('a value sent back (D86)', () => {
