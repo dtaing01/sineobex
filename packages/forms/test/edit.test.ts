@@ -577,6 +577,123 @@ function expectPublished(
   return outcome;
 }
 
+describe('what an edit may not touch (edit-protected.ts)', () => {
+  it('reads the protected parts of every definition the vectors name straight from the marks', () => {
+    for (const [ref, definition] of Object.entries(vectors.definitions)) {
+      expect(protectedParts(definition), ref).toEqual(protectedByTheMarks(definition));
+      for (const { path } of fieldsOf(definition))
+        expect(holdsProtected(definition, { path }), `${ref} ${path}`).toBe(
+          holdsProtectedByTheMarks(definition, path),
+        );
+    }
+  });
+
+  it('answers each part by its own marks and its section’s, and a part the definition lacks as not protected', () => {
+    const exam = named('demo_exam@1');
+    expect(isProtected(exam, { section: 'meds' })).toBe(true);
+    // A sensitive exam decides who reads the section, and protects none of it: its consent does.
+    expect(isProtected(exam, { section: 'exam' })).toBe(false);
+    expect(isProtected(exam, { path: 'exam.findings' })).toBe(false);
+    expect(isProtected(exam, { path: 'exam.consent' })).toBe(true);
+    expect(isProtected(exam, { path: 'exam.consent', code: 'yes' })).toBe(true);
+    expect(isProtected(exam, { path: 'meds.ordered' })).toBe(true);
+    expect(isProtected(exam, { path: 'systems.seen', code: 'feet' })).toBe(false);
+    expect(isProtected(exam, { path: 'systems.seen', code: 'gu' })).toBe(true);
+    for (const part of [
+      { section: 'nowhere' },
+      { path: 'exam.nowhere' },
+      { path: 'exam' },
+      { path: 'systems.seen', code: 'nowhere' },
+      { path: 'general.concern', code: 'yes' },
+    ])
+      expect(isProtected(exam, part), JSON.stringify(part)).toBe(false);
+    const flags = named('demo_flags@1');
+    for (const part of [{ section: 'flags' }, { path: 'flags.notes' }, { path: 'flags.any', code: 'no' }])
+      expect(isProtected(flags, part), JSON.stringify(part)).toBe(true);
+    expect(isProtected(flags, { path: 'flags.nowhere' })).toBe(false);
+  });
+
+  it('counts what a grid’s cell holds as held by the grid, its section and a group around it', () => {
+    const yesNo = [
+      { code: 'yes', label: 'Demo: Yes' },
+      { code: 'no', label: 'Demo: No' },
+    ];
+    const definition: ResolvedNoteType = {
+      key: 'demo_rounds',
+      version: 1,
+      title: 'Demo: Rounds',
+      kinds: ['non_medical'],
+      group: 'outreach',
+      sensitivity: 'none',
+      sections: [
+        {
+          id: 'rounds',
+          title: 'Demo: Rounds',
+          fields: [
+            {
+              id: 'checks',
+              kind: 'grid',
+              label: 'Demo: Checks',
+              rows: [{ code: 'first', label: 'Demo: First' }],
+              cell: {
+                id: 'cell',
+                kind: 'group',
+                layout: 'stack',
+                label: 'Demo: Cell',
+                fields: [
+                  {
+                    id: 'done',
+                    kind: 'choice',
+                    many: false,
+                    label: 'Demo: Done?',
+                    required: true,
+                    options: yesNo,
+                  },
+                ],
+              },
+            },
+            {
+              id: 'asked',
+              kind: 'group',
+              layout: 'row',
+              label: 'Demo: Asked',
+              fields: [
+                {
+                  id: 'agreed',
+                  kind: 'grid',
+                  label: 'Demo: Agreed',
+                  rows: [{ code: 'first', label: 'Demo: First' }],
+                  cell: {
+                    id: 'cell',
+                    kind: 'choice',
+                    many: false,
+                    label: 'Demo: Agreed?',
+                    noNormal: true,
+                    options: yesNo,
+                  },
+                },
+              ],
+            },
+            { id: 'note', kind: 'text', lines: 'one', maxLength: 200, label: 'Demo: Note' },
+          ],
+        },
+      ],
+    };
+    // A cell has no path: the grid is named for it, protected when the cell is by its own marks.
+    expect(isProtected(definition, { path: 'rounds.checks' })).toBe(false);
+    expect(isProtected(definition, { path: 'rounds.asked.agreed' })).toBe(true);
+    expect(isProtected(definition, { path: 'rounds.asked' })).toBe(false);
+    for (const part of [{ path: 'rounds.checks' }, { path: 'rounds.asked' }, { section: 'rounds' }])
+      expect(holdsProtected(definition, part), JSON.stringify(part)).toBe(true);
+    expect(holdsProtected(definition, { path: 'rounds.note' })).toBe(false);
+    expect(protectedParts(definition)).toEqual({
+      sections: [],
+      fields: ['rounds.asked.agreed'],
+      options: [],
+    });
+  });
+});
+
 describe('over the released note types', () => {
   it('reads the protected parts of each straight from phase 4’s marks', () => {
     for (const definition of released.values()) {
