@@ -35,13 +35,17 @@ export interface StoredDefinition {
 }
 
 /**
- * The team's note types, each at its newest version. Phase 4 offers every installed key; phase 5
- * reads its own table of offered keys here.
+ * The note types a new note may start on: each key whose head (note_types, 0023) is active, at the
+ * newest version the team holds, which is the version every writer makes its head's current one. A
+ * key the team removed leaves the list, so no phone offers it for a new note once it has synced,
+ * while every version it holds still serves through definitionFor, so a draft begun on one still
+ * opens, finishes and is corrected (phase 5 design 6.4, 7).
  *
- * It first installs the presets the team lacks (forms 3.2), so a team gets a new platform version
- * the first time one of its phones asks, with no deploy step, audited in the same transaction. A
- * held version whose definition is not the preset's is logged and its key skipped: a throw would
- * fail this route for the whole team at every sync.
+ * It first runs the installer (forms 3.2; phase 5 design 5.2), so a team gets a new platform version
+ * the first time one of its phones asks, with no deploy step, audited in the same transaction, and
+ * every key the team holds has its head before the list reads the heads. A held version whose
+ * definition is not the preset's is logged and its key skipped: a throw would fail this route for
+ * the whole team at every sync.
  */
 export async function listNoteTypes(scope: TeamScope): Promise<NoteTypeEntry[]> {
   const { teamId } = scope.team;
@@ -56,15 +60,19 @@ export async function listNoteTypes(scope: TeamScope): Promise<NoteTypeEntry[]> 
       });
     if (differing.length > 0) logDiffering(scope, differing);
 
+    // Only the newest version's definition is opened, once per key.
     const rows = await tx<NoteTypeEntry[]>`
-      select distinct on (key) key, version, hash,
-             definition->>'title' as title, definition->'kinds' as kinds,
-             definition->>'sensitivity' as sensitivity,
-             coalesce(definition->'quick' = 'true'::jsonb, false) as quick,
-             definition->>'auto' as auto
-      from sineobex.note_type_versions
-      where team_id = ${teamId}
-      order by key, version desc`;
+      select v.key, v.version, v.hash,
+             v.definition->>'title' as title, v.definition->'kinds' as kinds,
+             v.definition->>'sensitivity' as sensitivity,
+             coalesce(v.definition->'quick' = 'true'::jsonb, false) as quick,
+             v.definition->>'auto' as auto
+      from sineobex.note_types h
+      join sineobex.note_type_versions v on v.team_id = h.team_id and v.key = h.key
+      where h.team_id = ${teamId} and h.state = 'active'
+        and v.version = (select max(n.version) from sineobex.note_type_versions n
+                         where n.team_id = h.team_id and n.key = h.key)
+      order by v.key`;
     return [...rows];
   });
 }

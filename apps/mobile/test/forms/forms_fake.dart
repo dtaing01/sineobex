@@ -26,11 +26,15 @@ Version edited(Version v, String title) {
 }
 
 /// The two forms routes (phase 4 design, forms 3.3) as the API answers them, for each team, in
-/// front of another transport that answers everything else (the fake sync server).
+/// front of another transport that answers everything else (the fake sync server). Not mirrored:
+/// the installer the API's list runs first, and the admin routes, which no phone calls.
 class FakeFormsServer {
-  /// Each team's versions. The list names each key's newest. A team with no entry is not the
-  /// person's: both routes refuse it.
+  /// Each team's versions. The list names each key's newest, of the keys the team has not removed.
+  /// A team with no entry is not the person's: both routes refuse it.
   final teams = <String, List<Version>>{};
+
+  /// The keys each team removed (archive), which the list leaves out.
+  final _archived = <String, Set<String>>{};
 
   /// No answer from the forms routes (the rest of the API still answers).
   bool offline = false;
@@ -44,11 +48,9 @@ class FakeFormsServer {
 
   /// Removes [key] from [teamId]'s note types, as an admin's Remove does (phase 5 design 6.3, 7):
   /// the list names it no more, and the one-version route still serves every version of it, so a
-  /// draft begun on one still opens and finishes.
-  ///
-  /// Written ahead of its code (card P4-tests): it throws until card P4-offered teaches the fake
-  /// the rule, beside the API's own list.
-  void archive(String teamId, String key) => throw UnimplementedError('P4-offered');
+  /// draft begun on one still opens and finishes. The API's list reads the same rule from the
+  /// team's note type heads (services/api/src/forms/definitions.ts).
+  void archive(String teamId, String key) => (_archived[teamId] ??= <String>{}).add(key);
 
   /// The forms requests, in order, answered or not.
   final requests = <String>[];
@@ -73,8 +75,10 @@ class FakeFormsServer {
     final versions = teams[teamId];
     if (versions == null) throw const ApiException(403, 'not_a_member', 'You are not a member of this team.');
     if (path == listPath) {
+      final archived = _archived[teamId] ?? const <String>{};
       final newest = <String, Version>{};
       for (final v in versions) {
+        if (archived.contains(v['key'])) continue;
         final held = newest[v['key']];
         if (held == null || (held['version']! as int) < (v['version']! as int)) newest[v['key']! as String] = v;
       }
