@@ -6220,5 +6220,148 @@ void main() {
         }
       });
     });
+
+    // The flag rule where sync reads a flag change (read-rules.ts flagHidden, flagChangeShown and
+    // readsRecord's flag branch), each case named as services/api/test/patients-flags-sensitive.test.ts
+    // names the API's own. The review queue's cases there are the API's alone (the fake's header).
+    group('the flag rule where sync reads a flag change', () {
+      const sensitiveOnly = 'e1000000-0000-4000-8000-0000000000e1';
+      const coder = 'e2000000-0000-4000-8000-0000000000e2';
+
+      Future<({List<Map<String, Object?>> records, List<Object?> missing})> syncRead(
+        String user,
+        List<String> ids,
+      ) async {
+        final body =
+            (await server.handle(user, team, 'POST', '/v1/sync/records', {
+                  'records': [
+                    for (final id in ids) {'entity': entityFlagChange, 'id': id},
+                  ],
+                }))!
+                as Map<String, Object?>;
+        return (
+          records: (body['records']! as List<Object?>).cast<Map<String, Object?>>(),
+          missing: [for (final m in (body['missing']! as List<Object?>)) (m! as Map<String, Object?>)['id']],
+        );
+      }
+
+      test(
+        'leaves out a hidden flag’s change, as a record the team does not have, and logs only what it shows',
+        () async {
+          // Risk 6 of 12.1: patients.view_sensitive without the problem list sees no sensitive flag.
+          server.permissions
+            ..[sensitiveOnly] = const {'patients.view', 'patients.edit', 'patients.view_sensitive'}
+            ..[coder] = const {'patients.view', 'billing.view_codes', 'patients.view_sensitive'};
+          final pregnancy = flagChange(patientA, flags['flag.pregnancy']!);
+          final frost = flagChange(patientA, flags['flag.frost_risk']!);
+          expect(await send(dana, [pregnancy, frost]), [taken(pregnancy), taken(frost)]);
+          final sees = {admin: true, dana: true, casey: false, blair: false, sensitiveOnly: false, coder: true};
+          for (final MapEntry(key: user, value: seen) in sees.entries) {
+            final before = server.serverAudit.length;
+            final read = await syncRead(user, [idOf(pregnancy), idOf(frost)]);
+            expect(read.missing, seen ? isEmpty : [idOf(pregnancy)], reason: user);
+            expect(
+              [for (final r in read.records) r['id']],
+              seen ? [idOf(pregnancy), idOf(frost)] : [idOf(frost)],
+              reason: user,
+            );
+            expect(
+              [for (final a in server.serverAudit.sublist(before)) (a['action'], a['entityId'], a['patientId'])],
+              [if (seen) ('patient.viewed', idOf(pregnancy), patientA), ('patient.viewed', idOf(frost), patientA)],
+              reason: user,
+            );
+            // `missing` names back the id the reader asked for; the records hold nothing of it.
+            if (!seen) {
+              expect(jsonEncode(read.records), isNot(contains(flags['flag.pregnancy']!)), reason: user);
+              expect(jsonEncode(read.records), isNot(contains(idOf(pregnancy))), reason: user);
+            }
+          }
+        },
+      );
+
+      test('shows a change whole to one who may see it, and an entered-in-error one’s reasons only to its author and Program Admins', () async {
+        final frost = flagChange(patientA, flags['flag.frost_risk']!);
+        final mistaken = flagChange(patientA, flags['flag.dehydration_risk']!, why: 'Demo: drank nothing all day');
+        expect(await send(dana, [frost, mistaken]), [taken(frost), taken(mistaken)]);
+        final mark = markOf(idOf(mistaken));
+        expect(await send(dana, [mark]), [taken(mark)]);
+        final [shown] = (await syncRead(alex, [idOf(frost)])).records;
+        expect(shown, {
+          'entity': entityFlagChange,
+          'id': idOf(frost),
+          'version': 1,
+          'status': 'active',
+          'authorUserId': dana,
+          'createdAt': isA<String>(),
+          'updatedAt': isA<String>(),
+          'attributes': {
+            'patientId': patientA,
+            'flagId': flags['flag.frost_risk'],
+            'action': 'set',
+            'reason': reason,
+            'effectiveAt': isA<String>(),
+            'clockVerified': true,
+          },
+          'fields': {
+            'enteredInError': {'value': null, 'version': 0, 'changedBy': null, 'changedAt': null},
+          },
+        });
+        for (final user in [dana, admin]) {
+          final [own] = (await syncRead(user, [idOf(mistaken)])).records;
+          expect([own['status'], own['version']], ['entered_in_error', 2], reason: user);
+          expect((own['attributes']! as Map<String, Object?>)['reason'], 'Demo: drank nothing all day', reason: user);
+          expect(
+            (own['fields']! as Map<String, Object?>)['enteredInError'],
+            allOf(
+              containsPair('value', {'reason': markReason}),
+              containsPair('version', 1),
+              containsPair('changedBy', dana),
+            ),
+            reason: user,
+          );
+        }
+        for (final user in [alex, casey]) {
+          final [other] = (await syncRead(user, [idOf(mistaken)])).records;
+          expect(other['status'], 'entered_in_error', reason: user);
+          expect((other['attributes']! as Map<String, Object?>).keys.toSet(), {
+            'action',
+            'clockVerified',
+            'effectiveAt',
+            'flagId',
+            'patientId',
+          }, reason: user);
+          expect(other['fields'], {
+            'enteredInError': {
+              'value': <String, Object?>{},
+              'version': 1,
+              'changedBy': dana,
+              'changedAt': isA<String>(),
+            },
+          }, reason: user);
+          expect(jsonEncode(other), isNot(contains('drank nothing')), reason: user);
+          expect(jsonEncode(other), isNot(contains(markReason)), reason: user);
+        }
+      });
+
+      test('a retry is answered with nothing of a flag hidden from its sender since, and logs no read', () async {
+        final made = flagChange(patientA, flags['flag.pregnancy']!, why: 'Demo: Dana’s own');
+        final first = markOf(idOf(made), 'Demo: on the wrong patient');
+        final second = markOf(idOf(made), 'Demo: second thoughts');
+        expect(await send(dana, [made, first]), [taken(made), taken(first)]);
+        final [kept] = await send(dana, [second]);
+        expect(kept, allOf(containsPair('status', 'accepted'), containsPair('details', {'outcome': 'history_only'})));
+        expect(
+          kept['server'],
+          allOf(containsPair('value', {'reason': 'Demo: on the wrong patient'}), containsPair('version', 1)),
+        );
+        // Dana's role loses sight of sensitive flags; the same change sent again shows nothing of it.
+        server.permissions[dana] = FakeSyncServer.chw;
+        final before = server.serverAudit.length;
+        final [again] = await send(dana, [second]);
+        expect(again, allOf(containsPair('status', 'accepted'), containsPair('details', {'outcome': 'history_only'})));
+        expect(again['server'], {'value': null, 'version': 0, 'changedBy': null, 'changedAt': null});
+        expect(server.serverAudit.sublist(before), isEmpty);
+      });
+    });
   });
 }

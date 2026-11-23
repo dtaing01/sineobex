@@ -64,6 +64,26 @@ import 'test_note_types.dart';
 /// installers and the platform updates they offer, which the API's pull runs first, so a pull here
 /// never writes; the admin routes (routes/presets-admin.ts, routes/note-types-admin.ts); and the
 /// `access.denied` event a refusal is logged with, which no route here writes.
+///
+/// Phase 5's flag changes (design 6.2, 6.3), as services/api/src/sync/entities/patient-flag-change.ts,
+/// sync/read-rules.ts and sync/review.ts build them, each rule with its case in fake_parity_test.dart
+/// named as the API's own: the value's reason rule, through the phone's registry, before anything is
+/// read; one of the team's flags, whatever its state, or `unknown_flag`; the flag rule
+/// ([_flagHidden]: a flag the team does not hold, or a sensitive one for a reader who sees no
+/// sensitive problem), which holds a create or a mark from a sender it hides the flag from, never
+/// refuses it; the change's time, never later than the server's receipt, a held change's hold time;
+/// its mark, set once, by its author or whoever manages the team's people; the sync read and a value
+/// sent back by the flag rule, and a mark's reasons only to the change's author and Program Admins;
+/// and the notice a held change that will not reach the chart leaves its sender, naming the change
+/// and its patient. A flag change's flag is read from the presets of the team it was made in, as the
+/// team holds it now; a seed, an online act, is made in the team that holds its flag. Not mirrored:
+/// the team lock; the audit events (`patient_flag.changed`, `patient_flag.entered_in_error`,
+/// `quarantine.accept_refused`); the review queue, so a reviewer's own sight of the flag, and the
+/// 409 a refused accept answers, are the API's alone ([acceptHeld] answers what applying it
+/// answered); the routes' own checks, which no sync change reaches (insertFlagChange's second look at
+/// the reason, and its refusal of a set of an archived flag); the two flag routes and the portal's
+/// flag list (`GET /v1/presets/flags`), which no phone calls; and who approved a held create, which
+/// its row keeps and no sync read gives.
 class FakeSyncServer {
   FakeSyncServer({required this.now});
 
@@ -78,6 +98,10 @@ class FakeSyncServer {
   /// Whose each change in [quarantine] is and why it is held. It waits until a test accepts it
   /// ([acceptHeld]) or rejects it ([rejectHeld]).
   final held = <String, ({String userId, String deviceId, String reason, String? waitsOn})>{};
+
+  /// The team each change in [quarantine] was sent in (quarantine_items.team_id), which an admin's
+  /// accept applies it in.
+  final heldInTeam = <String, String?>{};
 
   /// The held changes a Program Admin rejected ([rejectHeld]): still held, decided.
   final rejectedHeld = <String>{};
@@ -451,18 +475,27 @@ class FakeSyncServer {
   Map<String, Object?> acceptHeld(String changeId, {String by = 'admin-user'}) {
     final c = quarantine[changeId]!;
     final h = held[changeId]!;
-    final outcome = _decide(_Actor(h.userId, 'admin', _allPermissions, holdForReview: false, approvedBy: by), c);
+    final outcome = _decide(
+      _Actor(h.userId, 'admin', _allPermissions, holdForReview: false, approvedBy: by, teamId: heldInTeam[changeId]),
+      c,
+    );
     if (outcome['status'] != 'accepted') {
       // Refused, the change stays held; a sign-off the note no longer matches tells its sender, and
-      // so does a correction refused now (review finding VS-6).
+      // so does a correction refused now (review finding VS-6), and a flag change, unless it waits on
+      // its sender's own held create, which is no refusal yet (review.ts waitingOnRecord).
       if ((outcome['details'] as Map<String, Object?>?)?['problem'] == 'content_changed') {
         _signoffNotApplied(h.userId, c);
       }
       _correctionNotApplied(h.userId, c);
+      final rules = rulesFor(c['entity']! as String);
+      final waiting =
+          outcome['reason'] == 'stale_reference' && rules != null && _heldCreate(h.userId, c, rules) != null;
+      if (!waiting) _flagChangeNotApplied(h.userId, c);
       return outcome;
     }
     quarantine.remove(changeId);
     held.remove(changeId);
+    heldInTeam.remove(changeId);
     receipts[changeId] = _Receipt(
       userId: h.userId,
       deviceId: h.deviceId,
@@ -496,13 +529,59 @@ class FakeSyncServer {
 
   /// A Program Admin rejects a change held for review (review.ts decideQuarantine): it stays held,
   /// decided, and a retry says so. A held sign-off rejected tells its sender the note needs
-  /// completing again.
+  /// completing again, a held correction that it needs correcting again, and a held flag change that
+  /// it was not made.
   void rejectHeld(String changeId) {
     final c = quarantine[changeId]!;
     rejectedHeld.add(changeId);
     _signoffNotApplied(held[changeId]!.userId, c);
     _correctionNotApplied(held[changeId]!.userId, c);
+    _flagChangeNotApplied(held[changeId]!.userId, c);
   }
+
+  /// A held flag change that will not reach the chart (review.ts flagChangeNotApplied, design 6.2):
+  /// its phone let go of it when it was held, so its sender gets `flag_change_not_applied` naming the
+  /// flag change, its create's record or the one its mark was for, and its patient, as the queue
+  /// names it ([_patientOfHeldFlagChange]). Once per sender and flag change; the notice holds no text
+  /// of it. Only for a patient on the chart: a patient whose own create was held and rejected tells
+  /// nobody, since the notice's key would abort the reject (intake's risk level).
+  void _flagChangeNotApplied(String userId, Map<String, Object?> c) {
+    if (c['entity'] != entityFlagChange) return;
+    final recordId = c['recordId']! as String;
+    final patientId = _patientOfHeldFlagChange(recordId, c['value']);
+    if (patientId == null || records[patientId]?.entity != entityPatient) return;
+    final told = notices.any(
+      (n) =>
+          n.userId == userId &&
+          n.kind == 'flag_change_not_applied' &&
+          n.entity == entityFlagChange &&
+          n.recordId == recordId,
+    );
+    if (!told) _notify(userId, 'flag_change_not_applied', entityFlagChange, recordId, patientId: patientId);
+  }
+
+  /// The patient a held flag change is about, as 0024's patient_of_change names it: the change's own
+  /// row's, as stored (a merged patient included); else the patient its value names; else, for a mark
+  /// whose create is held too, the one the latest held create of the change names. Named only by a
+  /// UUID, as as_uuid reads one: a held value was never checked.
+  String? _patientOfHeldFlagChange(String recordId, Object? value) {
+    final stored = records[recordId];
+    if (stored?.entity == entityFlagChange) return stored!.patientId;
+    String? patientOf(Object? v) => switch (v) {
+      {'patientId': final String id} when _anyUuid.hasMatch(id) => id.toLowerCase(),
+      _ => null,
+    };
+    final named = patientOf(value);
+    if (named != null) return named;
+    final creates = [
+      for (final MapEntry(key: id, value: q) in quarantine.entries)
+        if (q['entity'] == entityFlagChange && q['op'] == 'create' && q['recordId'] == recordId) id,
+    ]..sort((a, b) => heldAt[a]!.compareTo(heldAt[b]!));
+    return creates.isEmpty ? null : patientOf(quarantine[creates.last]!['value']);
+  }
+
+  /// Any UUID, as 0009's as_uuid takes one: 8-4-4-4-12 hexadecimal digits in either case.
+  static final _anyUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
 
   /// A held correction that will not reach the chart (review.ts correctionNotApplied, review finding
   /// VS-6): its sender gets `correction_not_applied` naming it and its note, once per correction.
@@ -663,7 +742,7 @@ class FakeSyncServer {
       if (stopAfter != null && results.length >= stopAfter!) break;
       // A time the server just measured as more than 5 minutes off is never stored as verified,
       // whatever the phone claims (push.ts, review finding P8).
-      results.add(_one(userId, b['deviceId']! as String, flagged ? {...c, 'clockVerified': false} : c));
+      results.add(_one(userId, b['deviceId']! as String, teamId, flagged ? {...c, 'clockVerified': false} : c));
     }
     return {...base, 'results': results};
   }
@@ -707,7 +786,7 @@ class FakeSyncServer {
   /// phone's receipt, or a change held for them: `change_id_reused`, review finding P8); the
   /// person's own change handed over after removal, which only an admin's decision applies; then
   /// decide(), or the lasting rejection precheck found.
-  Map<String, Object?> _one(String userId, String deviceId, Map<String, Object?> c) {
+  Map<String, Object?> _one(String userId, String deviceId, String teamId, Map<String, Object?> c) {
     final id = c['changeId']! as String;
     final hash = valueHash(c['value']);
     final unstorable = c.containsKey('value') ? storableProblem(c['value']) : null;
@@ -737,7 +816,7 @@ class FakeSyncServer {
       };
     }
     if (lasting != null) return _store(userId, deviceId, c, c['valueHash']! as String, lasting);
-    final outcome = _decide(_Actor(userId, deviceId, permissionsOf(userId), holdForReview: true), c);
+    final outcome = _decide(_Actor(userId, deviceId, permissionsOf(userId), holdForReview: true, teamId: teamId), c);
     return _store(userId, deviceId, c, hash, outcome);
   }
 
@@ -750,7 +829,15 @@ class FakeSyncServer {
     'details': {'problem': 'change_id_reused'},
   };
 
-  static final _allPermissions = {...healthcareStaff, 'patients.reverse_resolved', 'patients.correct_identity'};
+  /// What an admin's accept and a seed are applied with: every key a rule here reads, as review.ts
+  /// decideQuarantine applies an accept with the whole catalog. team.manage_users among them, so an
+  /// accepted mark of someone else's flag change passes its author rule.
+  static final _allPermissions = {
+    ...healthcareStaff,
+    'patients.reverse_resolved',
+    'patients.correct_identity',
+    'team.manage_users',
+  };
 
   /// apply.ts decide: an activity log entry, or the entity's permission, then its create or set,
   /// and a refusal the person can't fix held for review with what it waits on.
@@ -802,6 +889,7 @@ class FakeSyncServer {
   Map<String, Object?> _hold(_Actor actor, Map<String, Object?> c, String reason, {String? waitsOn}) {
     quarantine[c['changeId']! as String] = c;
     held[c['changeId']! as String] = (userId: actor.userId, deviceId: actor.deviceId, reason: reason, waitsOn: waitsOn);
+    heldInTeam[c['changeId']! as String] = actor.teamId;
     heldAt[c['changeId']! as String] ??= now().toUtc();
     return {'status': 'rejected', 'reason': reason, 'quarantined': true};
   }
@@ -940,6 +1028,7 @@ class FakeSyncServer {
     // The entity's own checks, before the insert (storeCreate's `check`).
     NoteTypeDef? noteType;
     String? authorCredential;
+    _FlagHead? flag;
     switch (rules.entity) {
       case entitySignoff:
         return _signoff(actor, c, v);
@@ -964,6 +1053,13 @@ class FakeSyncServer {
         if (encounterId != null && _visitOfOtherPatient(v['patientId']! as String, encounterId)) {
           return _rejected('stale_reference', {'problem': 'encounter_other_patient'});
         }
+      // One of the team's flags, whatever its state: an archived one stays on the patient (5.1). A
+      // flag hidden from its sender is no refusal they can fix: held, as decide holds a lowered role
+      // (patient-flag-change.ts insertFlagChange).
+      case entityFlagChange:
+        flag = _flagHead(actor.teamId, v['flagId']);
+        if (flag == null) return _invalid('unknown_flag');
+        if (_flagHidden(actor.permissions, flag)) return _rejected('permission');
       // In this order (note.ts applyCreate): the type and the visit, which the worker can fix; the
       // gate, which holds the change for review; then each answer, as a set of it is checked. A note
       // is taken whatever state the visit's other notes are in.
@@ -1070,6 +1166,23 @@ class FakeSyncServer {
             'details': v['details'],
             'encounterId': v['encounterId'],
             'recordedAt': _iso(DateTime.parse(at)),
+            'clockVerified': c['clockVerified'] == true,
+          });
+      // Its time is the change's, never later than the server's receipt, a held change's hold time
+      // (4.5, D90), so a phone whose clock runs ahead never wins every change. Its one field is the
+      // mark, so it writes no history of its own.
+      case entityFlagChange:
+        final made = DateTime.parse(at);
+        final receipt = record.storedAt!;
+        record.teamId = flag!.teamId;
+        record.attributes
+          ..clear()
+          ..addAll({
+            'patientId': v['patientId'],
+            'flagId': v['flagId'],
+            'action': v['action'],
+            'reason': v['reason'],
+            'effectiveAt': _isoMs(made.isBefore(receipt) ? made : receipt),
             'clockVerified': c['clockVerified'] == true,
           });
       case entityEncounter:
@@ -1270,6 +1383,14 @@ class FakeSyncServer {
         !actor.permissions.contains('encounters.chart')) {
       return _rejected('permission');
     }
+    // A flag change is marked by its author or whoever manages the team's people, and never by a
+    // sender its flag is hidden from, its author included once their role no longer sees it
+    // (patient-flag-change.ts mayChange): held for someone who may.
+    if (rules.entity == entityFlagChange &&
+        (_flagHidden(actor.permissions, _flagHead(named.teamId, named.attributes['flagId'])) ||
+            (named.author != actor.userId && !actor.permissions.contains('team.manage_users')))) {
+      return _rejected('permission');
+    }
     // A Medical visit's summary from a sender the sync read withholds it from is held, whatever
     // version it names, before anything answers with what it holds (apply.ts set, VS-1).
     if (actor.approvedBy == null && _summaryWithheld(actor.permissions, named, field)) {
@@ -1394,7 +1515,9 @@ class FakeSyncServer {
     switch ((rec.entity, field)) {
       case (entityAlias, 'removal'):
         rec.status = 'removed';
-      case (entityAllergy, 'enteredInError') || (entityReferral, 'enteredInError'):
+      case (entityAllergy, 'enteredInError') ||
+          (entityReferral, 'enteredInError') ||
+          (entityFlagChange, 'enteredInError'):
         rec.status = 'entered_in_error';
       case (entityProblem, 'enteredInError'):
         rec.retracted = true;
@@ -2254,9 +2377,10 @@ class FakeSyncServer {
     );
   }
 
-  /// A notice with no text (user_notices). Only a held sign-off's names a note.
-  void _notify(String userId, String kind, String entity, String recordId, {String? noteId}) =>
-      notices.add(FakeNotice(_uuid(), userId, kind, entity, recordId, now(), noteId: noteId));
+  /// A notice with no text (user_notices). Only a held sign-off's or correction's names a note, and
+  /// only a held flag change's a patient.
+  void _notify(String userId, String kind, String entity, String recordId, {String? noteId, String? patientId}) =>
+      notices.add(FakeNotice(_uuid(), userId, kind, entity, recordId, now(), noteId: noteId, patientId: patientId));
 
   /// A patient's record names a visit of someone else (records.ts visitOfOtherPatient): one whose
   /// patient is outside [patientId]'s merged group. A visit that names no patient names nobody else.
@@ -2584,6 +2708,11 @@ class FakeSyncServer {
   }
 
   static String _iso(DateTime t) => t.toUtc().toIso8601String();
+
+  /// [t] to the millisecond, as the API answers a time the database holds to the microsecond: a
+  /// JavaScript Date holds no more.
+  static String _isoMs(DateTime t) =>
+      DateTime.fromMillisecondsSinceEpoch(t.millisecondsSinceEpoch, isUtc: true).toIso8601String();
 
   /// [t] to the microsecond, with all six places, as note.ts load gives a note's createdAt: the time
   /// Postgres keeps, as text that sorts as the time does (review finding N2-R1).
@@ -3119,6 +3248,7 @@ class FakeSyncServer {
           'entity': n.entity,
           'recordId': n.recordId,
           'noteId': n.noteId,
+          'patientId': n.patientId,
           'createdAt': _iso(n.createdAt),
           'readAt': n.readAt == null ? null : _iso(n.readAt!),
         },
@@ -3588,12 +3718,58 @@ class FakeSyncServer {
       problem?.attributes['sensitive'] == true && !perms.contains('patients.view_sensitive');
 
   /// Whether [perms] read this record through sync at all (read-rules.ts readsRecord): its kind's
-  /// rule, then a sensitive problem's, for the problem and for a note on it.
+  /// rule, then a sensitive problem's, for the problem and for a note on it, and the flag rule for a
+  /// flag change.
   bool _readsRecord(Set<String> perms, FakeRecord r) {
     if (!_readsEntity(perms, r.entity)) return false;
     if (r.entity == entityProblem) return !_sensitiveHidden(perms, r);
     if (r.entity == entityProblemNote) return !_sensitiveHidden(perms, records[r.attributes['problemId']]);
+    if (r.entity == entityFlagChange) return !_flagHidden(perms, _flagHead(r.teamId, r.attributes['flagId']));
     return true;
+  }
+
+  /// One of [teamId]'s flags as the team holds it now (read-rules.ts flagHead): the team it is in,
+  /// and whether it is sensitive, read from its current version's body as the JSON value true and
+  /// nothing else, without a cast, so a body no writer leaves reads as not sensitive. Null when
+  /// [flagId] names no flag of the team: another kind of preset, another team's, nothing, or a head
+  /// whose current version is missing, which the API's join finds no row for. A seed names no team,
+  /// so its flag is whichever team's holds it.
+  _FlagHead? _flagHead(String? teamId, Object? flagId) {
+    for (final MapEntry(key: id, value: team) in presetTeams.entries) {
+      if (teamId != null && id != teamId.toLowerCase()) continue;
+      final head = team.heads[flagId];
+      final body = head?.versions[head.currentVersion];
+      if (head?.kind == 'flag' && body != null) return (teamId: id, sensitive: body['sensitive'] == true);
+    }
+    return null;
+  }
+
+  /// The flag rule (read-rules.ts flagHidden, design 6.2, D136): a flag the team does not hold, or a
+  /// sensitive one for a reader whose projection sees no sensitive problem (`mayViewProblems` with
+  /// patients.view_sensitive, projection.ts Projection.sensitive), is hidden from them.
+  static bool _flagHidden(Set<String> perms, _FlagHead? flag) =>
+      flag == null || (flag.sensitive && !(mayViewProblems(perms) && perms.contains('patients.view_sensitive')));
+
+  /// A flag change as [userId] may see it (read-rules.ts flagChangeShown): nothing of it when its flag
+  /// is hidden from them; else its snapshot as its load() gives it, at the row's version and made at
+  /// its receipt, without its reason or its mark's once it is entered in error and they neither made
+  /// it nor manage the team's people. A reason left out leaves no key, and the mark's field holds
+  /// `{}`, with who and when: marked, and nothing of why.
+  Map<String, Object?>? _flagChangeShown(String userId, Set<String> perms, FakeRecord r) {
+    if (_flagHidden(perms, _flagHead(r.teamId, r.attributes['flagId']))) return null;
+    final shown = {
+      ..._readSnapshot(r),
+      'version': 1 + (r.fields['enteredInError']?.version ?? 0),
+      'createdAt': _isoMs(r.storedAt ?? r.createdAt),
+    };
+    if (r.status != 'entered_in_error' || r.author == userId || perms.contains('team.manage_users')) return shown;
+    return {
+      ...shown,
+      'attributes': {...r.attributes}..remove('reason'),
+      'fields': {
+        'enteredInError': {...r.state('enteredInError'), 'value': const <String, Object?>{}},
+      },
+    };
   }
 
   /// The record as [userId] may see it (review.ts asRead), or null when they may not see it at all.
@@ -3662,6 +3838,10 @@ class FakeSyncServer {
             if (c.entity == entityCorrection && c.attributes['noteId'] == noteId) c,
         ];
         return _hiddenCorrections(read.type, read.answers, read.reader, all).contains(r.id) ? null : _readSnapshot(r);
+      // By the flag rule, and once entered in error without its reasons for whoever neither made it
+      // nor manages the team's people (review.ts asRead).
+      case entityFlagChange:
+        return _flagChangeShown(userId, perms, r);
       // Who recorded it, by their name now: a referral keeps no name of its own (referral.ts load).
       case entityReferral:
         final read = _readSnapshot(r);
@@ -3827,7 +4007,7 @@ class FakeSyncServer {
   };
 
   /// A record as the sync read sends it: a visit shows each of its fields, at version 0 until one is
-  /// written (encounter.ts load), and a referral its mark.
+  /// written (encounter.ts load), and a referral and a flag change their mark.
   Map<String, Object?> _readSnapshot(FakeRecord r, {List<String>? fields}) {
     final at = now().toUtc().toIso8601String();
     return {
@@ -3844,7 +4024,7 @@ class FakeSyncServer {
             in fields ??
                 switch (r.entity) {
                   entityEncounter => _encounterFields,
-                  entityReferral => const ['enteredInError'],
+                  entityReferral || entityFlagChange => const ['enteredInError'],
                   _ => r.fields.keys,
                 })
           name: r.state(name),
@@ -3920,7 +4100,13 @@ class FakeSyncServer {
             results.add({'changeId': c['changeId'], 'status': 'rejected', 'reason': 'validation'});
             continue;
           }
-          if (other == null) _hold(_Actor(device.userId, deviceId, const {}, holdForReview: true), c, 'access_removed');
+          if (other == null) {
+            _hold(
+              _Actor(device.userId, deviceId, const {}, holdForReview: true, teamId: device.teamId),
+              c,
+              'access_removed',
+            );
+          }
           results.add({'changeId': c['changeId'], 'status': 'quarantined', 'hash': hash});
         }
         return {'results': results};
@@ -3933,6 +4119,10 @@ class FakeSyncServer {
 
 /// Why a value the draft rule would write is kept in history instead (records.ts KeptInstead).
 typedef _Kept = ({String problem, ({String kind, List<String> to})? notice});
+
+/// What the flag rule reads of one of a team's flags (read-rules.ts FlagHead): the team that holds it,
+/// and whether it is sensitive.
+typedef _FlagHead = ({String teamId, bool sensitive});
 
 /// What signedUnder finds: the credential, whether the time was believed, and what it may do.
 typedef SignedUnder = ({String credential, bool timeTrusted, bool canSign, bool needsAttestation, bool claimDiffers});
@@ -3976,10 +4166,14 @@ const TestNoteType testMarked = (key: 'test_marked', version: 1);
 const _encounterFields = ['patientId', 'location', 'locationText', 'summary', 'kind'];
 
 class _Actor {
-  _Actor(this.userId, this.deviceId, this.permissions, {required this.holdForReview, this.approvedBy});
+  _Actor(this.userId, this.deviceId, this.permissions, {required this.holdForReview, this.approvedBy, this.teamId});
   final String userId;
   final String deviceId;
   final Set<String> permissions;
+
+  /// The team the change is applied in: the push's, or the held change's for an admin's accept. A
+  /// seed names none.
+  final String? teamId;
 
   /// A push holds what it may not apply; an admin's accept fails instead.
   final bool holdForReview;
@@ -4107,6 +4301,10 @@ class FakeRecord {
   /// one. A note's snapshot gives it as its `createdAt`.
   DateTime? madeAt;
 
+  /// The team a flag change was made in (patient_flag_changes.team_id): its flag is read from that
+  /// team's presets, as the team holds it now.
+  String? teamId;
+
   /// The field as a FieldState: version 0 and no value when never written.
   Map<String, Object?> state(String field) {
     final f = fields[field];
@@ -4154,7 +4352,16 @@ class FakePair {
 }
 
 class FakeNotice {
-  FakeNotice(this.id, this.userId, this.kind, this.entity, this.recordId, this.createdAt, {this.noteId});
+  FakeNotice(
+    this.id,
+    this.userId,
+    this.kind,
+    this.entity,
+    this.recordId,
+    this.createdAt, {
+    this.noteId,
+    this.patientId,
+  });
   final String id;
   final String userId;
   final String kind;
@@ -4164,6 +4371,10 @@ class FakeNotice {
   /// The note a `signoff_not_applied` or `correction_not_applied` notice is about (user_notices.note_id,
   /// D104, VS-6); null for any other.
   final String? noteId;
+
+  /// The patient a `flag_change_not_applied` notice is about (user_notices.patient_id, design 6.2);
+  /// null for any other.
+  final String? patientId;
   final DateTime createdAt;
   DateTime? readAt;
 }
