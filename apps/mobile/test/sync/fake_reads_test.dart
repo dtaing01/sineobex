@@ -1311,13 +1311,12 @@ void main() {
     Future<Map<String, Object?>> chartOf(String user, String patientId) => json(user, 'GET', '/v1/patients/$patientId');
     Map<String, Object?> flagsOf(Map<String, Object?> chart) => chart['flags']! as Map<String, Object?>;
     List<Map<String, Object?>> listOf(Object? v) => (v! as List<Object?>).cast<Map<String, Object?>>();
-    Future<List<String>> hitsOf(String user, List<String> flagIds, {int? limit}) async => [
+    Future<List<String>> hitsOf(String user, List<String> flagIds) async => [
       for (final h in listOf(
         (await json(user, 'POST', '/v1/patients/search', {
           'name': 'Demo Wren',
           'surface': 'portal',
           'flagIds': flagIds,
-          'limit': ?limit,
         }))['hits'],
       ))
         h['patientId']! as String,
