@@ -15,10 +15,15 @@ import {
   mergeDirect,
   type Member,
 } from './patient-fixtures.ts';
+import { archiveDirect, idOf, memberOf, presetsTeam, tokenOf, type PresetsTeam } from './presets-fixtures.ts';
 
 // POST /v1/patients/index (phase 3 design 6): who may hold the team index on a phone (D37, D38),
 // exactly what an entry holds (never a legal name, D40), versions, keyset pages, the complete
 // redirect list on the first page, and one audit event per page with its ID range (D33).
+//
+// Phase 5 (design 6.1; D139) adds each entry's flags, and the projection idx1+sens for a reader who
+// sees sensitive flags. Written ahead of P5-index: the entry's key set and the projection of a role
+// that sees them, here and in the flags' own group below, fail until it lands.
 
 const ROLES: Record<string, Permission[]> = {
   'Program Admin': PERMISSION_KEYS,
@@ -61,6 +66,7 @@ const ENTRY_KEYS = [
   'allergyScreen',
   'birth',
   'duplicate',
+  'flags',
   'idLinks',
   'lastSeenOn',
   'patientId',
@@ -157,8 +163,9 @@ describe('an index page', () => {
     const res = await index(staff.token);
     expect(res.headers.get('cache-control')).toBe('no-store');
     const body = (await res.json()) as TeamIndexPageValue;
-    expect(body).toMatchObject({ status: 'page', projection: INDEX_PROJECTION, next: null });
-    expect(body.version).toMatch(new RegExp(`^\\d+\\.${INDEX_PROJECTION}$`));
+    // Healthcare Staff see sensitive flags (design 6.1): idx1+sens.
+    expect(body).toMatchObject({ status: 'page', projection: `${INDEX_PROJECTION}+sens`, next: null });
+    expect(body.version).toMatch(new RegExp(`^\\d+\\.${INDEX_PROJECTION}\\+sens$`));
     expect(body.entries.map((e) => e.patientId)).toEqual([p1]);
     const entry = body.entries[0]!;
     expect(Object.keys(entry).sort()).toEqual(ENTRY_KEYS);
@@ -171,6 +178,7 @@ describe('an index page', () => {
       allergyScreen: 'not_asked',
       idLinks: [{ id: linkId, effectiveAt: h.clock.now.toISOString() }],
       duplicate: null,
+      flags: { primary: null, secondary: [] },
       reviews: [],
       versions: { preferredName: 1, visualDescriptor: 1, usualArea: 1, allergyScreen: 1 },
     });
@@ -333,6 +341,112 @@ describe('pages and redirects', () => {
       headers: { 'accept-encoding': 'gzip' },
     });
     expect(res.headers.get('content-encoding')).toBe('gzip');
+  });
+});
+
+describe('flags in the index (phase 5 design 6.1)', () => {
+  type Entry = TeamIndexPageValue['entries'][number] & {
+    flags?: { primary: string | null; secondary: string[] };
+  };
+  let team: PresetsTeam;
+  let chw: { userId: string; email: string; displayName: string };
+  let flagged: string;
+  let mergedIn: string;
+  let plain: string;
+
+  const indexOf = async (token: string, body: unknown = {}) => {
+    const res = await h.request('/v1/patients/index', {
+      method: 'POST',
+      token,
+      teamId: team.teamId,
+      json: body,
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()) as TeamIndexPageValue;
+  };
+  const entryOf = (page: TeamIndexPageValue, patientId: string) =>
+    page.entries.find((e) => e.patientId === patientId) as Entry;
+  const insertChange = async (patientId: string, flagKey: string, minutesAgo: number, action = 'set') => {
+    const id = randomUUID();
+    const at = new Date(h.clock.now.getTime() - minutesAgo * 60_000);
+    await h.scratch.owner`
+      insert into sineobex.patient_flag_changes (id, team_id, patient_id, flag_id, action, reason, effective_at,
+        device_time, clock_verified, author_user_id)
+      values (${id}, ${team.teamId}, ${patientId}, ${idOf(team, flagKey)}, ${action}, 'Demo: seen at the van',
+        ${at}, ${at}, true, ${team.staff.userId})`;
+    return id;
+  };
+
+  beforeAll(async () => {
+    team = await presetsTeam(h, 'Index flags');
+    chw = await memberOf(h, team.teamId, CHW_PRESET.permissions, 'Index flags CHW');
+    flagged = (await createPatient(h, team.teamId, team.staff.userId, { preferredName: 'Demo Wren' })).id;
+    mergedIn = (await createPatient(h, team.teamId, team.staff.userId, { preferredName: 'Demo Wren two' }))
+      .id;
+    plain = (await createPatient(h, team.teamId, team.staff.userId, { preferredName: 'Demo Lark' })).id;
+    await mergeDirect(h, team.teamId, mergedIn, flagged, team.staff.userId);
+    await insertChange(flagged, 'flag.medium', 60);
+    await insertChange(mergedIn, 'flag.high', 50);
+    await insertChange(flagged, 'flag.dehydration_risk', 40);
+    await insertChange(mergedIn, 'flag.pregnancy', 30);
+    await insertChange(flagged, 'flag.frost_risk', 20);
+  });
+
+  it('gives each entry its group’s current flags, ids only, both records of a merged patient', async () => {
+    const page = await indexOf(await tokenOf(h, team.staff));
+    expect(entryOf(page, flagged).flags).toEqual({
+      primary: idOf(team, 'flag.high'),
+      secondary: [
+        idOf(team, 'flag.frost_risk'),
+        idOf(team, 'flag.dehydration_risk'),
+        idOf(team, 'flag.pregnancy'),
+      ],
+    });
+    expect(entryOf(page, plain).flags).toEqual({ primary: null, secondary: [] });
+    // Ids only: never a flag change's reason.
+    expect(JSON.stringify(page)).not.toContain('seen at the van');
+  });
+
+  it('holds a sensitive flag only for a reader who sees it, under idx1+sens; anyone else gets idx1', async () => {
+    const staff = await indexOf(await tokenOf(h, team.staff));
+    const forChw = await indexOf(await tokenOf(h, chw));
+    expect([staff.projection, forChw.projection]).toEqual(['idx1+sens', 'idx1']);
+    expect(staff.version).toMatch(/^\d+\.idx1\+sens$/);
+    expect(forChw.version).toMatch(/^\d+\.idx1$/);
+    expect(entryOf(forChw, flagged).flags!.secondary).toEqual([
+      idOf(team, 'flag.frost_risk'),
+      idOf(team, 'flag.dehydration_risk'),
+    ]);
+    expect(JSON.stringify(forChw)).not.toContain(idOf(team, 'flag.pregnancy'));
+    // The two copies are two versions: a phone holding one is sent the other whole.
+    expect((await indexOf(await tokenOf(h, chw), { have: staff.version })).status).toBe('page');
+  });
+
+  it('a flag set on another phone appears after one refresh, and one entered in error leaves', async () => {
+    const token = await tokenOf(h, team.staff);
+    const before = await indexOf(token);
+    const low = await insertChange(plain, 'flag.low', 5);
+    const after = await indexOf(token, { have: before.version });
+    expect(after.status).toBe('page');
+    expect(after.version).not.toBe(before.version);
+    expect(entryOf(after, plain).flags!.primary).toBe(idOf(team, 'flag.low'));
+    await h.scratch.owner`
+      update sineobex.patient_flag_changes
+      set status = 'entered_in_error', error_reason = 'Demo: wrong patient', error_by = ${team.staff.userId},
+          error_at = now(), version = version + 1,
+          field_versions = field_versions || '{"enteredInError": 1}'::jsonb,
+          field_meta = field_meta || jsonb_build_object('enteredInError',
+            jsonb_build_object('by', ${team.staff.userId}::text, 'at', now()::text, 'changeId', null))
+      where id = ${low}`;
+    const marked = await indexOf(token, { have: after.version });
+    expect(marked.status).toBe('page');
+    expect(entryOf(marked, plain).flags!.primary).toBeNull();
+  });
+
+  it('keeps an archived flag on the patients who carry it', async () => {
+    await archiveDirect(h, team.teamId, idOf(team, 'flag.frost_risk'), team.admin.userId);
+    const page = await indexOf(await tokenOf(h, team.staff));
+    expect(entryOf(page, flagged).flags!.secondary).toContain(idOf(team, 'flag.frost_risk'));
   });
 });
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Permission } from '../src/auth/permissions.ts';
 import { QUEUE_THRESHOLD, SEARCH_MIN } from '../src/patients/match-constants.ts';
@@ -19,6 +20,16 @@ import {
   mergeDirect,
   type Member,
 } from './patient-fixtures.ts';
+import {
+  archiveDirect,
+  idOf,
+  insertPreset,
+  memberOf,
+  presetsTeam,
+  tokenOf,
+  type Person,
+  type PresetsTeam,
+} from './presets-fixtures.ts';
 
 // POST /v1/patients/search and /v1/patients/match (phase 3 design 3.1, 5): misspellings, street
 // names, merged groups, other teams, the cut after ranking, birth-date searches, what the phone may
@@ -208,6 +219,182 @@ describe('POST /v1/patients/search', () => {
         drop trigger test_fail_search on sineobex.audit_events;
         drop function sineobex.test_fail_search()`);
     }
+  });
+});
+
+// Phase 5 (design 7, 8.1; section 11, row 37): flagIds narrows a name or birth search by the
+// patients' current flags, both tiers, in the request's body. Written ahead of P5-search: until it
+// lands the field is ignored and each case fails. What they expect of it: `flagIds`, optional, a list
+// of UUIDs; a hit carries every flag named among its current flags (currentFlags, with the reader's
+// flag rule); a flag alone is refused as a search that browses the list is; a flag id that flagHidden
+// hides from the caller, one the team does not hold among them, is 403 logged access.denied with
+// `permission: 'patients.view_sensitive'` and the route, never the id; the search's event gains
+// `flagCount`, the number of flag ids, and names none.
+describe('POST /v1/patients/search by flags (phase 5)', () => {
+  let team: PresetsTeam;
+  let chw: Person;
+  let both: string;
+  let frostOnly: string;
+  let cleared: string;
+  let mistaken: string;
+  let archived: string;
+  let none: string;
+  let winter: string;
+
+  const searchAs = async (who: Person, body: Record<string, unknown>) =>
+    h.request('/v1/patients/search', {
+      method: 'POST',
+      token: await tokenOf(h, who),
+      teamId: team.teamId,
+      json: { name: 'Demo Wren', surface: 'portal', ...body },
+    });
+  const hitsOf = async (res: Response) => {
+    expect(res.status).toBe(200);
+    return ((await res.json()) as PatientSearchResultValue).hits.map((x) => x.patientId).sort();
+  };
+  const insertChange = async (patientId: string, flagId: string, minutesAgo: number, action = 'set') => {
+    const id = randomUUID();
+    const at = new Date(h.clock.now.getTime() - minutesAgo * 60_000);
+    await h.scratch.owner`
+      insert into sineobex.patient_flag_changes (id, team_id, patient_id, flag_id, action, reason, effective_at,
+        device_time, clock_verified, author_user_id)
+      values (${id}, ${team.teamId}, ${patientId}, ${flagId}, ${action}, 'Demo: seen at the van', ${at}, ${at}, true,
+        ${team.staff.userId})`;
+    return id;
+  };
+  const flag = (key: string) => idOf(team, key);
+
+  beforeAll(async () => {
+    team = await presetsTeam(h, 'Search flags');
+    chw = await memberOf(
+      h,
+      team.teamId,
+      ['patients.view', 'patients.edit', 'checkins.create', 'referrals.create', 'routes.view'],
+      'Search flags CHW',
+    );
+    const patient = async (name: string) =>
+      (await createPatient(h, team.teamId, team.staff.userId, { preferredName: name })).id;
+    both = await patient('Demo Wren Alder');
+    frostOnly = await patient('Demo Wren Birch');
+    cleared = await patient('Demo Wren Cedar');
+    mistaken = await patient('Demo Wren Dogwood');
+    archived = await patient('Demo Wren Elm');
+    none = await patient('Demo Wren Fir');
+    winter = (
+      await insertPreset(
+        h,
+        team.teamId,
+        'flag',
+        {
+          name: 'Demo: Winter outreach',
+          tier: 'secondary',
+          criteria: '',
+          color: 'teal',
+          rank: 40,
+          sensitive: false,
+        },
+        team.admin.userId,
+      )
+    ).id;
+    await insertChange(both, flag('flag.high'), 50);
+    await insertChange(both, flag('flag.frost_risk'), 40);
+    await insertChange(both, flag('flag.pregnancy'), 35);
+    await insertChange(frostOnly, flag('flag.frost_risk'), 30);
+    await insertChange(cleared, flag('flag.high'), 30);
+    await insertChange(cleared, flag('flag.high'), 20, 'clear');
+    const wrong = await insertChange(mistaken, flag('flag.high'), 30);
+    await h.scratch.owner`
+      update sineobex.patient_flag_changes
+      set status = 'entered_in_error', error_reason = 'Demo: wrong patient', error_by = ${team.staff.userId},
+          error_at = now(), version = version + 1,
+          field_versions = field_versions || '{"enteredInError": 1}'::jsonb,
+          field_meta = field_meta || jsonb_build_object('enteredInError',
+            jsonb_build_object('by', ${team.staff.userId}::text, 'at', now()::text, 'changeId', null))
+      where id = ${wrong}`;
+    await insertChange(archived, winter, 30);
+    await archiveDirect(h, team.teamId, winter, team.admin.userId);
+  });
+
+  it('narrows a name search to the patients carrying every flag named, a risk level or a condition', async () => {
+    expect(await hitsOf(await searchAs(team.staff, {}))).toEqual(
+      [both, frostOnly, cleared, mistaken, archived, none].sort(),
+    );
+    expect(await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.high')] }))).toEqual([both]);
+    expect(await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.frost_risk')] }))).toEqual(
+      [both, frostOnly].sort(),
+    );
+    expect(
+      await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.high'), flag('flag.frost_risk')] })),
+    ).toEqual([both]);
+    // One risk level at a time: two never match together.
+    expect(
+      await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.high'), flag('flag.low')] })),
+    ).toEqual([]);
+    // An archived flag stays on the patients who carry it; a sensitive one for a reader who sees it.
+    expect(await hitsOf(await searchAs(team.staff, { flagIds: [winter] }))).toEqual([archived]);
+    expect(await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.pregnancy')] }))).toEqual([both]);
+    // The phone's surface narrows the same way.
+    expect(
+      await hitsOf(await searchAs(team.staff, { surface: 'phone', flagIds: [flag('flag.frost_risk')] })),
+    ).toEqual([both, frostOnly].sort());
+  });
+
+  it('reads current flags only: a cleared flag and one entered in error match nothing', async () => {
+    const hits = await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.high')] }));
+    expect(hits).not.toContain(cleared);
+    expect(hits).not.toContain(mistaken);
+  });
+
+  it('counts the flags in the search’s event and names none', async () => {
+    const mark = await auditMark(h);
+    await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.high'), flag('flag.frost_risk')] }));
+    const [event] = await expectAudit(h, 'patient.searched', { after: mark, count: 1 });
+    expect(event!.details).toEqual({
+      resultCount: 1,
+      patientIds: [both],
+      criteria: ['name'],
+      surface: 'portal',
+      flagCount: 2,
+    });
+    expect(JSON.stringify(event!.details)).not.toContain(flag('flag.high'));
+  });
+
+  it('refuses a flag alone, as a search that would browse the list, and a flag id that is no UUID', async () => {
+    const mark = await auditMark(h);
+    const alone = await h.request('/v1/patients/search', {
+      method: 'POST',
+      token: await tokenOf(h, team.staff),
+      teamId: team.teamId,
+      json: { surface: 'portal', flagIds: [flag('flag.high')] },
+    });
+    // The refusal of a search with neither a name nor a full birth date (name_or_full_birth_date).
+    expect(alone.status).toBe(422);
+    expect(
+      (
+        (await alone.json()) as { error: { details: { fields: { path: string }[] } } }
+      ).error.details.fields.map((f) => f.path),
+    ).toEqual(['name']);
+    expect((await searchAs(team.staff, { flagIds: ['high'] })).status).toBe(422);
+    expect(await auditMark(h)).toBe(mark);
+  });
+
+  it('refuses a flag hidden from the caller, or one the team does not hold, with 403 logged without it', async () => {
+    for (const flagId of [flag('flag.pregnancy'), randomUUID()]) {
+      const mark = await auditMark(h);
+      const res = await searchAs(chw, { flagIds: [flagId] });
+      expect(res.status).toBe(403);
+      const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+      expect(denied!.details).toMatchObject({
+        permission: 'patients.view_sensitive',
+        route: '/v1/patients/search',
+      });
+      expect(JSON.stringify(denied)).not.toContain(flagId);
+      await expectAudit(h, 'patient.searched', { after: mark, count: 0 });
+    }
+    // A flag the CHW may see narrows their search.
+    expect(await hitsOf(await searchAs(chw, { flagIds: [flag('flag.frost_risk')] }))).toEqual(
+      [both, frostOnly].sort(),
+    );
   });
 });
 

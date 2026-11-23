@@ -16,6 +16,18 @@ import {
   mergeDirect,
   type Member,
 } from './patient-fixtures.ts';
+import {
+  archiveDirect,
+  editDirect,
+  idOf,
+  insertPreset,
+  memberOf,
+  presetsTeam,
+  tokenOf,
+  type Person,
+  type PresetsTeam,
+} from './presets-fixtures.ts';
+import { call, createProblem } from './sync-fixtures.ts';
 
 // GET /v1/patients/{id}, POST /v1/patients/charts and GET /v1/patients/{id}/history (phase 3 design
 // 3.1, 4.3, 7): every chart is the whole merged group, projected per role, audited once per chart;
@@ -327,6 +339,389 @@ describe('GET /v1/patients/{patientId}/history', () => {
   it('answers 404 for another team’s patient, and refuses a bad field name', async () => {
     expect((await get(clinician.token, `/v1/patients/${otherTeamPatient}/history`)).status).toBe(404);
     expect((await get(clinician.token, `/v1/patients/${p1}/history?field=Delbert%20Smith`)).status).toBe(422);
+  });
+});
+
+// Phase 5 (design 6.1, 7; D114, D139): the chart's flag changes, the flags worked out from them on the
+// server, and each problem's status check. Written ahead of P5-chart-read: until it lands the chart
+// carries none of these, and each case fails. What they expect of it, on GET /v1/patients/{patientId}
+// and on each chart of POST /v1/patients/charts:
+//
+// - `flagChanges`: every flag change of the group as a record snapshot (the sync read's, the same
+//   shape: patients-flags-sensitive.test.ts), oldest first by effectiveAt, then id.
+// - `flags: {primary, secondary, history}`: currentFlags over the group's changes with the reader's
+//   flag rule. A flag is `{flagId, name, tier, color, colorName, rank, archived}` as the flag is now;
+//   secondary by rank, then name, then id. A history row is `{changeId, flagId, name, tier, action,
+//   effectiveAt, authorName, reason, enteredInError: {byName, at, reason} or null}`, oldest first by
+//   effectiveAt, then id; names are the people's display names now.
+// - Each problem snapshot's `attributes.statusCheckDue`: problemCheckDue with the team's settings
+//   preset's problemCheckDays, at the server's time.
+describe('the chart’s flags and status checks (phase 5)', () => {
+  interface FlagView {
+    flagId: string;
+    name: string;
+    tier: string;
+    color: string;
+    colorName: string;
+    rank: number;
+    archived: boolean;
+  }
+  interface HistoryRow {
+    changeId: string;
+    flagId: string;
+    name: string;
+    tier: string;
+    action: string;
+    effectiveAt: string;
+    authorName: string;
+    reason?: string;
+    enteredInError: { byName: string; at: string; reason?: string } | null;
+  }
+  type FlagChart = PatientChartValue & {
+    flagChanges?: { id: string; entity: string; status: string; attributes: Record<string, unknown> }[];
+    flags?: { primary: FlagView | null; secondary: FlagView[]; history: HistoryRow[] };
+  };
+
+  let team: PresetsTeam;
+  let chw: Person;
+  let survivor: string;
+  let merged: string;
+  let winter: string;
+  const minutesAgo = (m: number) => new Date(h.clock.now.getTime() - m * 60_000);
+
+  async function insertChange(c: {
+    patientId: string;
+    flagKey?: string;
+    flagId?: string;
+    by: Person;
+    reason: string;
+    at: Date;
+    action?: 'set' | 'clear';
+  }): Promise<string> {
+    const id = randomUUID();
+    await h.scratch.owner`
+      insert into sineobex.patient_flag_changes (id, team_id, patient_id, flag_id, action, reason, effective_at,
+        device_time, clock_verified, author_user_id)
+      values (${id}, ${team.teamId}, ${c.patientId}, ${c.flagId ?? idOf(team, c.flagKey!)}, ${c.action ?? 'set'},
+        ${c.reason}, ${c.at}, ${c.at}, true, ${c.by.userId})`;
+    return id;
+  }
+
+  async function markInError(id: string, by: Person, reason: string, at: Date) {
+    await h.scratch.owner`
+      update sineobex.patient_flag_changes
+      set status = 'entered_in_error', error_reason = ${reason}, error_by = ${by.userId}, error_at = ${at},
+          version = version + 1,
+          field_versions = field_versions || jsonb_build_object('enteredInError', 1),
+          field_meta = field_meta || jsonb_build_object('enteredInError',
+            jsonb_build_object('by', ${by.userId}::text, 'at', ${at.toISOString()}::text, 'changeId', null))
+      where id = ${id}`;
+  }
+
+  const chartOf = async (who: Person, patientId: string) => {
+    const r = await call(h, `/v1/patients/${patientId}`, {
+      token: await tokenOf(h, who),
+      teamId: team.teamId,
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return r.body as unknown as FlagChart;
+  };
+
+  const view = (key: string, o: Partial<FlagView> = {}): FlagView => {
+    const platform: Record<string, Omit<FlagView, 'flagId' | 'archived'>> = {
+      'flag.high': { name: 'High', tier: 'primary', color: 'red', colorName: 'Red', rank: 10 },
+      'flag.medium': { name: 'Medium', tier: 'primary', color: 'yellow', colorName: 'Yellow', rank: 20 },
+      'flag.low': { name: 'Low', tier: 'primary', color: 'green', colorName: 'Green', rank: 30 },
+      'flag.frost_risk': {
+        name: 'Frost risk',
+        tier: 'secondary',
+        color: 'blue',
+        colorName: 'Blue',
+        rank: 10,
+      },
+      'flag.dehydration_risk': {
+        name: 'Dehydration risk',
+        tier: 'secondary',
+        color: 'orange',
+        colorName: 'Orange',
+        rank: 20,
+      },
+    };
+    return { flagId: idOf(team, key), ...platform[key]!, archived: false, ...o };
+  };
+
+  let changes: Record<string, string>;
+
+  beforeAll(async () => {
+    team = await presetsTeam(h, 'Chart flags');
+    chw = await memberOf(
+      h,
+      team.teamId,
+      ['patients.view', 'patients.edit', 'checkins.create', 'referrals.create', 'routes.view'],
+      'Chart flags CHW',
+    );
+    survivor = (await createPatient(h, team.teamId, team.admin.userId, { preferredName: 'Demo Wren' })).id;
+    merged = (await createPatient(h, team.teamId, team.admin.userId, { preferredName: 'Demo Wren two' })).id;
+    await mergeDirect(h, team.teamId, merged, survivor, team.admin.userId);
+    winter = (
+      await insertPreset(
+        h,
+        team.teamId,
+        'flag',
+        {
+          name: 'Demo: Winter outreach',
+          tier: 'secondary',
+          criteria: '',
+          color: 'teal',
+          rank: 40,
+          sensitive: false,
+        },
+        team.admin.userId,
+      )
+    ).id;
+    // Both records of the merged chart carry changes; one flag is archived after it was set.
+    changes = {
+      medium: await insertChange({
+        patientId: survivor,
+        flagKey: 'flag.medium',
+        by: team.staff,
+        reason: 'Demo: missed a visit',
+        at: minutesAgo(60),
+      }),
+      high: await insertChange({
+        patientId: merged,
+        flagKey: 'flag.high',
+        by: team.admin,
+        reason: 'Demo: back from hospital',
+        at: minutesAgo(50),
+      }),
+      frost: await insertChange({
+        patientId: merged,
+        flagKey: 'flag.frost_risk',
+        by: team.staff,
+        reason: 'Demo: sleeping out',
+        at: minutesAgo(40),
+      }),
+      dehydration: await insertChange({
+        patientId: survivor,
+        flagKey: 'flag.dehydration_risk',
+        by: team.staff,
+        reason: 'Demo: hot week',
+        at: minutesAgo(30),
+      }),
+      cleared: await insertChange({
+        patientId: survivor,
+        flagKey: 'flag.dehydration_risk',
+        by: team.staff,
+        reason: 'Demo: cooler now',
+        at: minutesAgo(20),
+        action: 'clear',
+      }),
+      winter: await insertChange({
+        patientId: survivor,
+        flagId: winter,
+        by: team.staff,
+        reason: 'Demo: on the winter list',
+        at: minutesAgo(10),
+      }),
+    };
+    await archiveDirect(h, team.teamId, winter, team.admin.userId);
+  });
+
+  it('works out the group’s flags on the server, both records of a merged chart, an archived flag kept', async () => {
+    const c = await chartOf(team.staff, survivor);
+    expect(c.flags!.primary).toEqual(view('flag.high'));
+    expect(c.flags!.secondary).toEqual([
+      view('flag.frost_risk'),
+      {
+        flagId: winter,
+        name: 'Demo: Winter outreach',
+        tier: 'secondary',
+        color: 'teal',
+        colorName: 'Teal',
+        rank: 40,
+        archived: true,
+      },
+    ]);
+    // A merged ID answers the survivor's chart, its flags included.
+    expect((await chartOf(team.staff, merged)).flags).toEqual(c.flags);
+  });
+
+  it('lists every change in the history, oldest first, as the flag is now, with who made it by their name now', async () => {
+    const c = await chartOf(team.staff, survivor);
+    const row = (
+      key: string,
+      flag: FlagView,
+      action: string,
+      by: Person,
+      reason: string,
+      at: number,
+    ): HistoryRow => ({
+      changeId: changes[key]!,
+      flagId: flag.flagId,
+      name: flag.name,
+      tier: flag.tier,
+      action,
+      effectiveAt: minutesAgo(at).toISOString(),
+      authorName: by.displayName,
+      reason,
+      enteredInError: null,
+    });
+    expect(c.flags!.history).toEqual([
+      row('medium', view('flag.medium'), 'set', team.staff, 'Demo: missed a visit', 60),
+      row('high', view('flag.high'), 'set', team.admin, 'Demo: back from hospital', 50),
+      row('frost', view('flag.frost_risk'), 'set', team.staff, 'Demo: sleeping out', 40),
+      row('dehydration', view('flag.dehydration_risk'), 'set', team.staff, 'Demo: hot week', 30),
+      row('cleared', view('flag.dehydration_risk'), 'clear', team.staff, 'Demo: cooler now', 20),
+      row(
+        'winter',
+        view('flag.frost_risk', { flagId: winter, name: 'Demo: Winter outreach' }),
+        'set',
+        team.staff,
+        'Demo: on the winter list',
+        10,
+      ),
+    ]);
+    // Each change is there as the record snapshot the phone imports, in the same order.
+    expect(c.flagChanges!.map((s) => [s.entity, s.id])).toEqual(
+      Object.values(changes).map((id) => ['patient_flag_change', id]),
+    );
+    const read = await call(h, '/v1/sync/records', {
+      method: 'POST',
+      token: await tokenOf(h, team.staff),
+      teamId: team.teamId,
+      json: { records: [{ entity: 'patient_flag_change', id: changes.frost }] },
+    });
+    expect(c.flagChanges!.find((s) => s.id === changes.frost)).toEqual(
+      (read.body.records as unknown[] | undefined)?.[0],
+    );
+  });
+
+  it('shows a flag as it is now: an edit renames it everywhere on the chart', async () => {
+    const body = {
+      name: 'Demo: Winter list',
+      tier: 'secondary',
+      criteria: '',
+      color: 'purple',
+      rank: 5,
+      sensitive: false,
+    };
+    await editDirect(h, team.teamId, winter, body, team.admin.userId);
+    const c = await chartOf(team.staff, survivor);
+    const shown = c.flags!.secondary.find((f) => f.flagId === winter)!;
+    expect(shown).toEqual({
+      flagId: winter,
+      name: 'Demo: Winter list',
+      tier: 'secondary',
+      color: 'purple',
+      colorName: 'Purple',
+      rank: 5,
+      archived: true,
+    });
+    // Now ranked first among the conditions.
+    expect(c.flags!.secondary.map((f) => f.flagId)).toEqual([winter, idOf(team, 'flag.frost_risk')]);
+    expect(c.flags!.history.find((r) => r.changeId === changes.winter)!.name).toBe('Demo: Winter list');
+  });
+
+  it('drops a change entered in error out of the flags, and its history row says who marked it and when', async () => {
+    const patient = (await createPatient(h, team.teamId, team.admin.userId, { preferredName: 'Demo Lark' }))
+      .id;
+    await insertChange({
+      patientId: patient,
+      flagKey: 'flag.medium',
+      by: team.staff,
+      reason: 'Demo: missed a visit',
+      at: minutesAgo(30),
+    });
+    const wrong = await insertChange({
+      patientId: patient,
+      flagKey: 'flag.low',
+      by: team.staff,
+      reason: 'Demo: meant for Wren',
+      at: minutesAgo(20),
+    });
+    const markedAt = minutesAgo(15);
+    await markInError(wrong, team.staff, 'Demo: set on the wrong patient', markedAt);
+    const c = await chartOf(team.staff, patient);
+    expect(c.flags!.primary).toEqual(view('flag.medium'));
+    expect(c.flags!.history.find((r) => r.changeId === wrong)).toMatchObject({
+      reason: 'Demo: meant for Wren',
+      enteredInError: {
+        byName: team.staff.displayName,
+        at: markedAt.toISOString(),
+        reason: 'Demo: set on the wrong patient',
+      },
+    });
+    expect(c.flagChanges!.find((s) => s.id === wrong)!.status).toBe('entered_in_error');
+  });
+
+  it('gives a reader without the problem list the flags too, and the phone’s chart bundle the same view', async () => {
+    const forChw = await chartOf(chw, survivor);
+    expect(forChw.flags!.primary).toEqual(view('flag.high'));
+    expect(forChw.flags!.secondary.map((f) => f.flagId)).toContain(idOf(team, 'flag.frost_risk'));
+    const r = await call(h, '/v1/patients/charts', {
+      method: 'POST',
+      token: await tokenOf(h, team.staff),
+      teamId: team.teamId,
+      json: { patientIds: [survivor], reason: 'opened' },
+    });
+    expect(r.status).toBe(200);
+    const [bundled] = (r.body as unknown as ChartBundleValue).charts as FlagChart[];
+    expect(bundled!.flags).toEqual((await chartOf(team.staff, survivor)).flags);
+    expect(bundled!.flagChanges!.map((s) => s.id)).toEqual(Object.values(changes));
+  });
+
+  it('marks each problem whose status check is due, by the team’s window, on both reads', async () => {
+    const patient = (await createPatient(h, team.teamId, team.admin.userId, { preferredName: 'Demo Finch' }))
+      .id;
+    const days = (n: number) => new Date(h.clock.now.getTime() - n * 86_400_000);
+    const problems = {
+      newOld: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['new'],
+        at: days(91),
+      }),
+      ongoingOld: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['new', 'ongoing'],
+        at: days(91),
+      }),
+      newRecent: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['new'],
+        at: days(10),
+      }),
+      resolvedOld: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['new', 'resolved'],
+        at: days(200),
+      }),
+    };
+    const due = async () => {
+      const c = await chartOf(team.staff, patient);
+      return Object.fromEntries(
+        Object.entries(problems).map(([k, id]) => [
+          k,
+          c.problems!.find((p) => p.id === id)!.attributes.statusCheckDue,
+        ]),
+      );
+    };
+    // The platform's window: 90 days.
+    expect(await due()).toEqual({ newOld: true, ongoingOld: true, newRecent: false, resolvedOld: false });
+    // The team's own window: 7 days.
+    const settings = idOf(team, 'settings.team');
+    await editDirect(
+      h,
+      team.teamId,
+      settings,
+      { name: 'Team settings', bagMinimumsOn: false, newBagMinimums: [], problemCheckDays: 7 },
+      team.admin.userId,
+    );
+    expect(await due()).toEqual({ newOld: true, ongoingOld: true, newRecent: true, resolvedOld: false });
+    const r = await call(h, '/v1/patients/charts', {
+      method: 'POST',
+      token: await tokenOf(h, team.staff),
+      teamId: team.teamId,
+      json: { patientIds: [patient], reason: 'refresh' },
+    });
+    const [bundled] = (r.body as unknown as ChartBundleValue).charts;
+    expect(bundled!.problems!.find((p) => p.id === problems.newRecent)!.attributes.statusCheckDue).toBe(true);
   });
 });
 
