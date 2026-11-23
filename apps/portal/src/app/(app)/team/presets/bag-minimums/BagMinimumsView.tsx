@@ -243,8 +243,13 @@ export function BagMinimumsView({
 }) {
   const active = aToZ(bags.filter((b) => b.state === 'active'));
   const sources: MinimumsSource[] = [
-    { id: TEMPLATE, label: 'The template for new bags', minimums: settings?.body.newBagMinimums ?? [] },
-    ...active.map((b) => ({ id: b.id, label: b.name, minimums: b.body.minimums })),
+    {
+      id: TEMPLATE,
+      label: 'The template for new bags',
+      name: 'the template for new bags',
+      minimums: settings?.body.newBagMinimums ?? [],
+    },
+    ...active.map((b) => ({ id: b.id, label: b.name, name: b.name, minimums: b.body.minimums })),
   ];
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
   const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';

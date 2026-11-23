@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { PresetEvent } from '@/lib/presets';
 import { BagMinimumsView, type Bag, type Settings } from './BagMinimumsView';
+import { filledSentence } from './NewBagMinimums';
 
 // Bag minimums (phase 5 design 8.1) as the page first draws them from the API's lists. An
 // end-to-end test can't draw an update on offer on the seeded team (the platform holds version 1
@@ -264,6 +265,28 @@ describe('Add a bag', () => {
     expect(select).toContain('<option value="template" selected="">');
     // The fill is said out loud once a source is chosen; nothing is said before.
     expect(html).toContain('<p role="status" class="sr-only"></p>');
+  });
+
+  it('says each fill in running text, and a list that holds none plainly', () => {
+    const template = {
+      id: 'template',
+      label: 'The template for new bags',
+      name: 'the template for new bags',
+    };
+    const one = [{ itemId: GAUZE, min: 15 }];
+    expect(filledSentence({ ...template, minimums: one })).toBe(
+      'Minimums filled from the template for new bags: 1 item.',
+    );
+    expect(filledSentence({ ...template, minimums: [] })).toBe(
+      'The template for new bags holds no minimums, so none are filled.',
+    );
+    const bag = { id: OUTREACH, label: 'Demo: Outreach backpack', name: 'Demo: Outreach backpack' };
+    expect(filledSentence({ ...bag, minimums: [...one, { itemId: SOCKS, min: 6 }] })).toBe(
+      'Minimums filled from Demo: Outreach backpack: 2 items.',
+    );
+    expect(filledSentence({ ...bag, minimums: [] })).toBe(
+      'Demo: Outreach backpack holds no minimums, so none are filled.',
+    );
   });
 
   it('reads what a minimum means with each list of them', () => {
