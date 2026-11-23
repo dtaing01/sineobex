@@ -166,7 +166,7 @@ describe('adding a flag', () => {
     expect(r.state).toEqual({
       error: 'Some fields need changing. Check each one below.',
       fieldErrors: {
-        name: 'Name: This is too short or too small.',
+        name: 'Name: Enter a name of 1 to 80 characters.',
         tier: 'List: Choose Risk level or Conditions.',
         color: 'Colour: Choose a colour.',
       },

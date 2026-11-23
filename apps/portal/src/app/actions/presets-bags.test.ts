@@ -164,7 +164,7 @@ describe('adding a bag', () => {
     expect(r.state).toEqual({
       error: 'Some fields need changing. Check each one below.',
       fieldErrors: {
-        name: 'Name: This is too short or too small.',
+        name: 'Name: Enter a name of 1 to 80 characters.',
         'minimums.0.min': 'Minimum on line 1: Enter a whole number from 1 to 999.',
         'minimums.1.itemId': 'Item on line 2: This item is on the list twice.',
         'minimums.1.min': 'Minimum on line 2: Enter a whole number from 1 to 999.',

@@ -126,7 +126,7 @@ describe('adding a category', () => {
     expect(JSON.parse(JSON.stringify(body))).toEqual({ name: '', sort: 60 });
     expect(r.state).toEqual({
       error: 'Some fields need changing. Check each one below.',
-      fieldErrors: { name: 'Name: This is too short or too small.', behaviour: 'Choose what it holds.' },
+      fieldErrors: { name: 'Name: Enter a name of 1 to 80 characters.', behaviour: 'Choose what it holds.' },
       values: sent,
     });
     expect(revalidated).toEqual([]);

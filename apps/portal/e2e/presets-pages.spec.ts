@@ -365,7 +365,9 @@ test.describe('categories, /team/presets/categories', () => {
     await expect(alert.locator('.px-alert__title')).toHaveText(
       'Some fields need changing. Check each one below.',
     );
-    await expect(alert.getByRole('link', { name: 'Name: This is too short or too small.' })).toBeVisible();
+    await expect(
+      alert.getByRole('link', { name: 'Name: Enter a name of 1 to 80 characters.' }),
+    ).toBeVisible();
     const choose = alert.getByRole('link', { name: 'Choose what it holds.' });
     await expect(choose).toBeVisible();
     await expect(reason).toHaveValue('Demo: kits we hand out');
@@ -887,7 +889,7 @@ test.describe('items, /team/presets/items', () => {
     await add.click();
     await expect(title).toHaveText('Some fields need changing. Check each one below.');
     await expect(alert.getByRole('link')).toHaveText([
-      'Name: This is too short or too small.',
+      'Name: Enter a name of 1 to 80 characters.',
       'Category: Choose one from the list.',
       'Counted in: Enter 1 to 20 characters, such as tablet or packet.',
     ]);
@@ -1475,7 +1477,7 @@ test.describe('bundles, /team/presets/bundles', () => {
     await add.click();
     await expect(title).toHaveText('Some fields need changing. Check each one below.');
     await expect(alert.getByRole('link')).toHaveText([
-      'Name: This is too short or too small.',
+      'Name: Enter a name of 1 to 80 characters.',
       'Medical or Non-Medical: Choose Medical or Non-Medical.',
       'Items: Give the bundle 1 to 40 items.',
     ]);
@@ -2085,7 +2087,9 @@ test.describe('flags, /team/presets/flags', () => {
     await expect(alert.locator('.px-alert__title')).toHaveText(
       'Some fields need changing. Check each one below.',
     );
-    await expect(alert.getByRole('link', { name: 'Name: This is too short or too small.' })).toBeVisible();
+    await expect(
+      alert.getByRole('link', { name: 'Name: Enter a name of 1 to 80 characters.' }),
+    ).toBeVisible();
     await expect(alert.getByRole('link', { name: 'Colour: Choose a colour.' })).toBeVisible();
     const chooseList = alert.getByRole('link', { name: 'List: Choose Risk level or Conditions.' });
     await expect(chooseList).toBeVisible();
@@ -2777,7 +2781,7 @@ test.describe('condition supplies, /team/presets/condition-supplies', () => {
     await add.click();
     await expect(title).toHaveText('Some fields need changing. Check each one below.');
     await expect(alert.getByRole('link')).toHaveText([
-      'Name: This is too short or too small.',
+      'Name: Enter a name of 1 to 80 characters.',
       'Condition code 1: Enter a code as a problem records it, such as R21 or L30.9.',
       'Items: Give the mapping 1 to 10 items.',
     ]);
@@ -3453,7 +3457,7 @@ test.describe('bag minimums, /team/presets/bag-minimums', () => {
       await expect(alert).toContainText('Give a reason of 3 to 300 characters.');
       await reason.fill('Demo: a bag for foot care');
       await add.click();
-      await expect(alert.getByRole('link')).toHaveText(['Name: This is too short or too small.']);
+      await expect(alert.getByRole('link')).toHaveText(['Name: Enter a name of 1 to 80 characters.']);
       await expect(line(1).getByLabel('Minimum')).toHaveValue('15');
       await expectAccessible(page, 'Add a bag, refused', { inPlace: true });
       await expectReflow(page, 'Add a bag, refused');

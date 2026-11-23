@@ -183,7 +183,7 @@ describe('adding a mapping', () => {
     const r = await run(addConditionSupplyAction, sent);
     expect(sentBody()).toEqual({ name: '', codes: [], lines: [] });
     expect(r.state?.fieldErrors).toEqual({
-      name: 'Name: This is too short or too small.',
+      name: 'Name: Enter a name of 1 to 80 characters.',
       codes: 'Condition codes: Give 1 to 20 condition codes.',
       lines: 'Items: Give the mapping 1 to 10 items.',
     });
