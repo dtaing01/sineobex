@@ -10,6 +10,7 @@ import { noteAddendumRules } from './note-addendum.ts';
 import { noteCorrectionRules } from './note-correction.ts';
 import { noteSignoffRules } from './note-signoff.ts';
 import { noteRules } from './note.ts';
+import { flagChangeRules } from './patient-flag-change.ts';
 import { patientRules } from './patient.ts';
 import { problemNoteRules } from './problem-note.ts';
 import { problemRules } from './problem.ts';
@@ -35,6 +36,7 @@ export const RULES: Readonly<Record<AnyRecordEntityName, EntityRules>> = {
   note_addendum: noteAddendumRules as EntityRules,
   note_correction: noteCorrectionRules as EntityRules,
   referral: referralRules as EntityRules,
+  patient_flag_change: flagChangeRules as EntityRules,
 };
 
 /** The rules of a change's entity; null for an activity log entry, which is no record. */
