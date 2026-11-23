@@ -173,7 +173,8 @@ describe('taking Sineobex’s update', () => {
     answer = refusal(409, 'stale', { currentVersion: 3, platformVersion: 3 });
     const r = await run(takePresetUpdateAction, fields);
     expect(r.state).toEqual({
-      error: 'Someone else changed this while you were editing. Reload to see their version.',
+      error:
+        'Sineobex offered a newer version while you were reviewing this one. Review it below before you take it.',
       values: fields,
     });
     expect(revalidated).toEqual(['/team/presets/flags']);

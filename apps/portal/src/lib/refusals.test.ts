@@ -6,6 +6,7 @@ import {
   REASON_PROBLEM,
   referencedSentence,
   refusalRedirect,
+  TAKE_STALE,
   usedBy,
   type PresetRefusalContext,
 } from './refusals';
@@ -82,9 +83,38 @@ describe('a preset form the API refused', () => {
   it('says a stale version, or a flag list changed since, in 8.1’s words', () => {
     const stale = 'Someone else changed this while you were editing. Reload to see their version.';
     expect(PRESET_SENTENCES.stale).toBe(stale);
-    for (const act of ['save', 'remove', 'take', 'move'] as const)
+    for (const act of ['save', 'remove', 'move'] as const)
       expect(refused('stale', { kind: 'flag', act }, { currentVersion: 3 }).error).toBe(stale);
     expect(refused('ids_mismatch', { kind: 'flag', act: 'move' }).error).toBe(stale);
+  });
+
+  it('says why a take is stale, from what changed since the review, and asks for no reload', () => {
+    // The form sent the copy at version 3 and Sineobex's version 2; the page is read again after.
+    const sent = { ...values, baseVersion: '3', platformVersion: '2' };
+    const take = (details?: Record<string, unknown>) =>
+      presetRefusalState(
+        { code: 'stale', message: 'The API’s own words.', ...(details ? { details } : {}) },
+        sent,
+        { kind: 'item', act: 'take' },
+      );
+    // Sineobex offered a newer version meanwhile; nobody changed the copy.
+    expect(take({ currentVersion: 3, platformVersion: 3 }).error).toBe(
+      'Sineobex offered a newer version while you were reviewing this one. Review it below before you take it.',
+    );
+    // Another admin changed the copy, with or without a newer version on offer too.
+    for (const platformVersion of [2, 3])
+      expect(take({ currentVersion: 4, platformVersion }).error).toBe(
+        'Someone else changed this while you were reviewing the update. Review it again below before you take it.',
+      );
+    // The copy changed and nothing is on offer now: another admin took the update.
+    expect(take({ currentVersion: 4, platformVersion: null }).error).toBe(
+      'Someone else changed this while you were reviewing the update, and there’s no update to take now.',
+    );
+    expect(Object.values(TAKE_STALE).some((s) => s.includes('Reload'))).toBe(false);
+    // Details that say neither: 8.1's sentence.
+    expect(take().error).toBe(PRESET_SENTENCES.stale);
+    expect(take({ currentVersion: 3, platformVersion: 2 }).error).toBe(PRESET_SENTENCES.stale);
+    expect(take({ currentVersion: 4, platformVersion: 2 }).values).toEqual(sent);
   });
 
   it('counts what still uses a preset, by kind, in the order the pages list kinds', () => {
