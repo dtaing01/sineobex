@@ -872,6 +872,102 @@ describe('hiding, showing and rewording (edit.ts)', () => {
   });
 });
 
+describe('the option operations (edit-options.ts)', () => {
+  const contextOn = (versions: ResolvedNoteType[], taken?: ResolvedNoteType[]): NoteTypeEditContext => ({
+    versions,
+    team: {},
+    platform: {},
+    ...(taken ? { taken } : {}),
+  });
+  const optionsOf = (definition: ResolvedNoteType, path: string) =>
+    (fieldAt(definition, path)!.field as { options: Option[] }).options;
+
+  it('makes an option of the code and the words alone: a mark sent with it is never written (rule 1)', () => {
+    const edit = {
+      op: 'add_option',
+      path: 'supplies.given',
+      label: 'Demo: Hat',
+      code: 'hat',
+      exclusive: true,
+      normal: true,
+      other: true,
+      suggests: 'demo_full',
+      sensitiveExam: true,
+      icon: 'hat',
+    } as unknown as NoteTypeEdit;
+    const outcome = applyNoteTypeEdits([edit], contextOn([named('demo_visit@1')]));
+    expect(outcome.ok && optionsOf(outcome.definition, 'supplies.given').at(-1)).toEqual({
+      code: 't_1',
+      label: 'Demo: Hat',
+    });
+  });
+
+  it('makes a code above every one the note types an operation reaches have used (rule 3, rule 5)', () => {
+    const outcome = applyNoteTypeEdits(
+      [{ op: 'add_option', path: 'supplies.given', label: 'Demo: Hat' }],
+      contextOn([named('demo_visit@1')], [named('demo_full@1'), named('demo_full@2')]),
+    );
+    expect(outcome.ok && optionsOf(outcome.definition, 'supplies.given').at(-1)?.code).toBe('t_2');
+  });
+
+  it('takes a blocked pair out with the option it names, and keeps every other', () => {
+    const visit = named('demo_visit@1');
+    const retired = applyNoteTypeEdits(
+      [{ op: 'retire_option', path: 'supplies.given', code: 'water' }],
+      contextOn([visit]),
+    );
+    expect(retired.ok).toBe(true);
+    if (!retired.ok) return;
+    expect(fieldAt(retired.definition, 'supplies.given')!.field).toEqual({
+      id: 'given',
+      kind: 'choice',
+      many: true,
+      label: 'Demo: Given today',
+      options: [
+        { code: 'none', label: 'Demo: Nothing', exclusive: true },
+        { code: 'socks', label: 'Demo: Socks' },
+        { code: 'food', label: 'Demo: Food' },
+      ],
+    });
+    expectStorable(retired.definition, [visit], [], () => undefined, 'water retired');
+    const pairs = structuredClone(visit);
+    (pairs.sections[1]!.fields[0] as { excludes: [string, string][] }).excludes.push(['socks', 'food']);
+    const kept = applyNoteTypeEdits(
+      [{ op: 'retire_option', path: 'supplies.given', code: 'water' }],
+      contextOn([pairs]),
+    );
+    expect(
+      kept.ok && (fieldAt(kept.definition, 'supplies.given')!.field as { excludes?: unknown }).excludes,
+    ).toEqual([['socks', 'food']]);
+  });
+
+  it('changes nothing for a move before the option itself, or a rename to the words it has', () => {
+    const visit = named('demo_visit@1');
+    const outcome = applyNoteTypeEdits(
+      [
+        { op: 'move_option', path: 'supplies.given', code: 'water', before: 'water' },
+        { op: 'rename_option', path: 'supplies.given', code: 'water', label: 'Demo: Water' },
+      ],
+      contextOn([visit]),
+    );
+    expect(outcome).toEqual({ ok: true, definition: { ...visit, version: 2 }, renames: [] });
+  });
+
+  it('takes no option operation on a field that is not a choice: a region, a grid or a flag', () => {
+    const quick = PRESETS.find((p) => p.key === 'quick_encounter')!.definition;
+    for (const [definition, edit] of [
+      [quick, { op: 'add_option', path: 'wound.location', label: 'Demo: Neck' }],
+      [quick, { op: 'retire_option', path: 'wound.location', code: 'head' }],
+      [rounds(), { op: 'add_option', path: 'rounds.checks', label: 'Demo: Second' }],
+      [named('demo_visit@1'), { op: 'add_option', path: 'supplies.declined', label: 'Demo: Partly' }],
+    ] as [ResolvedNoteType, NoteTypeEdit][])
+      expect(applyNoteTypeEdits([edit], contextOn([definition])), JSON.stringify(edit)).toMatchObject({
+        ok: false,
+        refusal: { code: 'not_found' },
+      });
+  });
+});
+
 describe('over the released note types', () => {
   it('reads the protected parts of each straight from phase 4’s marks', () => {
     for (const definition of released.values()) {
