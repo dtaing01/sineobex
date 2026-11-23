@@ -8,6 +8,8 @@
 export * from './schemas.ts';
 // When a problem is due a status check (5.3).
 export * from './problem-check.ts';
+// A patient's current flags, folded from their flag changes (5.3).
+export * from './current-flags.ts';
 // What a body's schema cannot hold: the team's other presets and its note types (4.4).
 export * from './validate.ts';
 // What each act on a preset does and refuses, and what is fixed at creation (5.1).
