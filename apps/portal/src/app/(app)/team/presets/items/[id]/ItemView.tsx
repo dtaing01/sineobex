@@ -7,7 +7,7 @@ import { CheckField } from '@/components/presets/CheckField';
 import { FixedFact } from '@/components/presets/FixedFact';
 import { FreeText } from '@/components/presets/FreeText';
 import { namesOf } from '@/components/presets/order';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RestorePresetForm } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
@@ -76,19 +76,22 @@ export function ItemView({
   categories,
   history,
   done,
+  refused,
   preset,
 }: {
   item: Item;
   categories: readonly Category[];
   history: readonly PresetEvent[];
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   const names = namesOf(categories);
   const category = names[item.body.categoryId] ?? 'a category no longer on your team’s list';
   const used = usedBy(item.referencedBy);
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <p>
@@ -98,7 +101,7 @@ export function ItemView({
       <p className="px-lede">
         In {category}, counted in {item.body.unit}. {used ? `Used by ${used}.` : 'Nothing uses it yet.'}
       </p>
-      <PresetNotice done={done} preset={preset} presets={[item]} />
+      <PresetNotice done={done} refused={refused} preset={preset} presets={[item]} />
       {item.state === 'active' ? (
         <>
           <UpdateOffer kind={KIND} preset={item} names={names} back={LIST} />

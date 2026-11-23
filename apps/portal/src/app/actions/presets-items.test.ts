@@ -344,8 +344,12 @@ describe('editing an item', () => {
   it('says nothing was changed, and a removed item was removed', async () => {
     answer = refusal(422, 'no_change');
     expect((await run(saveItemAction, fields)).state?.error).toBe('You haven’t changed anything.');
+    // Removed by another admin meanwhile: its page, read again, draws it removed, so the save comes
+    // back to its page, which says so.
     answer = refusal(409, 'archived');
-    expect((await run(saveItemAction, fields)).state?.error).toBe('This was removed. Restore it first.');
+    expect((await run(saveItemAction, fields)).to).toBe(
+      `/team/presets/items/${SOCKS}?refused=archived&preset=${SOCKS}`,
+    );
   });
 
   it('says an item no longer on the list isn’t, and asks nothing more', async () => {

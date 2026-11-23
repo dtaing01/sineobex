@@ -1,6 +1,8 @@
 import 'server-only';
 import type { paths, Schemas } from '@sineobex/contract';
-import { unstable_rethrow } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import { api, PortalApiError, unwrap } from './api';
 import type { ActionState } from './forms';
 import { presetRefusalState, type PresetRefusalContext } from './refusals';
@@ -496,6 +498,19 @@ export function donePath(page: string, done: string, id: string): string {
   return `${page}?${new URLSearchParams({ done, preset: id })}`;
 }
 
+/**
+ * The refusals another admin's Remove or Restore made meanwhile answer (5.1): a save, a take or a
+ * Remove refused `archived`, and a Restore refused `not_archived`. The page, read again, draws the
+ * preset in its new state, so the refused form would leave with its sentence and say nothing: the
+ * act comes back to the page it was sent from instead, which says so (PresetNotice).
+ */
+const MEANWHILE: ReadonlySet<string> = new Set(['archived', 'not_archived']);
+
+/** The page again, saying another admin's act refused one on a preset: a code and an ID, nothing else. */
+export function refusedPath(page: string, refused: string, id: string): string {
+  return `${page}?${new URLSearchParams({ refused, preset: id })}`;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -514,14 +529,21 @@ export function namedPreset(
 
 /**
  * What a preset form shows when the API refused it: the sentence for its refusal (lib/refusals.ts)
- * and, where the API names fields, each beside its field. Anything that is no refusal, Next's
- * redirects among them (reauth_required to /reauth and back), goes on up.
+ * and, where the API names fields, each beside its field. A refusal another admin's Remove or
+ * Restore caused (MEANWHILE) sends the browser back to the page it came from, which says so. Anything
+ * that is no refusal, Next's redirects among them (reauth_required to /reauth and back), goes on up.
  */
-export function presetFailure(
+export async function presetFailure(
   err: unknown,
   values: Record<string, string>,
   context: PresetRefusalContext,
-): ActionState {
+): Promise<ActionState> {
   if (!(err instanceof PortalApiError)) throw err;
+  const id = values.id ?? '';
+  if (MEANWHILE.has(err.code) && UUID.test(id)) {
+    const page = presetPage((await headers()).get('x-pathname'));
+    revalidatePath(page);
+    redirect(refusedPath(page, err.code, id.toLowerCase()));
+  }
   return presetRefusalState(err, values, context);
 }

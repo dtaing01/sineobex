@@ -44,6 +44,7 @@ export default async function BundlePage({
       names={namesOf(items)}
       history={history}
       done={one('done')}
+      refused={one('refused')}
       preset={preset && UUID.test(preset) ? preset : undefined}
     />
   );

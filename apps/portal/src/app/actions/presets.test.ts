@@ -105,6 +105,15 @@ describe('Remove', () => {
     expect((await run(removePresetAction, fields)).to).toBe('/reauth?next=%2Fteam%2Fpresets%2Fflags');
   });
 
+  it('comes back to the page it was sent from, saying so, when another admin removed it first', async () => {
+    // The page, read again, draws it removed, so the form refused would say nothing.
+    pathname = `/team/presets/flags/${FLAG}`;
+    answer = refusal(409, 'archived');
+    const r = await run(removePresetAction, { ...fields, back: '/team/presets/flags' });
+    expect(r.to).toBe(`/team/presets/flags/${FLAG}?refused=archived&preset=${FLAG}`);
+    expect(revalidated).toEqual([`/team/presets/flags/${FLAG}`]);
+  });
+
   it('asks nothing of the API for a form no page writes', async () => {
     for (const bad of [
       { ...fields, kind: 'note_type' },
@@ -124,6 +133,13 @@ describe('Restore', () => {
       init: { params: { path: { kind: 'item', id: FLAG } }, body: { reason: 'Demo: back in use' } },
     });
     expect(r.to).toBe(`/team/presets/flags?done=restored&preset=${FLAG}`);
+  });
+
+  it('comes back to the page, saying so, when another admin restored it first', async () => {
+    answer = refusal(409, 'not_archived');
+    const r = await run(restorePresetAction, { kind: 'item', id: FLAG, reason: 'Demo: back in use' });
+    expect(r.to).toBe(`/team/presets/flags?refused=not_archived&preset=${FLAG}`);
+    expect(revalidated).toEqual(['/team/presets/flags']);
   });
 
   it('says a bundle that would come back Non-Medical holding a medication can’t', async () => {
@@ -203,6 +219,13 @@ describe('taking Sineobex’s update', () => {
       'This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.',
     );
     expect(revalidated).toEqual([]);
+  });
+
+  it('comes back to the page it was sent from, saying so, when another admin removed the copy first', async () => {
+    pathname = `/team/presets/flags/${FLAG}`;
+    answer = refusal(409, 'archived');
+    const r = await run(takePresetUpdateAction, { ...fields, back: '/team/presets/flags' });
+    expect(r.to).toBe(`/team/presets/flags/${FLAG}?refused=archived&preset=${FLAG}`);
   });
 
   it('says in 8.1’s words that Non-Medical bundles hold an item an update taken in place would move', async () => {

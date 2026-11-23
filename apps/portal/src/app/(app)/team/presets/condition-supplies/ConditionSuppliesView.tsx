@@ -10,7 +10,7 @@ import { Disclosure } from '@/components/presets/Disclosure';
 import { FreeText } from '@/components/presets/FreeText';
 import { ItemLines, type ItemChoice } from '@/components/presets/ItemLines';
 import { aToZ } from '@/components/presets/order';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
@@ -219,6 +219,7 @@ export function ConditionSuppliesView({
   items,
   names,
   done,
+  refused,
   preset,
 }: {
   maps: readonly ConditionSupply[];
@@ -228,11 +229,13 @@ export function ConditionSuppliesView({
   items: readonly ItemChoice[];
   names: Readonly<Record<string, string>>;
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   const active = aToZ(maps.filter((m) => m.state === 'active'));
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <h1 className="px-h1">Condition supplies</h1>
@@ -240,7 +243,12 @@ export function ConditionSuppliesView({
         Before a route, the bag check counts the patients on it who have each condition, New or Ongoing, and
         warns when the route’s bags hold too few of the items they need.
       </p>
-      <PresetNotice done={done} preset={preset} presets={settings ? [...maps, settings] : maps} />
+      <PresetNotice
+        done={done}
+        refused={refused}
+        preset={preset}
+        presets={settings ? [...maps, settings] : maps}
+      />
       {active.length === 0 ? (
         <p className="px-panel">No condition mapping is on your team’s list. Add one below.</p>
       ) : (

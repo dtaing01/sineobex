@@ -273,9 +273,12 @@ describe('editing a bag', () => {
     });
     answer = refusal(422, 'no_change');
     expect((await run(saveBagAction, fields)).state?.error).toBe('You haven’t changed anything.');
-    answer = refusal(409, 'archived');
-    expect((await run(saveBagAction, fields)).state?.error).toBe('This was removed. Restore it first.');
     expect(revalidated).toEqual([]);
+    // Removed by another admin meanwhile: the page, read again, draws it removed, so the save
+    // comes back to the page, which says so.
+    answer = refusal(409, 'archived');
+    expect((await run(saveBagAction, fields)).to).toBe(`${PAGE}?refused=archived&preset=${BAG}`);
+    expect(revalidated).toEqual([PAGE]);
   });
 
   it('says a bag no longer on the list isn’t, and asks nothing more', async () => {

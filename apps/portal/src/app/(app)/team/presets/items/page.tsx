@@ -30,6 +30,7 @@ export default async function ItemsPage({
       items={items}
       categories={categories}
       done={one('done')}
+      refused={one('refused')}
       preset={preset && UUID.test(preset) ? preset : undefined}
     />
   );

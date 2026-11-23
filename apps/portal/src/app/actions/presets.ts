@@ -90,7 +90,7 @@ export async function takePresetUpdateAction(_: ActionState, form: FormData): Pr
       reason: values.reason ?? '',
     });
   } catch (err) {
-    const refused = presetFailure(err, values, { kind: preset.kind, act: 'take' });
+    const refused = await presetFailure(err, values, { kind: preset.kind, act: 'take' });
     if (!(err instanceof PortalApiError && err.code === 'stale')) return refused;
     revalidatePath(await landing(values));
     const { baseVersion: _shown, platformVersion: _offered, ...kept } = values;

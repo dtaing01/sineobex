@@ -4,7 +4,7 @@ import { saveBundleAction } from '@/app/actions/presets-bundles';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
 import { BaseVersion } from '@/components/presets/BaseVersion';
 import type { ItemChoice } from '@/components/presets/ItemLines';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RestorePresetForm } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
@@ -50,6 +50,7 @@ export function BundleView({
   names,
   history,
   done,
+  refused,
   preset,
 }: {
   bundle: Bundle;
@@ -57,10 +58,12 @@ export function BundleView({
   names: Readonly<Record<string, string>>;
   history: readonly PresetEvent[];
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <p>
@@ -68,7 +71,7 @@ export function BundleView({
       </p>
       <h1 className="px-h1">{bundle.name}</h1>
       <p className="px-lede">{bundleSummary(bundle.body)}</p>
-      <PresetNotice done={done} preset={preset} presets={[bundle]} />
+      <PresetNotice done={done} refused={refused} preset={preset} presets={[bundle]} />
       {bundle.state === 'active' ? (
         <>
           <UpdateOffer kind={KIND} preset={bundle} names={names} back={LIST} />

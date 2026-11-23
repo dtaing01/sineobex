@@ -6,7 +6,7 @@ import { ChoiceGroup } from '@/components/presets/ChoiceGroup';
 import { Disclosure } from '@/components/presets/Disclosure';
 import { FreeText } from '@/components/presets/FreeText';
 import { inPlace } from '@/components/presets/order';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
@@ -154,17 +154,20 @@ export function CategoriesView({
   rows,
   histories,
   done,
+  refused,
   preset,
 }: {
   rows: readonly Category[];
   histories: Readonly<Record<string, readonly PresetEvent[]>>;
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   const active = inOrder(rows.filter((r) => r.state === 'active'));
   // A new view starts afresh after each act the page is sent back to: Next keeps client state, an
   // open form among it, across visits to the same page, and each act's address names its preset.
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <h1 className="px-h1">Categories</h1>
@@ -172,7 +175,7 @@ export function CategoriesView({
         Every item belongs to a category, and staff find items under them. Each category holds supplies,
         medications or tests.
       </p>
-      <PresetNotice done={done} preset={preset} presets={rows} />
+      <PresetNotice done={done} refused={refused} preset={preset} presets={rows} />
       {active.length === 0 ? (
         <p className="px-panel">No category is on your team’s list. Add one below.</p>
       ) : (

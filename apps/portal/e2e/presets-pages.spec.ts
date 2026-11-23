@@ -23,14 +23,14 @@ import {
 // (design 13.4); the Done when walks them in presets.spec.ts. Every name is made up.
 
 /**
- * Team setup's addresses: a page of it, a preset's, and the notice of an act, by ID only, with the
- * field an error summary's link moved to (a form's ID and a body path, `#new-category-behaviour`,
- * `#new-item-categoryId`).
+ * Team setup's addresses: a page of it, a preset's, and the notice of an act, or of one another
+ * admin's act refused, by ID only, with the field an error summary's link moved to (a form's ID and
+ * a body path, `#new-category-behaviour`, `#new-item-categoryId`).
  */
 function expectOnlyIds(addresses: string[]) {
   for (const address of addresses)
     expect(address).toMatch(
-      /\/team\/presets(\/[a-z-]+(\/[0-9a-f-]{36})?)?(\?done=[a-z_]+&preset=[0-9a-f-]{36})?(#[A-Za-z0-9.-]+)?$|\/(home|sign-in.*|reauth.*)$/,
+      /\/team\/presets(\/[a-z-]+(\/[0-9a-f-]{36})?)?(\?(done|refused)=[a-z_]+&preset=[0-9a-f-]{36})?(#[A-Za-z0-9.-]+)?$|\/(home|sign-in.*|reauth.*)$/,
     );
 }
 
@@ -727,6 +727,17 @@ async function longCategory(): Promise<void> {
 }
 
 const STALE = 'Someone else changed this while you were editing. Reload to see their version.';
+
+/**
+ * What a page says when another admin's Remove or Restore refused an act meanwhile (PresetNotice):
+ * the page draws the preset as it is now, which the refused form left with.
+ */
+const MEANWHILE = {
+  archived:
+    'It was removed while you were working on it, so what you sent wasn’t saved. It isn’t offered for new work, and can be restored.',
+  not_archived:
+    'It was restored while you were working on it, so what you sent wasn’t saved. It’s offered again, on the phones after their next sync.',
+};
 
 /**
  * A take refused stale (lib/refusals.ts, TAKE_STALE): the page is read again, so each says what
@@ -4017,6 +4028,39 @@ test.describe('Sineobex’s update, on an item’s page', () => {
     expectOnlyIds(traffic.addresses);
   });
 
+  test('a take sent after another admin removed the item comes back to its page, which says so, and takes nothing', async ({
+    page,
+  }) => {
+    // Review A's F2: the offer open, its reason typed, and the item removed meanwhile.
+    const kit = await named<ItemBody>('item', 'Pregnancy test');
+    offerPlatformVersion('item', kit.id);
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    const here = `${LIST}/${kit.id}`;
+    await page.goto(here);
+    const take = page.getByRole('form', { name: 'Take Sineobex’s update to Pregnancy test' });
+    await take.getByLabel('Reason').fill('Demo: Sineobex’s test again');
+    await actedMeanwhile('item', kit.id, 'archive');
+    await take.getByRole('button', { name: 'Replace with the new version' }).click();
+    await expect(page).toHaveURL(new RegExp(`${here}\\?refused=archived&preset=${kit.id}$`));
+    await expect(
+      page.getByRole('heading', { name: 'Removed by another admin: Pregnancy test' }),
+    ).toBeFocused();
+    await expect(page.getByRole('main')).toContainText(MEANWHILE.archived);
+    // Drawn removed, its update now offered as a new item only; nothing was taken.
+    await expect(page.getByRole('region', { name: 'Removed', exact: true })).toBeVisible();
+    await expect(take.getByRole('button')).toHaveText([
+      'Add as new from Sineobex’s update to Pregnancy test',
+    ]);
+    expect((await historyOf('item', kit.id)).filter((e) => e.act === 'update_taken')).toEqual([]);
+    await expectAccessible(page, 'A take refused, the item removed meanwhile');
+    await expectReflow(page, 'A take refused, the item removed meanwhile');
+    await expectNothingStored(page, 'A take refused, the item removed meanwhile');
+    expectOnlyIds(traffic.addresses);
+    // Restored, so the offer the case left is taken back in place after it (noOfferLeft).
+    await actedMeanwhile('item', kit.id, 'restore');
+  });
+
   test('a take refused for its reason keeps the versions it was opened at, so another admin’s change meanwhile is refused stale, never taken unseen', async ({
     page,
   }) => {
@@ -4391,8 +4435,8 @@ test.describe('an item the template for new bags holds', () => {
 // ------------------------------------------------------------------------------------------------
 
 // A refused act reads the page again, as a done one does. Where another admin's act changed what
-// the page draws for the preset (removed or restored it), the page draws it as it is now, and the
-// form that was refused, with its sentence and what was typed, goes with the preset's old state.
+// the page draws for the preset (removed or restored it), the page draws it as it is now, which the
+// refused form leaves with, so the act comes back to the page, which says so in its notice.
 /** An item of the team's own among its supplies, as another admin would add it; its ID. */
 async function madeSupply(name: string): Promise<string> {
   const { id: categoryId } = await named<CategoryBody>('order_category', 'Supplies');
@@ -4405,7 +4449,7 @@ async function madeBundle(name: string, itemId: string): Promise<string> {
 }
 
 test.describe('acts after another admin acted meanwhile', () => {
-  test('Remove is refused stale after another admin changed the bundle meanwhile, and after another admin removed it the page shows it removed; neither removes it again', async ({
+  test('Remove is refused stale after another admin changed the bundle meanwhile, and after another admin removed it the page says so and shows it removed; neither removes it again', async ({
     page,
   }) => {
     const splint = await madeSupply('Demo: Finger splint');
@@ -4435,12 +4479,16 @@ test.describe('acts after another admin acted meanwhile', () => {
     await remove.getByLabel('Reason').fill('Demo: we stopped splinting');
     await actedMeanwhile('bundle', id, 'archive');
     await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${here}\\?refused=archived&preset=${id}$`));
+    await expect(
+      page.getByRole('heading', { name: 'Removed by another admin: Demo: Splinting' }),
+    ).toBeFocused();
+    await expect(page.getByRole('main')).toContainText(MEANWHILE.archived);
     const removed = page.getByRole('region', { name: 'Removed', exact: true });
     await expect(removed).toContainText(
       'This bundle isn’t offered for new work. Restore it to offer it again.',
     );
     await expect(remove).toHaveCount(0);
-    await expect(page).toHaveURL(new RegExp(`${here}$`));
     await expect(
       page.getByRole('region', { name: 'History' }).getByRole('row', { name: /Removed, version 2/ }),
     ).toContainText('Demo: another admin’s act');
@@ -4450,7 +4498,7 @@ test.describe('acts after another admin acted meanwhile', () => {
     expectOnlyIds(traffic.addresses);
   });
 
-  test('Restore after another admin restored the bundle meanwhile shows it back on the list, and Restore of a bundle whose item was removed since is refused with its sentence', async ({
+  test('Restore after another admin restored the bundle meanwhile says so and shows it back on the list, and Restore of a bundle whose item was removed since is refused with its sentence', async ({
     page,
   }) => {
     const sling = await madeSupply('Demo: Arm sling');
@@ -4467,6 +4515,12 @@ test.describe('acts after another admin acted meanwhile', () => {
     await restore.getByLabel('Reason').fill('Demo: slings are back');
     await actedMeanwhile('bundle', id, 'restore');
     await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/team/presets/bundles\\?refused=not_archived&preset=${id}$`));
+    await expect(
+      page.getByRole('heading', { name: 'Restored by another admin: Demo: Sling care' }),
+    ).toBeFocused();
+    await expect(page.getByRole('main')).toContainText(MEANWHILE.not_archived);
+    await expectAccessible(page, 'Restore refused, restored meanwhile', { inPlace: true });
     await expect(
       page
         .getByRole('region', { name: 'Your team’s bundles' })
@@ -4496,7 +4550,7 @@ test.describe('acts after another admin acted meanwhile', () => {
     expectOnlyIds(traffic.addresses);
   });
 
-  test('a bundle saved naming an item removed meanwhile is refused with its sentence on the line, keeping what was typed; an item saved after another admin removed it shows it removed, saving nothing', async ({
+  test('a bundle saved naming an item removed meanwhile is refused with its sentence on the line, keeping what was typed; an item saved after another admin removed it says so and shows it removed, saving nothing', async ({
     page,
   }) => {
     const wrap = await madeSupply('Demo: Crepe wrap');
@@ -4536,6 +4590,13 @@ test.describe('acts after another admin acted meanwhile', () => {
     await edit.getByLabel('Reason').fill('Demo: what the box says');
     await actedMeanwhile('item', pad, 'archive');
     await edit.getByRole('button', { name: 'Save' }).click();
+    await expect(page).toHaveURL(new RegExp(`/team/presets/items/${pad}\\?refused=archived&preset=${pad}$`));
+    await expect(
+      page.getByRole('heading', { name: 'Removed by another admin: Demo: Heel pad' }),
+    ).toBeFocused();
+    await expect(page.getByRole('main')).toContainText(MEANWHILE.archived);
+    await expectAccessible(page, 'An item’s save refused, removed meanwhile', { inPlace: true });
+    await expectReflow(page, 'An item’s save refused, removed meanwhile');
     await expect(page.getByRole('region', { name: 'Removed', exact: true })).toContainText(
       'This item isn’t offered for new work. Restore it to offer it again.',
     );

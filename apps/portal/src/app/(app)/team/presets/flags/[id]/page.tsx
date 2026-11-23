@@ -37,6 +37,7 @@ export default async function FlagPage({
       flag={flag}
       history={history}
       done={one('done')}
+      refused={one('refused')}
       preset={preset && UUID.test(preset) ? preset : undefined}
     />
   );

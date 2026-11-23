@@ -4,7 +4,7 @@ import { addBundleAction } from '@/app/actions/presets-bundles';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
 import type { ItemChoice } from '@/components/presets/ItemLines';
 import { aToZ, namesOf } from '@/components/presets/order';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import styles from '@/components/presets/presets.module.css';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
@@ -40,16 +40,19 @@ export function BundlesView({
   bundles,
   items,
   done,
+  refused,
   preset,
 }: {
   bundles: readonly Bundle[];
   items: readonly ItemChoice[];
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   const active = aToZ(bundles.filter((b) => b.state === 'active'));
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <h1 className="px-h1">Bundles</h1>
@@ -57,7 +60,7 @@ export function BundlesView({
         Items staff give together, such as everything for basic wound care. Open a bundle to change it, remove
         it or see its history.
       </p>
-      <PresetNotice done={done} preset={preset} presets={bundles} />
+      <PresetNotice done={done} refused={refused} preset={preset} presets={bundles} />
       {active.length === 0 ? (
         <p className="px-panel">No bundle is on your team’s list. Add one below.</p>
       ) : (
