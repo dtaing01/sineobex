@@ -1470,6 +1470,28 @@ export interface components {
             /** @description Every live redirect into or out of the requested IDs and the returned groups */
             redirects: components["schemas"]["PatientRedirect"][];
         };
+        /** @description A flag as the team holds it now */
+        ChartFlag: {
+            /** @description No longer on the team’s list: it stays on the patient, and is never offered to be set */
+            archived: boolean;
+            color: components["schemas"]["FlagColor"];
+            /** @description The colour’s plain name, shown before the flag’s own */
+            colorName: string;
+            /** Format: uuid */
+            flagId: string;
+            name: string;
+            rank: number;
+            tier: components["schemas"]["FlagTier"];
+        };
+        /** @description The patient’s current flags and their history, as the reader may see them: a sensitive flag only for a reader who sees sensitive problems, and every change of a flag hidden from them left out. Sent with every chart; a chart without it holds none */
+        ChartFlags: {
+            /** @description Every change the reader may see, oldest first: by its time, then ID */
+            history: components["schemas"]["FlagHistoryRow"][];
+            /** @description The risk level, or none */
+            primary: components["schemas"]["ChartFlag"] | null;
+            /** @description The conditions, by rank, then name, then ID */
+            secondary: components["schemas"]["ChartFlag"][];
+        };
         ConsentView: {
             /** @enum {string} */
             decision: "given" | "unable" | "acknowledged" | "declined" | "not_offered";
@@ -1753,6 +1775,16 @@ export interface components {
             value?: unknown;
             version: number;
         };
+        FlagChangeMark: {
+            /** Format: date-time */
+            at: string;
+            /** @description Who marked it, by their display name now */
+            byName: string;
+            /** @description Left out as the change’s own reason is */
+            reason?: string;
+        };
+        /** @enum {string} */
+        FlagColor: "red" | "orange" | "yellow" | "green" | "teal" | "blue" | "purple" | "grey";
         FlagDuplicate: {
             /** @description Why, in a few words. Logged. */
             comment: string;
@@ -1761,6 +1793,32 @@ export interface components {
             /** Format: uuid */
             patientB: string;
         };
+        FlagHistoryRow: {
+            /** @enum {string} */
+            action: "set" | "clear";
+            /** @description Who made it, by their display name now */
+            authorName: string;
+            /** Format: uuid */
+            changeId: string;
+            /**
+             * Format: date-time
+             * @description The change’s time, never later than its receipt
+             */
+            effectiveAt: string;
+            enteredInError: components["schemas"]["FlagChangeMark"] | null;
+            /** Format: uuid */
+            flagId: string;
+            /** @description The flag’s name now */
+            name: string;
+            /** @description Left out of a change entered in error for a reader who neither made it nor is a Program Admin */
+            reason?: string;
+            tier: components["schemas"]["FlagTier"];
+        };
+        /**
+         * @description primary: the risk level, one at a time; secondary: conditions
+         * @enum {string}
+         */
+        FlagTier: "primary" | "secondary";
         Health: {
             demo: boolean;
             /** @enum {string} */
@@ -2229,6 +2287,9 @@ export interface components {
             canonicalId: string;
             consents: components["schemas"]["ConsentView"][];
             duplicate: components["schemas"]["DuplicateHint"] | null;
+            /** @description The group’s flag changes the reader may see, oldest first, as records for the phone’s copy. Sent with every chart; a chart without it holds none */
+            flagChanges?: components["schemas"]["RecordSnapshot"][];
+            flags?: components["schemas"]["ChartFlags"];
             /** @description Active links of the group: usually one; one per merged record that had a card until the next new card */
             idLinks: components["schemas"]["IdLinkSummary"][];
             mergedFrom: {
@@ -2617,7 +2678,7 @@ export interface components {
             id: string;
         };
         RecordSnapshot: {
-            /** @description What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now */
+            /** @description What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now. A problem’s statusCheckDue says whether its status check is due, by the team’s window at the server’s time */
             attributes: {
                 [key: string]: unknown;
             };

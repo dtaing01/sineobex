@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { FLAG_COLORS, type FlagColor as FlagColorValue } from '@sineobex/presets';
 import { Credential, Reason, Uuid } from '../routes/schemas.ts';
 import { DateTime, FieldState, RecordSnapshot, UserRef } from '../sync/schemas.ts';
 
@@ -565,6 +566,70 @@ export const TimelineQuery = z.object({
 });
 export const EncounterParam = z.object({ encounterId: Uuid });
 
+// ------------------------------------------------------------------------------------------------
+// Flags on the chart (phase 5 design 6.1, 7): worked out on the server, so the portal holds no rule
+// ------------------------------------------------------------------------------------------------
+
+export const FlagTier = z
+  .enum(['primary', 'secondary'])
+  .openapi('FlagTier', { description: 'primary: the risk level, one at a time; secondary: conditions' });
+export const FlagColor = z
+  .enum(FLAG_COLORS.map((c) => c.color) as [FlagColorValue, ...FlagColorValue[]])
+  .openapi('FlagColor');
+
+export const ChartFlag = z
+  .object({
+    flagId: Uuid,
+    name: z.string(),
+    tier: FlagTier,
+    color: FlagColor,
+    colorName: z.string().openapi({ description: 'The colour’s plain name, shown before the flag’s own' }),
+    rank: z.number().int(),
+    archived: z.boolean().openapi({
+      description: 'No longer on the team’s list: it stays on the patient, and is never offered to be set',
+    }),
+  })
+  .openapi('ChartFlag', { description: 'A flag as the team holds it now' });
+
+export const FlagHistoryRow = z
+  .object({
+    changeId: Uuid,
+    flagId: Uuid,
+    name: z.string().openapi({ description: 'The flag’s name now' }),
+    tier: FlagTier,
+    action: z.enum(['set', 'clear']),
+    effectiveAt: DateTime.openapi({ description: 'The change’s time, never later than its receipt' }),
+    authorName: z.string().openapi({ description: 'Who made it, by their display name now' }),
+    reason: z.string().optional().openapi({
+      description:
+        'Left out of a change entered in error for a reader who neither made it nor is a Program Admin',
+    }),
+    enteredInError: z.union([
+      z
+        .object({
+          byName: z.string().openapi({ description: 'Who marked it, by their display name now' }),
+          at: DateTime,
+          reason: z.string().optional().openapi({ description: 'Left out as the change’s own reason is' }),
+        })
+        .openapi('FlagChangeMark'),
+      z.null(),
+    ]),
+  })
+  .openapi('FlagHistoryRow');
+
+export const ChartFlags = z
+  .object({
+    primary: z.union([ChartFlag, z.null()]).openapi({ description: 'The risk level, or none' }),
+    secondary: z.array(ChartFlag).openapi({ description: 'The conditions, by rank, then name, then ID' }),
+    history: z
+      .array(FlagHistoryRow)
+      .openapi({ description: 'Every change the reader may see, oldest first: by its time, then ID' }),
+  })
+  .openapi('ChartFlags', {
+    description:
+      'The patient’s current flags and their history, as the reader may see them: a sensitive flag only for a reader who sees sensitive problems, and every change of a flag hidden from them left out. Sent with every chart; a chart without it holds none',
+  });
+
 export const PatientChart = z
   .object({
     patient: RecordSnapshot,
@@ -591,6 +656,11 @@ export const PatientChart = z
       description:
         'The last three visits in full, read offline from the cache: on the phone’s cached chart (POST /v1/patients/charts) only',
     }),
+    flagChanges: z.array(RecordSnapshot).optional().openapi({
+      description:
+        'The group’s flag changes the reader may see, oldest first, as records for the phone’s copy. Sent with every chart; a chart without it holds none',
+    }),
+    flags: ChartFlags.optional(),
   })
   .openapi('PatientChart');
 
@@ -1053,6 +1123,9 @@ export type PatientSearchResultValue = z.infer<typeof PatientSearchResult>;
 export type PatientMatchInput = z.infer<typeof PatientMatchRequest>;
 export type PatientMatchResultValue = z.infer<typeof PatientMatchResult>;
 export type PatientChartValue = z.infer<typeof PatientChart>;
+export type ChartFlagValue = z.infer<typeof ChartFlag>;
+export type ChartFlagsValue = z.infer<typeof ChartFlags>;
+export type FlagHistoryRowValue = z.infer<typeof FlagHistoryRow>;
 export type VisitReadValue = z.infer<typeof VisitRead>;
 export type VisitNoteValue = z.infer<typeof VisitNote>;
 export type TimelineValue = z.infer<typeof Timeline>;

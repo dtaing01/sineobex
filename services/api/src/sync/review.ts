@@ -1,4 +1,5 @@
 import { visibleAnswers } from '@sineobex/forms';
+import { problemCheckDue } from '@sineobex/presets';
 import type { TeamScope } from '../auth/context.ts';
 import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
@@ -16,6 +17,7 @@ import {
 } from '../encounters/read.ts';
 import { ApiError, conflict, forbidden, notFound } from '../lib/errors.ts';
 import { idLinkTokenRef } from '../patients/id-links.ts';
+import { problemCheckDays } from '../patients/projection.ts';
 import {
   applyInSavepoint,
   changeOwners,
@@ -690,6 +692,8 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
   return scope.tx(async (tx, audit) => {
     const records: RecordSnapshotValue[] = [];
     const missing: typeof refs = [];
+    // The team's window for a problem's status check, read once, the first time a problem is read.
+    let checkDays: number | undefined;
     for (const ref of refs) {
       const rules = RULES[ref.entity];
       const record = await rules.load(tx, ref.id, false);
@@ -727,6 +731,7 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
     async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
       switch (record.entity) {
         case 'problem':
+          return (await readsRecord(tx, scope.team.permissions, record)) ? withStatusCheck(record) : null;
         case 'problem_note':
           return (await readsRecord(tx, scope.team.permissions, record)) ? record : null;
         case 'encounter_note':
@@ -783,6 +788,25 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
         default:
           return record;
       }
+    }
+
+    /**
+     * A problem says whether its status check is due, by the team's window at the server's time,
+     * as the chart's copy of it does (charts.ts; phase 5 design 5.3), so the phone holds one record
+     * whichever way it came.
+     */
+    async function withStatusCheck(problem: StoredRecord): Promise<StoredRecord> {
+      checkDays ??= await problemCheckDays(tx, scope.team.teamId);
+      const statusCheckDue = problemCheckDue(
+        {
+          status: problem.status as 'new' | 'ongoing' | 'resolved',
+          statusCheckedAt: new Date(problem.attributes.statusCheckedAt as string),
+          enteredInError: problem.values.enteredInError !== null,
+        },
+        scope.deps.now(),
+        checkDays,
+      );
+      return { ...problem, attributes: { ...problem.attributes, statusCheckDue } };
     }
 
     /** A Medical visit's summary is Medical content (encounters/read.ts medicalHidden). */
