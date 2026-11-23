@@ -11,7 +11,7 @@ import { Disclosure } from '@/components/presets/Disclosure';
 import { FreeText } from '@/components/presets/FreeText';
 import { ItemLines, type ItemChoice } from '@/components/presets/ItemLines';
 import { aToZ } from '@/components/presets/order';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
@@ -230,6 +230,7 @@ export function BagMinimumsView({
   items,
   names,
   done,
+  refused,
   preset,
 }: {
   bags: readonly Bag[];
@@ -239,6 +240,8 @@ export function BagMinimumsView({
   items: readonly ItemChoice[];
   names: Readonly<Record<string, string>>;
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   const active = aToZ(bags.filter((b) => b.state === 'active'));
@@ -252,14 +255,19 @@ export function BagMinimumsView({
     ...active.map((b) => ({ id: b.id, label: b.name, name: b.name, minimums: b.body.minimums })),
   ];
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <h1 className="px-h1">Bag minimums</h1>
       <p className="px-lede">
         What each of the team’s bags should hold at least, and the template a new bag starts from.
       </p>
-      <PresetNotice done={done} preset={preset} presets={settings ? [...bags, settings] : bags} />
+      <PresetNotice
+        done={done}
+        refused={refused}
+        preset={preset}
+        presets={settings ? [...bags, settings] : bags}
+      />
       <TeamSettings settings={settings} history={settingsHistory} items={items} names={names} />
       {active.length === 0 ? (
         <p className="px-panel">No bag is on your team’s list. Add one below.</p>

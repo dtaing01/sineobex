@@ -31,6 +31,7 @@ export default async function BundlesPage({
       bundles={bundles}
       items={itemChoices(items, categories)}
       done={one('done')}
+      refused={one('refused')}
       preset={preset && UUID.test(preset) ? preset : undefined}
     />
   );

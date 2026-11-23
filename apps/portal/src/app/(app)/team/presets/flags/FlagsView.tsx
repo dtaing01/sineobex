@@ -6,7 +6,7 @@ import { ChoiceGroup } from '@/components/presets/ChoiceGroup';
 import { FreeText } from '@/components/presets/FreeText';
 import { LongText } from '@/components/presets/LongText';
 import { inRank } from '@/components/presets/order';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
 import {
@@ -93,9 +93,20 @@ function AddFlag() {
  * with Move up and Move down; Add a flag; the Removed list with Restore. `rows` is the API's list,
  * archived ones included.
  */
-export function FlagsView({ rows, done, preset }: { rows: readonly Flag[]; done?: string; preset?: string }) {
+export function FlagsView({
+  rows,
+  done,
+  refused,
+  preset,
+}: {
+  rows: readonly Flag[];
+  done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
+  preset?: string;
+}) {
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <h1 className="px-h1">Flags</h1>
@@ -103,7 +114,7 @@ export function FlagsView({ rows, done, preset }: { rows: readonly Flag[]; done?
         What staff mark patients with: one risk level each, and any conditions. Open a flag to change it,
         remove it or see its history.
       </p>
-      <PresetNotice done={done} preset={preset} presets={rows} />
+      <PresetNotice done={done} refused={refused} preset={preset} presets={rows} />
       <TierList tier="primary" rows={rows} />
       <TierList tier="secondary" rows={rows} />
       <AddFlag />

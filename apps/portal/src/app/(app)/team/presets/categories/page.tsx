@@ -33,6 +33,7 @@ export default async function CategoriesPage({
       rows={rows}
       histories={histories}
       done={one('done')}
+      refused={one('refused')}
       preset={preset && UUID.test(preset) ? preset : undefined}
     />
   );

@@ -4,7 +4,7 @@ import { ActionForm, SubmitButton } from '@/components/ActionForm';
 import { CheckField } from '@/components/presets/CheckField';
 import { FreeText } from '@/components/presets/FreeText';
 import { inPlace, namesOf } from '@/components/presets/order';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
 import { BEHAVIOURS, FIELD_LABELS } from '@/components/presets/review';
@@ -75,16 +75,19 @@ export function ItemsView({
   items,
   categories,
   done,
+  refused,
   preset,
 }: {
   items: readonly Item[];
   categories: readonly Category[];
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   const groups = itemGroups(items, categories);
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <h1 className="px-h1">Items</h1>
@@ -92,7 +95,7 @@ export function ItemsView({
         The supplies, medications and tests staff give and record, by category. Open an item to change it,
         remove it or see its history.
       </p>
-      <PresetNotice done={done} preset={preset} presets={items} />
+      <PresetNotice done={done} refused={refused} preset={preset} presets={items} />
       {groups.length === 0 ? (
         <p className="px-panel">No item is on your team’s list. Add one below.</p>
       ) : (

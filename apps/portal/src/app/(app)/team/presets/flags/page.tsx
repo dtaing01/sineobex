@@ -24,6 +24,11 @@ export default async function FlagsPage({
   const preset = one('preset');
   const rows = await listPresets('flag');
   return (
-    <FlagsView rows={rows} done={one('done')} preset={preset && UUID.test(preset) ? preset : undefined} />
+    <FlagsView
+      rows={rows}
+      done={one('done')}
+      refused={one('refused')}
+      preset={preset && UUID.test(preset) ? preset : undefined}
+    />
   );
 }

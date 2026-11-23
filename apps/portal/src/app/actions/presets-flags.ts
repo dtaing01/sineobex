@@ -167,7 +167,7 @@ export async function moveFlagAction(_: ActionState, form: FormData): Promise<Ac
     await reorderFlags({ tier, flags, reason });
   } catch (err) {
     // The list's Reason box is "Reason for moving" (FlagOrder), and a refused reason is named so.
-    const refused = presetFailure(err, values, {
+    const refused = await presetFailure(err, values, {
       kind: KIND,
       act: 'move',
       labels: { reason: 'Reason for moving' },

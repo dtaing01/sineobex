@@ -7,7 +7,7 @@ import { FixedFact } from '@/components/presets/FixedFact';
 import { FlagPill } from '@/components/presets/FlagPill';
 import { FreeText } from '@/components/presets/FreeText';
 import { LongText } from '@/components/presets/LongText';
-import { isPresetDone, PresetNotice } from '@/components/presets/PresetNotice';
+import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RestorePresetForm } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
@@ -85,15 +85,18 @@ export function FlagView({
   flag,
   history,
   done,
+  refused,
   preset,
 }: {
   flag: Flag;
   history: readonly PresetEvent[];
   done?: string;
+  /** A refusal another admin's Remove or Restore caused, which the page says (PresetNotice). */
+  refused?: string;
   preset?: string;
 }) {
   // A new view starts afresh after each act the page is sent back to (CategoriesView).
-  const view = isPresetDone(done) ? `${done}:${preset ?? ''}` : '';
+  const view = noticeKey(done, refused, preset);
   return (
     <Fragment key={view}>
       <p>
@@ -104,7 +107,7 @@ export function FlagView({
         {kindOf(flag)}, shown to staff as{' '}
         <FlagPill color={flag.body.color} colorName={colourName(flag.body.color)} name={flag.name} />.
       </p>
-      <PresetNotice done={done} preset={preset} presets={[flag]} />
+      <PresetNotice done={done} refused={refused} preset={preset} presets={[flag]} />
       {flag.state === 'active' ? (
         <>
           {/* A flag names no other preset, so the review has no IDs to name. */}

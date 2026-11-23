@@ -8,7 +8,7 @@ import { FixedFact } from './FixedFact';
 import { FreeText } from './FreeText';
 import { ItemLines, type ItemLinesProps } from './ItemLines';
 import { LongText } from './LongText';
-import { PresetNotice } from './PresetNotice';
+import { noticeKey, PresetNotice } from './PresetNotice';
 import { ReasonBox } from './ReasonBox';
 import { RemovedList, RestorePresetForm } from './RemovedList';
 import { RemoveForm, RemovePresetForm } from './RemoveForm';
@@ -467,5 +467,30 @@ describe('the notice after an act', () => {
   it('draws nothing for an address that names no act', () => {
     for (const done of [undefined, 'deleted', ['removed', 'removed'], 'toString'])
       expect(renderToStaticMarkup(createElement(PresetNotice, { done, preset: OLD, presets }))).toBe('');
+  });
+
+  it('says an act was refused because another admin removed or restored the preset meanwhile', () => {
+    const removed = renderToStaticMarkup(
+      createElement(PresetNotice, { refused: 'archived', preset: OLD, presets }),
+    );
+    expect(removed).toContain('class="px-alert px-alert--info"');
+    expect(removed).toContain('Removed by another admin: Demo: Old kit</h2>');
+    expect(removed).toContain(
+      '<p>It was removed while you were working on it, so what you sent wasn’t saved. It isn’t offered for new work, and can be restored.</p>',
+    );
+    const restored = renderToStaticMarkup(
+      createElement(PresetNotice, { refused: 'not_archived', preset: OLD, presets }),
+    );
+    expect(restored).toContain('Restored by another admin: Demo: Old kit</h2>');
+    expect(restored).toContain(
+      '<p>It was restored while you were working on it, so what you sent wasn’t saved. It’s offered again, on the phones after their next sync.</p>',
+    );
+    for (const refused of ['stale', 'toString', ['archived', 'archived']])
+      expect(renderToStaticMarkup(createElement(PresetNotice, { refused, preset: OLD, presets }))).toBe('');
+    // Each notice starts the page's view afresh; an address with neither keeps it.
+    expect(new Set([noticeKey('removed', undefined, OLD), noticeKey(undefined, 'archived', OLD)]).size).toBe(
+      2,
+    );
+    expect(noticeKey(undefined, 'stale', OLD)).toBe('');
   });
 });

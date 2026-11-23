@@ -306,9 +306,14 @@ describe('editing a bundle', () => {
     });
     answer = refusal(422, 'no_change');
     expect((await run(saveBundleAction, fields)).state?.error).toBe('You haven’t changed anything.');
-    answer = refusal(409, 'archived');
-    expect((await run(saveBundleAction, fields)).state?.error).toBe('This was removed. Restore it first.');
     expect(revalidated).toEqual([]);
+    // Removed by another admin meanwhile: its page, read again, draws it removed, so the save comes
+    // back to its page, which says so.
+    answer = refusal(409, 'archived');
+    expect((await run(saveBundleAction, fields)).to).toBe(
+      `/team/presets/bundles/${WOUND}?refused=archived&preset=${WOUND}`,
+    );
+    expect(revalidated).toEqual([`/team/presets/bundles/${WOUND}`]);
   });
 
   it('says a bundle no longer on the list isn’t, and asks nothing more', async () => {

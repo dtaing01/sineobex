@@ -25,6 +25,11 @@ import {
 const asked: string[] = [];
 let answers: (kind: PresetKind) => Promise<unknown>;
 
+// The page a refused act was sent from, as the proxy names it in x-pathname, and what it read again.
+let pathname = '/team/presets';
+const reread: string[] = [];
+vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-pathname': pathname }) }));
+vi.mock('next/cache', () => ({ revalidatePath: (path: string) => void reread.push(path) }));
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof Api>()),
   api: async () => ({
@@ -272,8 +277,8 @@ describe('the preset an edit builds on', () => {
 });
 
 describe('a preset form the API refused', () => {
-  it('shows the refusal’s sentence and keeps what was sent', () => {
-    const state = presetFailure(
+  it('shows the refusal’s sentence and keeps what was sent', async () => {
+    const state = await presetFailure(
       new PortalApiError(409, 'stale', 'm', { currentVersion: 4 }),
       { reason: 'Demo: a reason' },
       { kind: 'item', act: 'remove' },
@@ -284,15 +289,41 @@ describe('a preset form the API refused', () => {
     });
   });
 
-  it('lets anything that is no refusal go on up: a sign-in to renew, a lost connection', () => {
+  it('sends a refusal another admin’s Remove or Restore caused back to the page it came from, saying so', async () => {
+    const ITEM = '30c00000-0000-4000-8000-0000000000aa';
+    pathname = `/team/presets/items/${ITEM}`;
+    const sentTo = async (code: string, values: Record<string, string>) => {
+      try {
+        await presetFailure(new PortalApiError(409, code, 'm'), values, { kind: 'item', act: 'save' });
+      } catch (err) {
+        const digest = (err as { digest?: string }).digest ?? '';
+        if (digest.startsWith('NEXT_REDIRECT')) return digest.split(';')[2];
+        throw err;
+      }
+      return null;
+    };
+    for (const code of ['archived', 'not_archived'])
+      expect(await sentTo(code, { id: ITEM.toUpperCase(), reason: 'Demo: a reason' })).toBe(
+        `/team/presets/items/${ITEM}?refused=${code}&preset=${ITEM}`,
+      );
+    expect(reread).toEqual([`/team/presets/items/${ITEM}`, `/team/presets/items/${ITEM}`]);
+    // A form that names no preset, and every other refusal, is answered in the form.
+    expect(await sentTo('archived', { reason: 'Demo: a reason' })).toBeNull();
+    expect(await sentTo('stale', { id: ITEM })).toBeNull();
+    // Never anywhere but Team setup.
+    pathname = '/home';
+    expect(await sentTo('archived', { id: ITEM })).toBe(`/team/presets?refused=archived&preset=${ITEM}`);
+  });
+
+  it('lets anything that is no refusal go on up: a sign-in to renew, a lost connection', async () => {
     let reauth: unknown;
     try {
       redirect('/reauth?next=%2Fteam%2Fpresets%2Fitems');
     } catch (err) {
       reauth = err;
     }
-    expect(() => presetFailure(reauth, {}, { kind: 'item', act: 'remove' })).toThrow(reauth as Error);
+    await expect(presetFailure(reauth, {}, { kind: 'item', act: 'remove' })).rejects.toBe(reauth);
     const lost = new TypeError('fetch failed');
-    expect(() => presetFailure(lost, {}, { kind: 'item', act: 'remove' })).toThrow(lost);
+    await expect(presetFailure(lost, {}, { kind: 'item', act: 'remove' })).rejects.toBe(lost);
   });
 });

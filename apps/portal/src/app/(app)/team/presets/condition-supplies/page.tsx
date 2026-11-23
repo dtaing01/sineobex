@@ -42,6 +42,7 @@ export default async function ConditionSuppliesPage({
       items={itemChoices(items, categories)}
       names={namesOf(items)}
       done={one('done')}
+      refused={one('refused')}
       preset={preset && UUID.test(preset) ? preset : undefined}
     />
   );

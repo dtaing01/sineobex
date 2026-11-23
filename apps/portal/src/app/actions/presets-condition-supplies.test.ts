@@ -282,11 +282,12 @@ describe('editing a mapping', () => {
     });
     answer = refusal(422, 'no_change');
     expect((await run(saveConditionSupplyAction, fields)).state?.error).toBe('You haven’t changed anything.');
-    answer = refusal(409, 'archived');
-    expect((await run(saveConditionSupplyAction, fields)).state?.error).toBe(
-      'This was removed. Restore it first.',
-    );
     expect(revalidated).toEqual([]);
+    // Removed by another admin meanwhile: the page, read again, draws it removed, so the save
+    // comes back to the page, which says so.
+    answer = refusal(409, 'archived');
+    expect((await run(saveConditionSupplyAction, fields)).to).toBe(`${PAGE}?refused=archived&preset=${RASH}`);
+    expect(revalidated).toEqual([PAGE]);
   });
 
   it('says a mapping no longer on the list isn’t, and asks nothing more', async () => {
