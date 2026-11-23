@@ -42,6 +42,14 @@ class FakeFormsServer {
   /// Requests to a path wait until its completer completes.
   final holds = <String, Completer<void>>{};
 
+  /// Removes [key] from [teamId]'s note types, as an admin's Remove does (phase 5 design 6.3, 7):
+  /// the list names it no more, and the one-version route still serves every version of it, so a
+  /// draft begun on one still opens and finishes.
+  ///
+  /// Written ahead of its code (card P4-tests): it throws until card P4-offered teaches the fake
+  /// the rule, beside the API's own list.
+  void archive(String teamId, String key) => throw UnimplementedError('P4-offered');
+
   /// The forms requests, in order, answered or not.
   final requests = <String>[];
 

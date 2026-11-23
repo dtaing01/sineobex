@@ -4,7 +4,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:sineobex_field/api/generated/api.dart';
 import 'package:sineobex_field/forms/definition_store.dart';
+import 'package:sineobex_field/forms/forms_api.dart';
 import 'package:sineobex_field/sync/canonical_json.dart';
 
 import 'forms_fake.dart';
@@ -317,6 +319,32 @@ void main() {
       expect(files(), isEmpty);
       expect(await store.team(userId, teamId), isNull, reason: 'nothing held: Start asks to connect once');
     });
+  });
+
+  // Phase 5 (design 6.3, 7; card P4-offered), written ahead of the fake's rule (card P4-tests): a key
+  // the team removed leaves the list the API gives, so no new note is offered on it, while the
+  // one-version route still serves each of its versions, so a draft begun on one still opens.
+  test('a key the team removed leaves the list, while every version of it still serves', () async {
+    final server = FakeFormsServer()..teams[teamId] = [checks, quick1, quick2, visit];
+    final api = FormsApi(SineobexApi(server.transportFor(teamId)));
+    final sync = DefinitionSync(store);
+    await sync.refresh(userId, teamId, api);
+    expect(
+      [for (final d in (await store.team(userId, teamId))!.listed) '${d.key} v${d.version}'],
+      ['checks_demo v1', 'demo_quick v2', 'demo_visit v1'],
+    );
+
+    server.archive(teamId, 'demo_quick');
+    expect([for (final v in await api.list()) v.key], ['checks_demo', 'demo_visit']);
+    await sync.refresh(userId, teamId, api);
+    final team = (await store.team(userId, teamId))!;
+    expect([for (final d in team.listed) d.key], ['checks_demo', 'demo_visit']);
+    expect(team.startable('demo_quick', 2), isNull, reason: 'no new note is offered on it');
+    // The phone keeps what it held, and the route serves every version, the one never listed too.
+    expect((await store.definition(userId, teamId, 'demo_quick', 2))?.version, 2);
+    expect((await api.version('demo_quick', 2)).definition, quick2['definition']);
+    expect((await api.version('demo_quick', 1)).definition, quick1['definition']);
+    expect(server.versionRequests, containsAllInOrder(['demo_quick/2', 'demo_quick/1']));
   });
 
   test('a key or a team that could leave its folder is refused', () async {
