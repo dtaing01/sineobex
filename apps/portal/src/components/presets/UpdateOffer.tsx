@@ -1,6 +1,7 @@
 import type { PresetKind, PresetRow } from '@/lib/presets';
 import { OfferForm } from './OfferForm';
 import styles from './presets.module.css';
+import { ScrollTable } from './ScrollTable';
 import { reviewRows, type Described, type ReviewRow } from './review';
 
 /** A field's value in words (review.ts): a text, or a list of lines, or None for a list of none. */
@@ -16,40 +17,45 @@ export function DescribedValue({ value }: { value: Described }) {
   );
 }
 
-/** The copy's body beside the update's, every field of the kind, each the update changes marked. */
-export function ReviewTable({ rows, name }: { rows: readonly ReviewRow[]; name: string }) {
+/**
+ * The copy's body beside the update's, every field of the kind, each the update changes marked, its
+ * words whole in a ScrollTable. `id` is the preset's, for the caption's ID.
+ */
+export function ReviewTable({ rows, name, id }: { rows: readonly ReviewRow[]; name: string; id: string }) {
   return (
-    <table className={`px-table ${styles.review}`}>
-      <caption>What taking the update changes in {name}</caption>
-      <thead>
-        <tr>
-          <th scope="col">Field</th>
-          <th scope="col">Your copy now</th>
-          <th scope="col">Sineobex’s new version</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.field}>
-            <th scope="row">
-              {row.label}
-              {row.changes && (
-                <>
-                  {' '}
-                  <span className="sx-pill sx-pill--info">Changes</span>
-                </>
-              )}
-            </th>
-            <td>
-              <DescribedValue value={row.now} />
-            </td>
-            <td>
-              <DescribedValue value={row.update} />
-            </td>
+    <ScrollTable caption={`review-${id}`}>
+      <table className={`px-table ${styles.review}`}>
+        <caption id={`review-${id}`}>What taking the update changes in {name}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Field</th>
+            <th scope="col">Your copy now</th>
+            <th scope="col">Sineobex’s new version</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.field}>
+              <th scope="row">
+                {row.label}
+                {row.changes && (
+                  <>
+                    {' '}
+                    <span className="sx-pill sx-pill--info">Changes</span>
+                  </>
+                )}
+              </th>
+              <td>
+                <DescribedValue value={row.now} />
+              </td>
+              <td>
+                <DescribedValue value={row.update} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ScrollTable>
   );
 }
 
@@ -102,7 +108,11 @@ export function UpdateOffer({
       }
       review={
         update ? (
-          <ReviewTable rows={reviewRows(kind, preset.body, update.body, names)} name={preset.name} />
+          <ReviewTable
+            rows={reviewRows(kind, preset.body, update.body, names)}
+            name={preset.name}
+            id={preset.id}
+          />
         ) : null
       }
       {...(back ? { back } : {})}
