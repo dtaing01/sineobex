@@ -5100,6 +5100,8 @@ void main() {
         'mergedInto',
         'statusChangedAt',
         'statusCheckedAt',
+        // Whether its status check is due, on the sync read as on the chart (phase 5 design 5.3).
+        'statusCheckDue',
       });
       final chart = await as(alex).getPatient(patientId: p);
       expect(

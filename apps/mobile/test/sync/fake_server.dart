@@ -22,6 +22,9 @@ import 'package:sineobex_field/patients/id_link_token.dart';
 import 'package:sineobex_field/patients/match_constants.dart';
 import 'package:sineobex_field/patients/matching.dart';
 import 'package:sineobex_field/patients/recognisable.dart';
+import 'package:sineobex_field/presets/current_flags.dart';
+import 'package:sineobex_field/presets/models.dart' show FlagColor, FlagTier, PresetState;
+import 'package:sineobex_field/presets/problem_check.dart';
 import 'package:sineobex_field/sync/canonical_json.dart';
 import 'package:sineobex_field/sync/entities.dart';
 
@@ -84,6 +87,25 @@ import 'test_note_types.dart';
 /// the reason, and its refusal of a set of an archived flag); the two flag routes and the portal's
 /// flag list (`GET /v1/presets/flags`), which no phone calls; and who approved a held create, which
 /// its row keeps and no sync read gives.
+///
+/// Phase 5's reads (design 6.1, 6.3, 7), as services/api/src/patients/charts.ts, projection.ts,
+/// team-index.ts and search.ts build them, each rule with its case in fake_reads_test.dart named as
+/// the API's own, every flag read from the presets of the team the request names ([_teamFlags]): the
+/// chart's flagChanges, every change of the merged group by its time, to the millisecond, then ID,
+/// each as the sync read shows it ([_flagChangeShown]), so a hidden flag's change is absent, never
+/// blanked; its flags, worked out by the phone's copy of currentFlags, which flag-current.json holds
+/// to the server's, over every change with the reader's flag rule, each flag as the team holds it now,
+/// archived ones included, and a history row for each change shown, naming its author and who marked
+/// it by their names now; each problem's statusCheckDue, by the team's settings window, else the
+/// platform's, on the chart and the sync read alike; the team index's flags, IDs only, under
+/// idx1+sens for a reader the flag rule shows a sensitive flag to; and search's flagIds, read in
+/// lowercase and each once, refused 403 before anything is searched when one names a flag hidden from
+/// the caller or one the team does not hold, narrowing the hits before the cut, and counted in the
+/// search's event. Not mirrored: the search body's schema, as for the rest of the search (a flag
+/// alone, as a year alone, and a flag ID that is no UUID, each 422); the `access.denied` a refused
+/// search is logged with; and the index's version moving at a flag change that changes no entry the
+/// reader holds, as the API's triggers move its counter at every one: here it moves when what the
+/// reader's entries or the redirect list show changes, as for every other record.
 class FakeSyncServer {
   FakeSyncServer({required this.now});
 
@@ -674,13 +696,13 @@ class FakeSyncServer {
       result = switch ((method, path)) {
         ('POST', '/v1/devices') => _register(userId, teamId, body!),
         ('POST', '/v1/sync/push') => _push(userId, teamId, body!),
-        ('POST', '/v1/sync/records') => _fetch(userId, body!),
+        ('POST', '/v1/sync/records') => _fetch(userId, teamId, body!),
         ('GET', '/v1/team/notices') => _notices(userId),
-        ('POST', '/v1/patients/index') => _index(userId, body!),
-        ('POST', '/v1/patients/charts') => _charts(userId, body!),
-        ('POST', '/v1/patients/search') => _search(userId, body!),
+        ('POST', '/v1/patients/index') => _index(userId, teamId, body!),
+        ('POST', '/v1/patients/charts') => _charts(userId, teamId, body!),
+        ('POST', '/v1/patients/search') => _search(userId, teamId, body!),
         ('POST', '/v1/patients/match') => _match(userId, body!),
-        ('GET', _) when _chartPath.hasMatch(path) => _chart(userId, _chartPath.firstMatch(path)![1]!),
+        ('GET', _) when _chartPath.hasMatch(path) => _chart(userId, teamId, _chartPath.firstMatch(path)![1]!),
         ('POST', _) when _noticeRead.hasMatch(path) => _markRead(userId, _noticeRead.firstMatch(path)![1]!),
         ('GET', _) when _historyPath.hasMatch(path) => _historyOf(
           userId,
@@ -2778,8 +2800,9 @@ class FakeSyncServer {
       .map((r) => r.seenAt)
       .reduce((a, b) => a.isAfter(b) ? a : b);
 
-  /// One team index entry (team-index.ts): only the PRD's list and bookkeeping, never a legal name.
-  Map<String, Object?> _indexEntry(FakeRecord p) {
+  /// One team index entry (team-index.ts): only the PRD's list and bookkeeping, never a legal name,
+  /// with the group's current [flags] as the reader may see them, IDs only.
+  Map<String, Object?> _indexEntry(FakeRecord p, CurrentFlags flags) {
     final aliases = <Map<String, Object?>>[
       for (final a in _ofGroup(entityAlias, p.id))
         if (a.status == 'active') {'id': a.id, 'alias': a.attributes['alias'], 'kind': 'alias'},
@@ -2819,6 +2842,8 @@ class FakeSyncServer {
         final hint? => {'status': hint['status']},
         null => null,
       },
+      // Never a change's reason (team-index.ts; BM-83).
+      'flags': {'primary': flags.primary, 'secondary': flags.secondary},
       'reviews': _openReviewFields(p.id).toList()..sort(),
       'versions': {
         for (final f in ['preferredName', 'visualDescriptor', 'usualArea', 'allergyScreen'])
@@ -2827,23 +2852,31 @@ class FakeSyncServer {
     };
   }
 
-  /// The index's version: it moves whenever anything an entry or the redirect list shows changes,
-  /// as the server's statement-level triggers bump its counter.
+  /// The index's version: it moves whenever anything an entry the reader holds or the redirect list
+  /// shows changes, as the server's statement-level triggers bump its counter, and names the
+  /// reader's projection after it, as team-index.ts does (`<counter>.<projection>`).
   final _indexVersions = <String, int>{};
 
   /// How many index pages were downloaded (tests watch a resumed download).
   int indexPages = 0;
 
-  Map<String, Object?> _index(String userId, Map<String, Object?> b) {
-    if (!mayHoldTeamIndex(permissionsOf(userId))) {
+  Map<String, Object?> _index(String userId, String teamId, Map<String, Object?> b) {
+    final perms = permissionsOf(userId);
+    if (!mayHoldTeamIndex(perms)) {
       throw const ApiException(403, 'index_not_permitted', 'Your role doesn’t keep the patient list on a phone.');
     }
+    // A reader the flag rule shows a sensitive flag to holds another copy (team-index.ts, phase 5
+    // design 6.1), so a role that gains or loses sight of one downloads the index anew.
+    final projection = _flagHidden(perms, (teamId: teamId.toLowerCase(), sensitive: true)) ? 'idx1' : 'idx1+sens';
+    final flags = _teamFlags(teamId);
     final active = records.values.where((r) => r.entity == entityPatient && r.status == 'active').toList()
       ..sort((a, b) => a.id.compareTo(b.id));
-    final all = [for (final p in active) _indexEntry(p)];
+    final all = [
+      for (final p in active) _indexEntry(p, _currentFlags(perms, teamId, flags, _ofGroup(entityFlagChange, p.id))),
+    ];
     final content = valueHash({'entries': all, 'redirects': _redirects()});
-    final version = '${_indexVersions.putIfAbsent(content, () => _indexVersions.length + 1)}.idx1';
-    final base = {'version': version, 'projection': 'idx1', 'generatedAt': _iso(now())};
+    final version = '${_indexVersions.putIfAbsent(content, () => _indexVersions.length + 1)}.$projection';
+    final base = {'version': version, 'projection': projection, 'generatedAt': _iso(now())};
     final after = b['after'] as String?;
     if (after == null && b['have'] == version) {
       return {...base, 'status': 'unchanged', 'entries': <Object?>[], 'next': null, 'redirects': <Object?>[]};
@@ -2880,7 +2913,10 @@ class FakeSyncServer {
     };
   }
 
-  Map<String, Object?> _problemSnapshot(FakeRecord r) {
+  /// A problem as the chart and the sync read alike show it, with whether its status check is due by
+  /// the team's window of [checkDays] at the server's time (charts.ts problemSnapshot, review.ts
+  /// withStatusCheck; phase 5 design 5.3): never for one Resolved or entered in error.
+  Map<String, Object?> _problemSnapshot(FakeRecord r, int checkDays) {
     final code = r.attributes['code'] as Map<String, Object?>?;
     return _snapshot(
       r,
@@ -2898,15 +2934,48 @@ class FakeSyncServer {
         'mergedInto': r.mergedInto,
         'statusChangedAt': _iso(r.checkedAt ?? r.createdAt),
         'statusCheckedAt': _iso(r.checkedAt ?? r.createdAt),
+        'statusCheckDue': problemCheckDue(
+          (status: r.status, statusCheckedAt: r.checkedAt ?? r.createdAt, enteredInError: r.retracted),
+          now(),
+          checkDays,
+        ),
       },
       const ['status', 'enteredInError'],
     );
   }
 
+  /// The platform's window for a problem's status check (projection.ts PLATFORM_CHECK_DAYS): its
+  /// newest settings preset's, in packages/presets/data/platform.json, the one the installer would give
+  /// a team that holds none yet.
+  static final platformProblemCheckDays = () {
+    final platform = jsonDecode(File('../../packages/presets/data/platform.json').readAsStringSync()) as List<Object?>;
+    final settings = [
+      for (final e in platform.cast<Map<String, Object?>>())
+        if (e['kind'] == 'settings') e,
+    ]..sort((a, b) => (b['platformVersion']! as int).compareTo(a['platformVersion']! as int));
+    return (settings.first['body']! as Map<String, Object?>)['problemCheckDays']! as int;
+  }();
+
+  /// How many days a problem's status may go unchecked in [teamId] (projection.ts problemCheckDays):
+  /// its settings preset's window, read from the current version, when that is a number, else the
+  /// platform's.
+  int _problemCheckDays(String teamId) {
+    for (final head in presetTeams[teamId.toLowerCase()]?.heads.values ?? const <FakePreset>[]) {
+      final body = head.versions[head.currentVersion];
+      if (head.kind != 'settings' || body == null) continue;
+      return switch (body['problemCheckDays']) {
+        final int days => days,
+        _ => platformProblemCheckDays,
+      };
+    }
+    return platformProblemCheckDays;
+  }
+
   /// A group's chart, projected for [userId]'s role (charts.ts loadGroupCharts and projectChart):
   /// problems only with the problem list's permissions, sensitive ones only with view_sensitive,
-  /// card links only with patients.edit. A legal name stays: the chart is the person's own.
-  Map<String, Object?> _chartOf(String userId, String canonicalId) {
+  /// card links only with patients.edit, and the flags the flag rule shows them ([_chartFlags]),
+  /// whatever their role. A legal name stays: the chart is the person's own.
+  Map<String, Object?> _chartOf(String userId, String teamId, String canonicalId) {
     final perms = permissionsOf(userId);
     final problemsShown = mayViewProblems(perms);
     final sensitive = problemsShown && perms.contains('patients.view_sensitive');
@@ -2917,6 +2986,7 @@ class FakeSyncServer {
         if (sensitive || r.attributes['sensitive'] != true) r,
     ];
     final problemIds = {for (final r in problems) r.id};
+    final checkDays = _problemCheckDays(teamId);
     return {
       'patient': _snapshot(p, {
         'registeredAt': _iso(p.createdAt),
@@ -2961,7 +3031,7 @@ class FakeSyncServer {
           },
       ],
       if (problemsShown) ...{
-        'problems': [for (final r in problems) _problemSnapshot(r)],
+        'problems': [for (final r in problems) _problemSnapshot(r, checkDays)],
         'problemHistory': [
           for (final h in history)
             if (h['entity'] == entityProblem && h['field'] == 'status' && problemIds.contains(h['recordId']))
@@ -3005,7 +3075,116 @@ class FakeSyncServer {
           if (r.status == 'open' && canonicalOf(r.recordId) == canonicalId) _reviewView(r, patientId: r.recordId),
       ],
       'duplicate': _hint(canonicalId),
+      ..._chartFlags(userId, perms, teamId, canonicalId),
       'projection': ['c1', if (problemsShown) 'prob', if (sensitive) 'sens', if (urls) 'url'].join('+'),
+    };
+  }
+
+  /// The flag changes of [canonicalId]'s merged group, both records' of a merge, by their time to the
+  /// millisecond, as the API's Date holds it, then ID by code units: the order the fold reads them in
+  /// (charts.ts byTimeThenId).
+  List<FakeRecord> _flagChangesOf(String canonicalId) => _ofGroup(entityFlagChange, canonicalId)
+    ..sort((a, b) {
+      final byTime = _effectiveAt(a).millisecondsSinceEpoch.compareTo(_effectiveAt(b).millisecondsSinceEpoch);
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
+    });
+
+  static DateTime _effectiveAt(FakeRecord change) => DateTime.parse(change.attributes['effectiveAt']! as String);
+
+  /// A patient's current flags as [perms] may see them (projection.ts flagsReader and currentFlagsOf):
+  /// the fold of every flag change of their group, the phone's copy of it, which flag-current.json
+  /// holds to the server's, over [teamId]'s flags, archived ones included, with the reader's flag rule.
+  CurrentFlags _currentFlags(
+    Set<String> perms,
+    String teamId,
+    Map<String, _TeamFlag> flags,
+    Iterable<FakeRecord> changes,
+  ) => currentFlags(
+    changes: [
+      for (final c in changes)
+        (
+          id: c.id,
+          flagId: c.attributes['flagId']! as String,
+          action: c.attributes['action']! as String,
+          effectiveAt: _effectiveAt(c),
+          enteredInError: c.status == 'entered_in_error',
+        ),
+    ],
+    flags: {
+      for (final f in flags.values)
+        f.id: (
+          tier: f.tier == 'secondary' ? FlagTier.secondary : FlagTier.primary,
+          rank: f.rank,
+          name: f.name ?? '',
+          sensitive: f.head.sensitive,
+          state: f.archived ? PresetState.archived : PresetState.active,
+        ),
+    },
+    hidden: (f) => _flagHidden(perms, (teamId: teamId.toLowerCase(), sensitive: f.sensitive)),
+  );
+
+  /// A flag as the chart shows it (projection.ts flagView): as the team holds it now, with its
+  /// colour's plain name.
+  static Map<String, Object?> _flagView(_TeamFlag f) => {
+    'flagId': f.id,
+    'name': f.name,
+    'tier': f.tier,
+    'color': f.color,
+    'colorName': FlagColor.byCode(f.color ?? '')?.colorName ?? f.color,
+    'rank': f.rank,
+    'archived': f.archived,
+  };
+
+  /// A chart's flag changes and flags as [userId] may see them (projection.ts projectFlags, charts.ts
+  /// loadGroupCharts; design 7). Each change of the group goes through the flag rule and its reasons
+  /// rule ([_flagChangeShown]) with its flag as [teamId] holds it now, so a change of a flag hidden from
+  /// the reader is absent, never blanked, with its history row, and one entered in error keeps its
+  /// reasons only for its author and whoever manages the team's people. The current flags are the fold
+  /// of every change with the reader's flag rule ([_currentFlags]). A history row says what its
+  /// snapshot says, and names its author, and who marked it, by their names now.
+  Map<String, Object?> _chartFlags(String userId, Set<String> perms, String teamId, String canonicalId) {
+    final flags = _teamFlags(teamId);
+    final changes = _flagChangesOf(canonicalId);
+    final shown = [
+      for (final c in changes)
+        if (flags[c.attributes['flagId']] case final flag?)
+          if (_flagChangeShown(userId, perms, c, flag.head) case final snapshot?)
+            (change: c, flag: flag, snapshot: snapshot),
+    ];
+    final current = _currentFlags(perms, teamId, flags, changes);
+    return {
+      'flagChanges': [for (final s in shown) s.snapshot],
+      'flags': {
+        'primary': current.primary == null ? null : _flagView(flags[current.primary]!),
+        'secondary': [for (final id in current.secondary) _flagView(flags[id]!)],
+        'history': [for (final s in shown) _flagHistoryRow(s.change, s.flag, s.snapshot)],
+      },
+    };
+  }
+
+  /// One row of a chart's flag history (projection.ts projectFlags): what its shown [snapshot] says,
+  /// with its flag as the team holds it now, and its author, and who marked it and when, by their
+  /// names now. A reason the snapshot leaves out is left out here too, never blank.
+  Map<String, Object?> _flagHistoryRow(FakeRecord change, _TeamFlag flag, Map<String, Object?> snapshot) {
+    final attributes = snapshot['attributes']! as Map<String, Object?>;
+    final mark = ((snapshot['fields']! as Map<String, Object?>)['enteredInError']! as Map<String, Object?>)['value'];
+    final marked = change.fields['enteredInError'];
+    return {
+      'changeId': change.id,
+      'flagId': flag.id,
+      'name': flag.name,
+      'tier': flag.tier,
+      'action': attributes['action'],
+      'effectiveAt': attributes['effectiveAt'],
+      'authorName': nameOf(change.author),
+      if (attributes.containsKey('reason')) 'reason': attributes['reason'],
+      'enteredInError': change.status != 'entered_in_error' || marked == null
+          ? null
+          : {
+              'byName': marked.by == null ? '' : nameOf(marked.by!),
+              'at': _isoMs(DateTime.parse(marked.at!)),
+              if (mark case {'reason': final reason}) 'reason': reason,
+            },
     };
   }
 
@@ -3014,7 +3193,7 @@ class FakeSyncServer {
 
   /// POST /v1/patients/charts: the charts of the requested patients' groups, and every live
   /// redirect into the returned groups. One `patient.viewed {source: 'cache'}` per chart.
-  Map<String, Object?> _charts(String userId, Map<String, Object?> b) {
+  Map<String, Object?> _charts(String userId, String teamId, Map<String, Object?> b) {
     _require(userId, 'patients.view');
     final requested = {for (final id in (b['patientIds']! as List<Object?>).cast<String>()) id.toLowerCase()};
     chartRequests.add(requested.length);
@@ -3024,7 +3203,7 @@ class FakeSyncServer {
     };
     final charts = [
       for (final id in groups)
-        if (records[id]!.status == 'active') _chartOf(userId, id),
+        if (records[id]!.status == 'active') _chartOf(userId, teamId, id),
     ];
     for (final c in charts) {
       serverAudit.add({
@@ -3048,11 +3227,11 @@ class FakeSyncServer {
 
   /// GET /v1/patients/{id}: the group's chart; a merged ID answers the survivor's with
   /// `redirectedFrom`.
-  Map<String, Object?> _chart(String userId, String patientId) {
+  Map<String, Object?> _chart(String userId, String teamId, String patientId) {
     _require(userId, 'patients.view');
     if (records[patientId]?.entity != entityPatient) throw const ApiException(404, 'not_found', 'No such patient.');
     final canonical = canonicalOf(patientId);
-    final chart = _chartOf(userId, canonical);
+    final chart = _chartOf(userId, teamId, canonical);
     serverAudit.add({
       'action': 'patient.viewed',
       'userId': userId,
@@ -3154,8 +3333,22 @@ class FakeSyncServer {
   };
 
   /// POST /v1/patients/search (search.ts), scored with the phone's scorer (no sound-alike term).
-  Map<String, Object?> _search(String userId, Map<String, Object?> b) {
+  /// `flagIds` (phase 5 design 7), read in lowercase and each once, keeps the hits carrying every flag
+  /// named among their current flags as the reader may see them ([_currentFlags]), either tier, before
+  /// the cut, so a narrowed search still fills its limit and says when more matched; the event counts
+  /// the flags and names none. A flag the flag rule hides from the caller, one the team does not hold
+  /// among them, is refused before anything is searched, with no search event.
+  Map<String, Object?> _search(String userId, String teamId, Map<String, Object?> b) {
     _require(userId, 'patients.view');
+    final perms = permissionsOf(userId);
+    final flagIds = switch (b['flagIds']) {
+      final List<Object?> ids => {for (final id in ids) (id! as String).toLowerCase()}.toList(),
+      _ => null,
+    };
+    final flags = _teamFlags(teamId);
+    if (flagIds != null && flagIds.any((id) => _flagHidden(perms, flags[id]?.head))) {
+      throw const ApiException(403, 'flag_hidden', 'Your role can’t search by one of these flags.');
+    }
     final name = b['name'] as String?;
     final birth = b['birth'] as Map<String, Object?>?;
     final year = (birth?['year'] as num?)?.toInt();
@@ -3173,11 +3366,21 @@ class FakeSyncServer {
           );
     final surface = b['surface'] as String? ?? 'phone';
     final all = NameSource.values.toSet();
-    final (:hits, :truncated) = query.isEmpty
+    final limit = ((b['limit'] as num?) ?? searchLimit).toInt();
+    final candidates = [for (final id in _activePatients) _candidate(id, all)];
+    var (:hits, :truncated) = query.isEmpty
         ? (hits: const <RankedGroup>[], truncated: false)
-        : rankSearch(query, [
-            for (final id in _activePatients) _candidate(id, all),
-          ], limit: ((b['limit'] as num?) ?? searchLimit).toInt());
+        : rankSearch(query, candidates, limit: flagIds == null ? limit : candidates.length);
+    if (flagIds != null) {
+      final carrying = [
+        for (final h in hits)
+          if (_currentFlags(perms, teamId, flags, _ofGroup(entityFlagChange, h.group.patientId)) case final held
+              when flagIds.every((id) => held.primary == id || held.secondary.contains(id)))
+            h,
+      ];
+      hits = carrying.take(limit).toList();
+      truncated = carrying.length > limit;
+    }
     final shown = [for (final h in hits) _hit(h, surface)];
     serverAudit.add({
       'action': 'patient.searched',
@@ -3187,6 +3390,7 @@ class FakeSyncServer {
         'patientIds': [for (final h in shown) h['patientId']],
         'criteria': [if (name != null) 'name', if (year != null) day != null ? 'birth_full' : 'birth_year'],
         'surface': surface,
+        'flagCount': ?flagIds?.length,
       },
     });
     return {'hits': shown, 'truncated': truncated};
@@ -3665,7 +3869,7 @@ class FakeSyncServer {
   /// not see, and what hangs off a note goes with it (lifecycle 6.4). Each read is logged: a visit's
   /// as encounter.viewed, a note's and what hangs off it as note.viewed, anything else as a view of
   /// the patient (review finding P8).
-  Map<String, Object?> _fetch(String userId, Map<String, Object?> b) {
+  Map<String, Object?> _fetch(String userId, String teamId, Map<String, Object?> b) {
     final refs = (b['records']! as List<Object?>).cast<Map<String, Object?>>();
     final perms = permissionsOf(userId);
     for (final entity in {for (final ref in refs) ref['entity']}) {
@@ -3677,7 +3881,7 @@ class FakeSyncServer {
     final missing = <Object?>[];
     for (final ref in refs) {
       final r = records[ref['id']];
-      final shown = r == null || r.entity != ref['entity'] ? null : _asRead(userId, perms, r);
+      final shown = r == null || r.entity != ref['entity'] ? null : _asRead(userId, teamId, perms, r);
       if (shown == null) {
         missing.add(ref);
         continue;
@@ -3728,18 +3932,37 @@ class FakeSyncServer {
     return true;
   }
 
+  /// [teamId]'s flags as the team holds them now, archived ones included, by ID (read-rules.ts
+  /// flagRows and teamFlags, the one read of a flag every reader of the flag rule asks): each its
+  /// head and its current version's body, so a head whose current version is missing, which the
+  /// API's join finds no row for, is no flag. Sensitive is the body's JSON value true and nothing
+  /// else, read without a cast, so a body no writer leaves reads as not sensitive, and a tier, name,
+  /// colour or rank it holds as no text or number reads as none.
+  Map<String, _TeamFlag> _teamFlags(String teamId) {
+    final team = teamId.toLowerCase();
+    return {
+      for (final head in presetTeams[team]?.heads.values ?? const <FakePreset>[])
+        if (head.versions[head.currentVersion] case final body? when head.kind == 'flag')
+          head.id: (
+            id: head.id,
+            head: (teamId: team, sensitive: body['sensitive'] == true),
+            tier: body['tier'] is String ? body['tier']! as String : null,
+            name: body['name'] is String ? body['name']! as String : null,
+            color: body['color'] is String ? body['color']! as String : null,
+            rank: body['rank'] is num ? (body['rank']! as num).toInt() : 0,
+            archived: head.state == 'archived',
+          ),
+    };
+  }
+
   /// One of [teamId]'s flags as the team holds it now (read-rules.ts flagHead): the team it is in,
-  /// and whether it is sensitive, read from its current version's body as the JSON value true and
-  /// nothing else, without a cast, so a body no writer leaves reads as not sensitive. Null when
-  /// [flagId] names no flag of the team: another kind of preset, another team's, nothing, or a head
-  /// whose current version is missing, which the API's join finds no row for. A seed names no team,
-  /// so its flag is whichever team's holds it.
+  /// and whether it is sensitive ([_teamFlags]). Null when [flagId] names no flag of the team: another
+  /// kind of preset, another team's, nothing, or a head whose current version is missing. A seed names
+  /// no team, so its flag is whichever team's holds it.
   _FlagHead? _flagHead(String? teamId, Object? flagId) {
-    for (final MapEntry(key: id, value: team) in presetTeams.entries) {
+    for (final id in presetTeams.keys) {
       if (teamId != null && id != teamId.toLowerCase()) continue;
-      final head = team.heads[flagId];
-      final body = head?.versions[head.currentVersion];
-      if (head?.kind == 'flag' && body != null) return (teamId: id, sensitive: body['sensitive'] == true);
+      if (_teamFlags(id)[flagId] case final flag?) return flag.head;
     }
     return null;
   }
@@ -3750,13 +3973,14 @@ class FakeSyncServer {
   static bool _flagHidden(Set<String> perms, _FlagHead? flag) =>
       flag == null || (flag.sensitive && !(mayViewProblems(perms) && perms.contains('patients.view_sensitive')));
 
-  /// A flag change as [userId] may see it (read-rules.ts flagChangeShown): nothing of it when its flag
-  /// is hidden from them; else its snapshot as its load() gives it, at the row's version and made at
-  /// its receipt, without its reason or its mark's once it is entered in error and they neither made
-  /// it nor manage the team's people. A reason left out leaves no key, and the mark's field holds
-  /// `{}`, with who and when: marked, and nothing of why.
-  Map<String, Object?>? _flagChangeShown(String userId, Set<String> perms, FakeRecord r) {
-    if (_flagHidden(perms, _flagHead(r.teamId, r.attributes['flagId']))) return null;
+  /// A flag change as [userId] may see it (read-rules.ts flagChangeShown), with [flag], its flag as the
+  /// team holds it now: nothing of it when the flag is hidden from them; else its snapshot as its
+  /// load() gives it, at the row's version and made at its receipt, without its reason or its mark's
+  /// once it is entered in error and they neither made it nor manage the team's people. A reason
+  /// left out leaves no key, and the mark's field holds `{}`, with who and when: marked, and nothing
+  /// of why. The sync read, and the chart's flagChanges and history, show a change through it.
+  Map<String, Object?>? _flagChangeShown(String userId, Set<String> perms, FakeRecord r, _FlagHead? flag) {
+    if (_flagHidden(perms, flag)) return null;
     final shown = {
       ..._readSnapshot(r),
       'version': 1 + (r.fields['enteredInError']?.version ?? 0),
@@ -3772,11 +3996,12 @@ class FakeSyncServer {
     };
   }
 
-  /// The record as [userId] may see it (review.ts asRead), or null when they may not see it at all.
-  Map<String, Object?>? _asRead(String userId, Set<String> perms, FakeRecord r) {
+  /// The record as [userId] may see it in [teamId] (review.ts asRead), or null when they may not see
+  /// it at all. A problem says whether its status check is due, as its chart does.
+  Map<String, Object?>? _asRead(String userId, String teamId, Set<String> perms, FakeRecord r) {
     switch (r.entity) {
       case entityProblem:
-        return _readsRecord(perms, r) ? _problemSnapshot(r) : null;
+        return _readsRecord(perms, r) ? _problemSnapshot(r, _problemCheckDays(teamId)) : null;
       case entityProblemNote:
         return _readsRecord(perms, r) ? _readSnapshot(r) : null;
       case entityNote:
@@ -3841,7 +4066,7 @@ class FakeSyncServer {
       // By the flag rule, and once entered in error without its reasons for whoever neither made it
       // nor manages the team's people (review.ts asRead).
       case entityFlagChange:
-        return _flagChangeShown(userId, perms, r);
+        return _flagChangeShown(userId, perms, r, _flagHead(r.teamId, r.attributes['flagId']));
       // Who recorded it, by their name now: a referral keeps no name of its own (referral.ts load).
       case entityReferral:
         final read = _readSnapshot(r);
@@ -4123,6 +4348,10 @@ typedef _Kept = ({String problem, ({String kind, List<String> to})? notice});
 /// What the flag rule reads of one of a team's flags (read-rules.ts FlagHead): the team that holds it,
 /// and whether it is sensitive.
 typedef _FlagHead = ({String teamId, bool sensitive});
+
+/// One of a team's flags as the chart, the team index and search read it (read-rules.ts TeamFlag): its
+/// head, its state, and its current version's tier, name, colour and rank.
+typedef _TeamFlag = ({String id, _FlagHead head, String? tier, String? name, String? color, int rank, bool archived});
 
 /// What signedUnder finds: the credential, whether the time was believed, and what it may do.
 typedef SignedUnder = ({String credential, bool timeTrusted, bool canSign, bool needsAttestation, bool claimDiffers});

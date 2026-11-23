@@ -67,7 +67,9 @@ void main() {
       final raw = await server.handle(alex, team, 'POST', '/v1/patients/index', {'limit': 100});
       expect(jsonEncode(raw), isNot(matches(RegExp('Ysolde|Varrowick|ysolde|varrowick'))));
       final first = await api.downloadTeamIndex(body: const TeamIndexRequest(limit: 100));
-      expect([first.status, first.entries.length, first.projection], [TeamIndexPageStatus.page, 100, 'idx1']);
+      // Healthcare Staff see sensitive flags (phase 5 design 6.1): idx1+sens.
+      expect([first.status, first.entries.length, first.projection], [TeamIndexPageStatus.page, 100, 'idx1+sens']);
+      expect(first.version, matches(RegExp(r'^\d+\.idx1\+sens$')));
       expect(first.redirects.single.mergedId, merged);
       final second = await api.downloadTeamIndex(body: TeamIndexRequest(after: first.next, limit: 100));
       expect([second.entries.length, second.next, second.redirects], [50, null, isEmpty]);
@@ -78,6 +80,7 @@ void main() {
       ]);
       expect(entry.allergies.single.severity, AllergySeverity.severe);
       expect(entry.idLinks, hasLength(1));
+      expect([entry.flags?.primary, entry.flags?.secondary], [null, isEmpty]);
       expect(entry.versions.preferredName, 1);
     });
 
@@ -1270,13 +1273,12 @@ void main() {
     );
   });
 
-  // Phase 5's flags (design 6.1, 6.3, 7): the chart's flagChanges and flags, the index's flags and
-  // search's flagIds, read through the fake's routes as JSON, each case named after the API test that
-  // holds the same rule (patients-charts.test.ts, patients-flags-sensitive.test.ts,
-  // patients-index.test.ts, patients-search.test.ts). Written ahead of P5-phone-entity and
-  // P5-fake-reads: each case fails until they land. Alex is Healthcare Staff, who sees sensitive
-  // flags; Casey the CHW preset, who does not; Dana another member of staff; the admin manages the
-  // team's people.
+  // Phase 5's flags (design 6.1, 6.3, 7): the chart's flagChanges and flags, each problem's status
+  // check, the index's flags and search's flagIds, read through the fake's routes as JSON, each case
+  // named after the API test that holds the same rule (patients-charts.test.ts,
+  // patients-flags-sensitive.test.ts, patients-index.test.ts, patients-search.test.ts). Alex is
+  // Healthcare Staff, who sees sensitive flags; Casey the CHW preset, who does not; Dana another
+  // member of staff; the admin manages the team's people.
   group('phase 5: flags on the chart, in the index and in search', () {
     const casey = 'c0000000-0000-4000-8000-00000000000c';
     const dana = 'd0000000-0000-4000-8000-00000000000d';
@@ -1309,6 +1311,38 @@ void main() {
     Future<Map<String, Object?>> chartOf(String user, String patientId) => json(user, 'GET', '/v1/patients/$patientId');
     Map<String, Object?> flagsOf(Map<String, Object?> chart) => chart['flags']! as Map<String, Object?>;
     List<Map<String, Object?>> listOf(Object? v) => (v! as List<Object?>).cast<Map<String, Object?>>();
+    Future<List<String>> hitsOf(String user, List<String> flagIds, {int? limit}) async => [
+      for (final h in listOf(
+        (await json(user, 'POST', '/v1/patients/search', {
+          'name': 'Demo Wren',
+          'surface': 'portal',
+          'flagIds': flagIds,
+          'limit': ?limit,
+        }))['hits'],
+      ))
+        h['patientId']! as String,
+    ]..sort();
+    Map<String, Object?> entryOf(Map<String, Object?> page, String patientId) =>
+        listOf(page['entries']).firstWhere((e) => e['patientId'] == patientId);
+    DateTime days(int n) => now.subtract(Duration(days: n));
+    String problem(String patientId, String status, int daysAgo) => server.seed(entityProblem, {
+      'patientId': patientId,
+      'title': 'Demo: cough',
+      'status': status,
+    }, at: days(daysAgo));
+    // A status set online at that time, as the API's tests write one.
+    void resolve(String problemId, int daysAgo) {
+      server.now = () => days(daysAgo);
+      server.serverEdit(problemId, 'status', const {'status': 'resolved', 'encounterId': null}, by: alex);
+      server.now = () => now;
+    }
+
+    Map<String, Object?> settings(int problemCheckDays) => {
+      'name': 'Team settings',
+      'bagMinimumsOn': false,
+      'newBagMinimums': <Object?>[],
+      'problemCheckDays': problemCheckDays,
+    };
 
     Map<String, Object?> view(String key, {bool archived = false}) {
       const shown = {
@@ -1415,6 +1449,67 @@ void main() {
       },
     );
 
+    test('shows a flag as it is now: an edit renames it everywhere on the chart', () async {
+      server.editPreset(team, winter, flagBody('Demo: Winter list', 'secondary', 'purple', 5));
+      final chart = await chartOf(alex, survivor);
+      final secondary = listOf(flagsOf(chart)['secondary']);
+      expect(secondary.firstWhere((f) => f['flagId'] == winter), {
+        'flagId': winter,
+        'name': 'Demo: Winter list',
+        'tier': 'secondary',
+        'color': 'purple',
+        'colorName': 'Purple',
+        'rank': 5,
+        'archived': true,
+      });
+      // Now ranked first among the conditions.
+      expect([for (final f in secondary) f['flagId']], [winter, flags['flag.frost_risk'], flags['flag.pregnancy']]);
+      expect(
+        listOf(flagsOf(chart)['history']).firstWhere((r) => r['changeId'] == changes['winter'])['name'],
+        'Demo: Winter list',
+      );
+    });
+
+    test('drops a change entered in error out of the flags, and its history row says who marked it and when', () async {
+      final patient = server.seedPatient(preferredName: 'Demo Lark');
+      flagChange(patient, flags['flag.medium']!, 30);
+      final wrong = flagChange(patient, flags['flag.high']!, 20);
+      server.now = () => ago(15);
+      server.serverEdit(wrong, 'enteredInError', const {'reason': 'Demo: set on the wrong patient'}, by: alex);
+      server.now = () => now;
+      final chart = await chartOf(alex, patient);
+      expect(flagsOf(chart)['primary'], view('flag.medium'));
+      expect(listOf(flagsOf(chart)['history']).firstWhere((r) => r['changeId'] == wrong), {
+        'changeId': wrong,
+        'flagId': flags['flag.high'],
+        'name': 'High',
+        'tier': 'primary',
+        'action': 'set',
+        'effectiveAt': ago(20).toIso8601String(),
+        'authorName': 'Alex (demo)',
+        'reason': 'Demo: seen at the van',
+        'enteredInError': {
+          'byName': 'Alex (demo)',
+          'at': ago(15).toIso8601String(),
+          'reason': 'Demo: set on the wrong patient',
+        },
+      });
+      expect(listOf(chart['flagChanges']).firstWhere((s) => s['id'] == wrong)['status'], 'entered_in_error');
+    });
+
+    test('gives a reader without the problem list the flags too, and the phone’s chart bundle the same view', () async {
+      final forChw = await chartOf(casey, survivor);
+      expect([forChw['problems'], flagsOf(forChw)['primary']], [null, view('flag.high')]);
+      expect([for (final f in listOf(flagsOf(forChw)['secondary'])) f['flagId']], contains(flags['flag.frost_risk']));
+      final bundle = await json(alex, 'POST', '/v1/patients/charts', {
+        'patientIds': [survivor],
+        'reason': 'opened',
+      });
+      final bundled = listOf(bundle['charts']).single;
+      expect(bundled['flags'], flagsOf(await chartOf(alex, survivor)));
+      expect([for (final s in listOf(bundled['flagChanges'])) s['id']], changes.values.toList());
+    });
+
     test('leaves out a hidden flag and every history row of it, its reason included, never blanked', () async {
       final chart = await chartOf(casey, survivor);
       expect([for (final f in listOf(flagsOf(chart)['secondary'])) f['flagId']], [flags['flag.frost_risk'], winter]);
@@ -1457,6 +1552,124 @@ void main() {
       );
     });
 
+    test('the phone’s chart bundle follows the same rule', () async {
+      final bundle = await json(casey, 'POST', '/v1/patients/charts', {
+        'patientIds': [survivor],
+        'reason': 'opened',
+      });
+      final chart = listOf(bundle['charts']).single;
+      expect([for (final f in listOf(flagsOf(chart)['secondary'])) f['flagId']], [flags['flag.frost_risk'], winter]);
+      expect(
+        [for (final s in listOf(chart['flagChanges'])) s['id']],
+        [
+          for (final MapEntry(:key, :value) in changes.entries)
+            if (key != 'pregnancy') value,
+        ],
+      );
+      expect(jsonEncode(bundle), isNot(contains(flags['flag.pregnancy']!)));
+      expect(jsonEncode(bundle), isNot(contains(changes['pregnancy']!)));
+    });
+
+    test('who sees a sensitive flag is who sees a sensitive problem (section 11, row 29)', () async {
+      const billing = 'b0000000-0000-4000-8000-0000000000b0';
+      const sensitiveOnly = 'b1000000-0000-4000-8000-0000000000b1';
+      const codes = 'b2000000-0000-4000-8000-0000000000b2';
+      server.permissions
+        ..[billing] = {'patients.view', 'billing.view_codes', 'inventory.view', 'exports.billing', 'exports.grant'}
+        ..[sensitiveOnly] = {'patients.view', 'patients.edit', 'patients.view_sensitive'}
+        ..[codes] = {'patients.view', 'billing.view_codes', 'patients.view_sensitive'};
+      const readers = {
+        'Program Admin': (admin, true),
+        'Healthcare Staff': (alex, true),
+        'the CHW preset': (casey, false),
+        'Billing/Data': (billing, false),
+        // Risk 6 of 12.1: patients.view_sensitive without the problem list sees no sensitive flag.
+        'patients.view_sensitive without the problem list': (sensitiveOnly, false),
+        'billing.view_codes with patients.view_sensitive': (codes, true),
+      };
+      for (final MapEntry(key: who, value: (user, sees)) in readers.entries) {
+        final chart = await chartOf(user, survivor);
+        expect(
+          listOf(flagsOf(chart)['secondary']).any((f) => f['flagId'] == flags['flag.pregnancy']),
+          sees,
+          reason: who,
+        );
+        expect(listOf(chart['flagChanges']).any((s) => s['id'] == changes['pregnancy']), sees, reason: who);
+        if (!sees) expect(jsonEncode(chart), isNot(contains(flags['flag.pregnancy']!)), reason: who);
+      }
+    });
+
+    test('marks each problem whose status check is due, by the team’s window, on both reads', () async {
+      final patient = server.seedPatient(preferredName: 'Demo Finch');
+      final problems = {
+        'newOld': problem(patient, 'new', 91),
+        'ongoingOld': problem(patient, 'ongoing', 91),
+        'newRecent': problem(patient, 'new', 10),
+        'resolvedOld': problem(patient, 'new', 200),
+      };
+      resolve(problems['resolvedOld']!, 199);
+      Future<Map<String, Object?>> due() async {
+        final chart = await chartOf(alex, patient);
+        return {
+          for (final MapEntry(:key, :value) in problems.entries)
+            key:
+                (listOf(chart['problems']).firstWhere((p) => p['id'] == value)['attributes']!
+                    as Map<String, Object?>)['statusCheckDue'],
+        };
+      }
+
+      // The platform's window: 90 days.
+      expect(await due(), {'newOld': true, 'ongoingOld': true, 'newRecent': false, 'resolvedOld': false});
+      // The team's own window: 7 days.
+      server.addPreset(team, 'settings', settings(7), originKey: 'settings.team');
+      expect(await due(), {'newOld': true, 'ongoingOld': true, 'newRecent': true, 'resolvedOld': false});
+      final bundle = await json(alex, 'POST', '/v1/patients/charts', {
+        'patientIds': [patient],
+        'reason': 'refresh',
+      });
+      final bundled = listOf(listOf(bundle['charts']).single['problems']);
+      expect(
+        (bundled.firstWhere((p) => p['id'] == problems['newRecent'])['attributes']! as Map)['statusCheckDue'],
+        isTrue,
+      );
+    });
+
+    test(
+      'marks a problem the same way read through sync, so the phone holds one record whichever way it came',
+      () async {
+        server.addPreset(team, 'settings', settings(30), originKey: 'settings.team');
+        final patient = server.seedPatient(preferredName: 'Demo Plover');
+        final problems = {
+          'due': problem(patient, 'new', 40),
+          'notDue': problem(patient, 'ongoing', 20),
+          'enteredInError': problem(patient, 'new', 40),
+          'resolved': problem(patient, 'new', 40),
+        };
+        resolve(problems['resolved']!, 39);
+        server.serverEdit(problems['enteredInError']!, 'enteredInError', const {
+          'reason': 'Demo: on the wrong chart',
+        }, by: alex);
+        final chart = await chartOf(alex, patient);
+        final read = await json(alex, 'POST', '/v1/sync/records', {
+          'records': [
+            for (final id in problems.values) {'entity': entityProblem, 'id': id},
+          ],
+        });
+        final records = listOf(read['records']);
+        Map<String, Object?> dueBy(List<Map<String, Object?>> snapshots) => {
+          for (final MapEntry(:key, :value) in problems.entries)
+            key:
+                (snapshots.firstWhere((p) => p['id'] == value)['attributes']!
+                    as Map<String, Object?>)['statusCheckDue'],
+        };
+        // The team's window, 30 days, on both reads; never for one entered in error or Resolved.
+        const expected = {'due': true, 'notDue': false, 'enteredInError': false, 'resolved': false};
+        expect(dueBy(listOf(chart['problems'])), expected);
+        expect(dueBy(records), expected);
+        expect(records, [for (final id in problems.values) listOf(chart['problems']).firstWhere((p) => p['id'] == id)]);
+      },
+    );
+
     test('gives each entry its group’s current flags, ids only, both records of a merged patient', () async {
       final page = await json(alex, 'POST', '/v1/patients/index', const <String, Object?>{});
       final entry = listOf(page['entries']).firstWhere((e) => e['patientId'] == survivor);
@@ -1474,6 +1687,45 @@ void main() {
       final entry = listOf(forChw['entries']).firstWhere((e) => e['patientId'] == survivor);
       expect((entry['flags']! as Map<String, Object?>)['secondary'], [flags['flag.frost_risk'], winter]);
       expect(jsonEncode(forChw), isNot(contains(flags['flag.pregnancy']!)));
+    });
+
+    test('a flag set on another phone appears after one refresh, and one entered in error leaves', () async {
+      final plain = server.seedPatient(preferredName: 'Demo Lark');
+      final before = await json(alex, 'POST', '/v1/patients/index', const <String, Object?>{});
+      final medium = flagChange(plain, flags['flag.medium']!, 5);
+      final after = await json(alex, 'POST', '/v1/patients/index', {'have': before['version']});
+      expect([after['status'], after['version'] == before['version']], ['page', isFalse]);
+      expect((entryOf(after, plain)['flags']! as Map<String, Object?>)['primary'], flags['flag.medium']);
+      server.serverEdit(medium, 'enteredInError', const {'reason': 'Demo: wrong patient'}, by: alex);
+      final marked = await json(alex, 'POST', '/v1/patients/index', {'have': after['version']});
+      expect(marked['status'], 'page');
+      expect((entryOf(marked, plain)['flags']! as Map<String, Object?>)['primary'], isNull);
+    });
+
+    test('keeps an archived flag on the patients who carry it', () async {
+      server.archivePreset(team, flags['flag.frost_risk']!);
+      final page = await json(alex, 'POST', '/v1/patients/index', const <String, Object?>{});
+      expect(
+        (entryOf(page, survivor)['flags']! as Map<String, Object?>)['secondary'],
+        contains(flags['flag.frost_risk']),
+      );
+    });
+
+    test('the team index leaves a hidden flag out of each entry, and a reader who sees them holds idx1+sens', () async {
+      for (final (user, sees) in [(alex, true), (casey, false)]) {
+        final page = await json(user, 'POST', '/v1/patients/index', const <String, Object?>{});
+        expect(page['projection'], sees ? 'idx1+sens' : 'idx1');
+        expect(page['version'], matches(sees ? RegExp(r'^\d+\.idx1\+sens$') : RegExp(r'^\d+\.idx1$')));
+        expect(entryOf(page, survivor)['flags'], {
+          'primary': flags['flag.high'],
+          'secondary': [flags['flag.frost_risk'], if (sees) flags['flag.pregnancy'], winter],
+        });
+        if (!sees) expect(jsonEncode(page), isNot(contains(flags['flag.pregnancy']!)));
+      }
+      // The two copies are two versions: a phone holding one is sent the other whole.
+      final staff = await json(alex, 'POST', '/v1/patients/index', const <String, Object?>{});
+      final forChw = await json(casey, 'POST', '/v1/patients/index', {'have': staff['version']});
+      expect(forChw['status'], 'page');
     });
 
     test('narrows a name search to the patients carrying every flag named, a risk level or a condition', () async {
@@ -1508,6 +1760,93 @@ void main() {
         );
       }
     });
+
+    test('narrows before the cut, so a search by flags fills its limit and says when more matched', () async {
+      // Two who carry the flag, and Demo Wren, who ranks above them and does not: a search cut before
+      // it narrowed would keep only Demo Wren, and then nobody.
+      final birch = server.seedPatient(preferredName: 'Demo Wren Birch');
+      final cedar = server.seedPatient(preferredName: 'Demo Wren Cedar');
+      for (final p in [birch, cedar]) {
+        flagChange(p, flags['flag.medium']!, 5);
+      }
+      Future<Map<String, Object?>> search(int limit, String flagId) => json(alex, 'POST', '/v1/patients/search', {
+        'name': 'Demo Wren',
+        'surface': 'portal',
+        'limit': limit,
+        'flagIds': [flagId],
+      });
+      final one = await search(1, flags['flag.medium']!);
+      expect(listOf(one['hits']), hasLength(1));
+      expect([birch, cedar], contains(listOf(one['hits']).single['patientId']));
+      expect(one['truncated'], isTrue);
+      final two = await search(2, flags['flag.medium']!);
+      expect(
+        [(listOf(two['hits']).map((h) => h['patientId']).toList()..sort()), two['truncated']],
+        [
+          [birch, cedar]..sort(),
+          isFalse,
+        ],
+      );
+      // A flag's ID in capitals names the same flag.
+      expect(await hitsOf(alex, [flags['flag.medium']!.toUpperCase()]), [birch, cedar]..sort());
+    });
+
+    test('reads current flags only: a cleared flag and one entered in error match nothing', () async {
+      final cleared = server.seedPatient(preferredName: 'Demo Wren Cedar');
+      flagChange(cleared, flags['flag.high']!, 30);
+      flagChange(cleared, flags['flag.high']!, 20, action: 'clear');
+      final mistaken = server.seedPatient(preferredName: 'Demo Wren Dogwood');
+      final wrong = flagChange(mistaken, flags['flag.high']!, 30);
+      server.serverEdit(wrong, 'enteredInError', const {'reason': 'Demo: wrong patient'}, by: alex);
+      expect(await hitsOf(alex, [flags['flag.high']!]), [survivor]);
+      // Demo Wren's dehydration risk was cleared.
+      expect(await hitsOf(alex, [flags['flag.dehydration_risk']!]), isEmpty);
+    });
+
+    test('counts the flags in the search’s event and names none', () async {
+      final high = flags['flag.high']!;
+      await hitsOf(alex, [high, flags['flag.frost_risk']!, high.toUpperCase()]);
+      final event = server.serverAudit.last;
+      expect(
+        [event['action'], event['details']],
+        [
+          'patient.searched',
+          {
+            'resultCount': 1,
+            'patientIds': [survivor],
+            'criteria': ['name'],
+            'surface': 'portal',
+            'flagCount': 2,
+          },
+        ],
+      );
+      expect(jsonEncode(event).toLowerCase(), isNot(contains(high)));
+      // A search by no flag counts none.
+      await json(alex, 'POST', '/v1/patients/search', const {'name': 'Demo Wren', 'surface': 'portal'});
+      expect(server.serverAudit.last['details'], isNot(contains('flagCount')));
+    });
+
+    test(
+      'search refuses a hidden flag id with 403, logged and never naming it, and narrows by one the reader sees',
+      () async {
+        final audited = server.serverAudit.length;
+        await expectLater(
+          server.handle(casey, team, 'POST', '/v1/patients/search', {
+            'name': 'Demo Wren',
+            'surface': 'portal',
+            'flagIds': [flags['flag.pregnancy']],
+          }),
+          throwsA(
+            isA<ApiException>().having((e) => e.status, 'status', 403).having((e) => e.code, 'code', 'flag_hidden'),
+          ),
+        );
+        // Nothing was searched, so no search is logged.
+        expect(server.serverAudit, hasLength(audited));
+        for (final (user, flagId) in [(casey, flags['flag.frost_risk']!), (alex, flags['flag.pregnancy']!)]) {
+          expect(await hitsOf(user, [flagId]), [survivor]);
+        }
+      },
+    );
   });
 }
 
