@@ -504,6 +504,20 @@ describe('POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error
     expect(relations).toEqual([]);
     expect(answer.status).toBe(200);
   });
+
+  it('needs patients.edit of its author too, and logs the key', async () => {
+    const author = await memberOf(h, team.teamId, ['patients.view', 'patients.edit'], 'Flags editor');
+    const id = await madeBy(author, 'flag.low');
+    // The role loses patients.edit: the author alone may mark the change, and may not now.
+    await h.scratch.owner`
+      update sineobex.roles set permissions = ${['patients.view']}
+      where id = (select role_id from sineobex.team_memberships where user_id = ${author.userId})`;
+    const before = await auditMark(h);
+    expect((await markOf(author, otherPatient, id)).status).toBe(403);
+    const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
+    expect(denied!.details).toMatchObject({ permission: 'patients.edit' });
+    expect((await row(id))!.status).toBe('active');
+  });
 });
 
 describe('GET /v1/presets/flags', () => {
