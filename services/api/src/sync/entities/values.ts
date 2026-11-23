@@ -6,8 +6,9 @@ import { AnswerField, JsonValue } from '../records.ts';
 import { MAX_VERSION, type AnyRecordEntityName, type PatientEntityName } from '../schemas.ts';
 
 /**
- * The values patient-side changes carry (phase 3 design 2.1 and 2.8), and phase 4's sign-offs,
- * addenda, corrections and referrals (lifecycle 4.6, 4.7). Not OpenAPI components:
+ * The values patient-side changes carry (phase 3 design 2.1 and 2.8), phase 4's sign-offs,
+ * addenda, corrections and referrals (lifecycle 4.6, 4.7), and phase 5's flag changes (design 4.5,
+ * 6.2). Not OpenAPI components:
  * values travel as `value: unknown`, as EncounterCreate does. The phone mirrors these in
  * lib/sync/entities.dart, and packages/contract/test-vectors/sync-values.json pins both, and the
  * phone's fake server, to each other.
@@ -352,7 +353,28 @@ export const ReferralCreate = z
   })
   .strict();
 
-/** Alias removal, allergy, problem or referral entered in error: set once, with a reason. */
+/**
+ * A patient's flag set or cleared (phase 5 design 4.5, 6.2): one of the team's flags, and why. Its
+ * time is the change's, never later than its receipt. The reason's bounds are no part of the schema:
+ * a change the schema refuses stays on the phone for good (D51), so `reason_invalid` refuses it by
+ * name instead, and the phone sends it again with a new reason (Change the reason).
+ */
+export const FlagChangeCreate = z
+  .object({ patientId: Uuid, flagId: Uuid, action: z.enum(['set', 'clear']), reason: z.string() })
+  .strict();
+
+/** Longest reason a flag change takes, in code points, as the database counts it (0024). */
+export const FLAG_REASON_MAX = 500;
+
+/**
+ * `reason_invalid`: a flag change's reason is not trimmed, or holds no character or more than
+ * FLAG_REASON_MAX. Counted in code points, so an astral character is one, as the phone counts it
+ * (sync-values.json). The routes refuse a reason by the same rule.
+ */
+export const flagReasonInvalid = (reason: string): boolean =>
+  reason !== reason.trim() || reason.length === 0 || [...reason].length > FLAG_REASON_MAX;
+
+/** Alias removal, allergy, problem, referral or flag change entered in error: set once, with a reason. */
 export const Retraction = z.object({ reason: SyncReason }).strict();
 
 /** Most patients one offline audit entry may list: Show more displays up to SEARCH_MAX (50). */
@@ -462,11 +484,11 @@ export function livingProblem(v: z.infer<typeof LivingSituation> | null | undefi
 /**
  * The rules a parsed value breaks on its own, as the `details.problem` of a validation rejection:
  * `nothing_to_recognise` (a patient create with no name and no description), `birth_in_future`,
- * `living_other_text`, `referral_in_future`. `today` is the server's date (YYYY-MM-DD). Null when
- * the value is fine.
+ * `living_other_text`, `referral_in_future`, `reason_invalid` (a flag change's reason). `today` is
+ * the server's date (YYYY-MM-DD). Null when the value is fine.
  */
 export function valueProblem(
-  entity: PatientEntityName | 'referral',
+  entity: PatientEntityName | 'referral' | 'patient_flag_change',
   op: 'create' | 'set',
   field: string | undefined,
   value: unknown,
@@ -474,6 +496,10 @@ export function valueProblem(
 ): string | null {
   if (entity === 'referral') {
     return op === 'create' ? referralProblem(value as z.infer<typeof ReferralCreate>, today) : null;
+  }
+  if (entity === 'patient_flag_change') {
+    const v = value as z.infer<typeof FlagChangeCreate>;
+    return op === 'create' && flagReasonInvalid(v.reason) ? 'reason_invalid' : null;
   }
   if (entity !== 'patient') return null;
   if (op === 'create') {
@@ -558,6 +584,9 @@ export function valueParents(
     case 'referral':
       add('patient', v.patientId);
       add('encounter', v.encounterId);
+      break;
+    case 'patient_flag_change':
+      add('patient', v.patientId);
       break;
     case 'patient':
       break;

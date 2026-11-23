@@ -53,11 +53,30 @@ export const NOTE_LIFE_ENTITIES = ['note_signoff', 'note_addendum', 'note_correc
 /** Phase 4's referrals (lifecycle 4.7, 7): a patient's record, made and retracted as an allergy is. */
 export const REFERRAL_ENTITIES = ['referral'] as const;
 
+/**
+ * Phase 5's flag changes (design 4.5, 6.2): a patient's flag set or cleared, made once and marked
+ * entered in error once, as a referral is. Their values are checked in entities/values.ts.
+ */
+export const FLAG_ENTITIES = ['patient_flag_change'] as const;
+
 export const ChangeEntity = z
-  .enum([...ENCOUNTER_ENTITIES, 'audit', ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES, ...REFERRAL_ENTITIES])
+  .enum([
+    ...ENCOUNTER_ENTITIES,
+    'audit',
+    ...PATIENT_ENTITIES,
+    ...NOTE_LIFE_ENTITIES,
+    ...REFERRAL_ENTITIES,
+    ...FLAG_ENTITIES,
+  ])
   .openapi('ChangeEntity');
 export const RecordEntity = z
-  .enum([...ENCOUNTER_ENTITIES, ...PATIENT_ENTITIES, ...NOTE_LIFE_ENTITIES, ...REFERRAL_ENTITIES])
+  .enum([
+    ...ENCOUNTER_ENTITIES,
+    ...PATIENT_ENTITIES,
+    ...NOTE_LIFE_ENTITIES,
+    ...REFERRAL_ENTITIES,
+    ...FLAG_ENTITIES,
+  ])
   .openapi('RecordEntity');
 /** Every kind of record a change, a receipt or a snapshot can name. */
 export type AnyRecordEntityName = z.infer<typeof RecordEntity>;
@@ -361,6 +380,12 @@ export const Notice = z
         'The note a `signoff_not_applied` or `correction_not_applied` notice is about: its record is the held ' +
         'sign-off or correction, which no sync read gives, so a phone that never held it opens the note by ' +
         'this. Null for every other notice',
+    }),
+    patientId: Uuid.nullable().openapi({
+      description:
+        'The patient a `flag_change_not_applied` notice is about: its record is the flag change a held create ' +
+        'or Entered in error mark was for, which the phone let go of when it was held, so a phone opens the ' +
+        'chart by this. Null for every other notice',
     }),
     createdAt: DateTime,
     readAt: DateTime.nullable(),

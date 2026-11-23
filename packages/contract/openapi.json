@@ -504,7 +504,8 @@
           "note_signoff",
           "note_addendum",
           "note_correction",
-          "referral"
+          "referral",
+          "patient_flag_change"
         ],
         "type": "string"
       },
@@ -2969,6 +2970,14 @@
               "null"
             ]
           },
+          "patientId": {
+            "description": "The patient a `flag_change_not_applied` notice is about: its record is the flag change a held create or Entered in error mark was for, which the phone let go of when it was held, so a phone opens the chart by this. Null for every other notice",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "readAt": {
             "format": "date-time",
             "type": [
@@ -2990,6 +2999,7 @@
           "entity",
           "recordId",
           "noteId",
+          "patientId",
           "createdAt",
           "readAt"
         ],
@@ -4486,7 +4496,8 @@
           "note_signoff",
           "note_addendum",
           "note_correction",
-          "referral"
+          "referral",
+          "patient_flag_change"
         ],
         "type": "string"
       },

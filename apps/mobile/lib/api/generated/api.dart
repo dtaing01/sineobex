@@ -106,6 +106,7 @@ enum ChangeEntity {
   noteAddendum('note_addendum'),
   noteCorrection('note_correction'),
   referral('referral'),
+  patientFlagChange('patient_flag_change'),
 
   /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
   unknown('');
@@ -1066,6 +1067,7 @@ enum RecordEntity {
   noteAddendum('note_addendum'),
   noteCorrection('note_correction'),
   referral('referral'),
+  patientFlagChange('patient_flag_change'),
 
   /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
   unknown('');
@@ -4101,6 +4103,7 @@ class Notice {
     required this.id,
     required this.kind,
     required this.noteId,
+    required this.patientId,
     required this.readAt,
     required this.recordId,
   });
@@ -4111,6 +4114,8 @@ class Notice {
   final String kind;
   /// The note a `signoff_not_applied` or `correction_not_applied` notice is about: its record is the held sign-off or correction, which no sync read gives, so a phone that never held it opens the note by this. Null for every other notice
   final String? noteId;
+  /// The patient a `flag_change_not_applied` notice is about: its record is the flag change a held create or Entered in error mark was for, which the phone let go of when it was held, so a phone opens the chart by this. Null for every other notice
+  final String? patientId;
   final DateTime? readAt;
   final String? recordId;
 
@@ -4120,6 +4125,7 @@ class Notice {
         id: json['id'] as String,
         kind: json['kind'] as String,
         noteId: json['noteId'] == null ? null : json['noteId'] as String,
+        patientId: json['patientId'] == null ? null : json['patientId'] as String,
         readAt: json['readAt'] == null ? null : DateTime.parse(json['readAt'] as String),
         recordId: json['recordId'] == null ? null : json['recordId'] as String,
       );
@@ -4130,6 +4136,7 @@ class Notice {
         'id': id,
         'kind': kind,
         'noteId': noteId == null ? null : noteId!,
+        'patientId': patientId == null ? null : patientId!,
         'readAt': readAt == null ? null : readAt!.toUtc().toIso8601String(),
         'recordId': recordId == null ? null : recordId!,
       };
