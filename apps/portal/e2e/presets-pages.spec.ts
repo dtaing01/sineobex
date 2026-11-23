@@ -3881,7 +3881,7 @@ test.describe('Sineobex’s update, on an item’s page', () => {
     );
     await expect(offer('Demo: Mepilex border')).not.toContainText('Add it as a new one');
     await expect(take('Demo: Mepilex border').getByRole('button')).toHaveText([
-      'Replace with the new version',
+      'Replace with the new version of Demo: Mepilex border',
     ]);
     await expect(take('Demo: Mepilex border').getByLabel('Reason')).toHaveAccessibleDescription(
       'Don’t put patient names here.',
@@ -3889,7 +3889,7 @@ test.describe('Sineobex’s update, on an item’s page', () => {
     const review = (name: string) =>
       offer(name).getByRole('table', { name: `What taking the update changes in ${name}` });
     await expect(review('Demo: Mepilex border')).toBeHidden();
-    await offer('Demo: Mepilex border').getByText('Review', { exact: true }).click();
+    await offer('Demo: Mepilex border').locator('summary').click();
     const values = (name: string, lot: string): [string, string, string][] =>
       ITEM_FIELDS.map((field, i) => [
         field,
@@ -4114,7 +4114,7 @@ test.describe('Sineobex’s update, on a flag the team ranked', () => {
     await expect(page).toHaveTitle('Flag · Sineobex');
 
     const offer = page.getByRole('region', { name: `Update available for ${flag.name}` });
-    await offer.getByText('Review', { exact: true }).click();
+    await offer.locator('summary').click();
     const said = (criteria: string) => criteria || 'None';
     await expectReview(offer.getByRole('table', { name: `What taking the update changes in ${flag.name}` }), [
       ['Name', ranked.name, update!.body.name],
@@ -4177,7 +4177,7 @@ test.describe('Sineobex’s update, to the team’s settings', () => {
 
     const offer = page.getByRole('region', { name: `Update available for ${offered.name}` });
     await expect(offer).toContainText('Sineobex updated this preset. Your edited copy hasn’t changed.');
-    await offer.getByText('Review', { exact: true }).click();
+    await offer.locator('summary').click();
     const onOff = (on: boolean) => (on ? 'On' : 'Off');
     // Bag minimums' cases put the template back empty, as the platform's is.
     expect([offered.body.newBagMinimums, update.newBagMinimums]).toEqual([[], []]);
@@ -4220,7 +4220,7 @@ test.describe('Sineobex’s update, to the team’s settings', () => {
 
 test.describe('Sineobex’s update, to two categories nobody edited', () => {
   test.afterEach(noOfferLeft);
-  test('each offer says Sineobex updated the category, and says nothing of an edited copy, since nobody edited it', async ({
+  test('each offer says Sineobex updated the category, says nothing of an edited copy, since nobody edited it, and names its category in its controls', async ({
     page,
   }) => {
     const PAGE = '/team/presets/categories';
@@ -4245,7 +4245,16 @@ test.describe('Sineobex’s update, to two categories nobody edited', () => {
         'Sineobex updated this preset.',
       );
       await expect(offer).not.toContainText('Your edited copy');
+      // Its controls name the category after their words, so two offers on one page never read
+      // alike in a list of controls (review B, R-B10).
+      await expect(offer.locator('summary')).toHaveText(`Review Sineobex’s update to ${name}`);
+      await expect(
+        offer.getByRole('button', { name: `Replace with the new version of ${name}`, exact: true }),
+      ).toHaveCount(1);
     }
+    await expect(page.getByRole('button', { name: 'Replace with the new version', exact: true })).toHaveCount(
+      0,
+    );
     await expectAccessible(page, 'Categories, two offered an update');
     await expectReflow(page, 'Categories, two offered an update');
     await expectNothingStored(page, 'Categories, two offered an update');

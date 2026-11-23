@@ -164,7 +164,7 @@ describe('a flag’s page', () => {
     expect(html).toContain('<td>Red</td><td>Orange</td>');
     expect(html).toContain('<input type="hidden" name="back" value="/team/presets/flags"/>');
     expect(html).toContain('<input type="hidden" name="platformVersion" value="2"/>');
-    expect(html).toContain('Replace with the new version</button>');
+    expect(html).toContain('Replace with the new version<span class="sr-only"> of High</span></button>');
   });
 
   it('offers an update that would make it sensitive only as a new flag', () => {
@@ -181,7 +181,7 @@ describe('a flag’s page', () => {
     expect(html).toContain(
       'This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.',
     );
-    expect(html).toContain('Add as new</button>');
+    expect(html).toContain('Add as new<span class="sr-only">: Pregnancy</span></button>');
     expect(html).toContain(
       '<th scope="row">Sensitive <span class="sx-pill sx-pill--info">Changes</span></th>',
     );

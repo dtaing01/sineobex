@@ -166,7 +166,9 @@ describe('the mappings', () => {
     expect(rash).toContain(
       '<th scope="row">Items <span class="sx-pill sx-pill--info">Changes</span></th><td><ul class="px-list"><li>Demo: Hydrocortisone cream × 1 per patient</li></ul></td><td><ul class="px-list"><li>Demo: Hydrocortisone cream × 2 per patient</li></ul></td>',
     );
-    expect(rash).toContain('Replace with the new version</button>');
+    expect(rash).toContain(
+      'Replace with the new version<span class="sr-only"> of Demo: Rash or dermatitis</span></button>',
+    );
   });
 
   it('says so when the team holds none, and lists the removed ones with Restore', () => {

@@ -128,7 +128,9 @@ describe('a bundle’s page', () => {
       '<th scope="row">Ask before applying <span class="sx-pill sx-pill--info">Changes</span></th>',
     );
     expect(html).toContain('<input type="hidden" name="back" value="/team/presets/bundles"/>');
-    expect(html).toContain('Replace with the new version</button>');
+    expect(html).toContain(
+      'Replace with the new version<span class="sr-only"> of Basic wound care</span></button>',
+    );
   });
 
   it('says a removed bundle is removed, and offers Restore instead of its form', () => {

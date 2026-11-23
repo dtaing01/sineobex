@@ -22,9 +22,11 @@ export interface Offer {
 
 /**
  * Review: the update's body beside the copy's. A take refused stale reloads the page, and the review
- * opens on what is on offer now, so the person sees it before they take it (8.1).
+ * opens on what is on offer now, so the person sees it before they take it (8.1). Named for its
+ * preset after its visible word, as every control a list repeats per preset is, so a list of two
+ * offers never reads two Reviews alike.
  */
-function Review({ children }: { children: ReactNode }) {
+function Review({ name, children }: { name: string; children: ReactNode }) {
   const state = useFormState();
   // The person's own toggle holds until the form's next answer; a refusal then opens the review.
   const [toggled, setToggled] = useState<{ open: boolean; at: ActionState } | null>(null);
@@ -36,7 +38,9 @@ function Review({ children }: { children: ReactNode }) {
       open={open}
       onToggle={(e) => setToggled({ open: e.currentTarget.open, at: state })}
     >
-      <summary>Review</summary>
+      <summary>
+        Review<span className="sr-only"> Sineobex’s update to {name}</span>
+      </summary>
       {children}
     </details>
   );
@@ -106,7 +110,7 @@ export function OfferForm({
                 : 'Sineobex updated this preset.'}
             </p>
             {offer.asNew && <p>{PRESET_SENTENCES.updateChangesFixed}</p>}
-            <Review>{review}</Review>
+            <Review name={name}>{review}</Review>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={id} />
             {/* The version shown and the version offered, as the review was opened. */}
@@ -116,7 +120,17 @@ export function OfferForm({
             {back && <input type="hidden" name="back" value={back} />}
             <ReasonBox />
             <div className="px-actions">
-              <SubmitButton>{offer.asNew ? 'Add as new' : 'Replace with the new version'}</SubmitButton>
+              <SubmitButton>
+                {offer.asNew ? (
+                  <>
+                    Add as new<span className="sr-only">: {name}</span>
+                  </>
+                ) : (
+                  <>
+                    Replace with the new version<span className="sr-only"> of {name}</span>
+                  </>
+                )}
+              </SubmitButton>
             </div>
           </>
         ) : (

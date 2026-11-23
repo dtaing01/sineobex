@@ -50,8 +50,13 @@ describe('the update offer', () => {
     const html = offer(flag());
     expect(html).toContain('Update available<span class="sr-only"> for Frost risk</span>');
     expect(html).toContain('<p>Sineobex updated this preset. Your edited copy hasn’t changed.</p>');
-    expect(html).toContain('<summary>Review</summary>');
-    expect(html).toContain('Replace with the new version</button>');
+    // Each control names its preset after its visible words (WCAG 2.5.3), as Edit and Remove do.
+    expect(html).toContain(
+      '<summary>Review<span class="sr-only"> Sineobex’s update to Frost risk</span></summary>',
+    );
+    expect(html).toContain(
+      'Replace with the new version<span class="sr-only"> of Frost risk</span></button>',
+    );
     expect(html).not.toContain('Add as new');
     expect(html).toContain('aria-label="Take Sineobex’s update to Frost risk"');
     expect(html).toContain('<label for="take-' + FLAG + '-reason">Reason</label>');
@@ -112,7 +117,7 @@ describe('the update offer', () => {
     expect(html).toContain(
       '<p>This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.</p>',
     );
-    expect(html).toContain('Add as new</button>');
+    expect(html).toContain('Add as new<span class="sr-only">: Frost risk</span></button>');
     expect(html).not.toContain('Replace with the new version');
     expect(hidden(html, 'asNew')).toContain('value="true"');
     expect(hidden(html, 'back')).toContain('value="/team/presets/flags"');

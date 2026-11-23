@@ -185,7 +185,9 @@ describe('an item’s page', () => {
     );
     expect(html).toContain('<input type="hidden" name="platformVersion" value="3"/>');
     expect(html).toContain('<input type="hidden" name="back" value="/team/presets/items"/>');
-    expect(html).toContain('Replace with the new version</button>');
+    expect(html).toContain(
+      'Replace with the new version<span class="sr-only"> of Demo: Wool socks</span></button>',
+    );
   });
 
   it('says a removed item is removed, and offers Restore instead of its form', () => {
