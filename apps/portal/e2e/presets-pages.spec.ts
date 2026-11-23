@@ -4461,6 +4461,63 @@ test.describe('a preset’s history and the review of its update, at 320 px', ()
   });
 });
 
+test.describe('a list of lines or of boxes, by keyboard', () => {
+  test('Add moves focus to the new line or box, and Take out to the one that takes its place, else the one before it, else Add', async ({
+    page,
+  }) => {
+    await signIn(page, 'admin@example.com');
+    const press = async (button: Locator) => {
+      await button.focus();
+      await page.keyboard.press('Enter');
+    };
+
+    // A bundle's lines: each Item select its line's first control.
+    await page.goto('/team/presets/bundles');
+    const bundle = page.getByRole('form', { name: 'Add a bundle' });
+    const addLine = bundle.getByRole('button', { name: 'Add an item' });
+    const item = (n: number) =>
+      bundle.getByRole('group', { name: `Line ${n}`, exact: true }).getByLabel('Item');
+    for (const n of [1, 2, 3]) {
+      await press(addLine);
+      await expect(item(n)).toBeFocused();
+      await item(n).selectOption({ index: n });
+    }
+    const third = await item(3).inputValue();
+    await press(bundle.getByRole('button', { name: 'Take out line 2', exact: true }));
+    await expect(item(2)).toBeFocused();
+    await expect(item(2)).toHaveValue(third);
+    await press(bundle.getByRole('button', { name: 'Take out line 2', exact: true }));
+    await expect(item(1)).toBeFocused();
+    await press(bundle.getByRole('button', { name: 'Take out line 1', exact: true }));
+    await expect(addLine).toBeFocused();
+
+    // A test's options.
+    await page.goto('/team/presets/items');
+    const test_ = page.getByRole('form', { name: 'Add an item' });
+    await test_.getByRole('radio', { name: 'A choice from a list' }).check();
+    const options = test_.getByRole('group', { name: 'Options' });
+    const option = (n: number) => options.getByLabel(`Option ${n}`, { exact: true });
+    await press(options.getByRole('button', { name: 'Add an option' }));
+    await expect(option(3)).toBeFocused();
+    for (const n of [1, 2, 3]) await option(n).fill(`Demo: answer ${n}`);
+    await press(options.getByRole('button', { name: 'Take out option 2', exact: true }));
+    await expect(option(2)).toBeFocused();
+    await expect(option(2)).toHaveValue('Demo: answer 3');
+
+    // A mapping's condition codes.
+    await page.goto('/team/presets/condition-supplies');
+    const mapping = page.getByRole('form', { name: 'Add a mapping' });
+    const code = (n: number) => mapping.getByLabel(`Condition code ${n}`, { exact: true });
+    await press(mapping.getByRole('button', { name: 'Add a code' }));
+    await expect(code(2)).toBeFocused();
+    await press(mapping.getByRole('button', { name: 'Take out condition code 2', exact: true }));
+    await expect(code(1)).toBeFocused();
+    await press(mapping.getByRole('button', { name: 'Take out condition code 1', exact: true }));
+    await expect(mapping.getByRole('button', { name: 'Add a code' })).toBeFocused();
+    await expectNothingStored(page, 'Lines and boxes by keyboard');
+  });
+});
+
 test.describe('an item the template for new bags holds', () => {
   test('its page says the template uses it, and Remove is refused while the template holds it', async ({
     page,

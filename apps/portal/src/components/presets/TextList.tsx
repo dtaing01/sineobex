@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFieldId, useFormState } from '@/components/ActionForm';
 import { answerKey } from './answer';
 import styles from './presets.module.css';
@@ -70,6 +70,25 @@ function Texts({
   const [texts, setTexts] = useState<Text[]>(() => start.map(textOf));
   const id = useFieldId(name);
   const error = state.fieldErrors?.[name];
+  // Where focus goes once the boxes are drawn again, as ItemLines does: a box by its place, or Add.
+  const focusNext = useRef<number | 'add' | null>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const next = focusNext.current;
+    focusNext.current = null;
+    if (next === null) return;
+    (next === 'add' ? addButton.current : document.getElementById(`${id}.${next}`))?.focus();
+  }, [texts, id]);
+  const takeOut = (key: number) => {
+    const i = texts.findIndex((t) => t.key === key);
+    const left = texts.length - 1;
+    focusNext.current = left === 0 ? 'add' : Math.min(i, left - 1);
+    setTexts((now) => now.filter((t) => t.key !== key));
+  };
+  const add = () => {
+    focusNext.current = texts.length;
+    setTexts((now) => [...now, textOf('')]);
+  };
   return (
     <fieldset
       id={id}
@@ -95,7 +114,7 @@ function Texts({
               label={`${entry} ${i + 1}`}
               text={text.text}
               warning={`${id}-warning`}
-              onTakeOut={() => setTexts((now) => now.filter((t) => t.key !== text.key))}
+              onTakeOut={() => takeOut(text.key)}
             />
           </li>
         ))}
@@ -105,11 +124,7 @@ function Texts({
       </p>
       {texts.length < max && (
         <div className="px-actions">
-          <button
-            type="button"
-            className="sx-btn sx-btn--secondary"
-            onClick={() => setTexts((now) => [...now, textOf('')])}
-          >
+          <button ref={addButton} type="button" className="sx-btn sx-btn--secondary" onClick={add}>
             {addLabel}
           </button>
         </div>
