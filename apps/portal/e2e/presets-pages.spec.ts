@@ -3988,6 +3988,66 @@ test.describe('Sineobex’s update, on an item’s page', () => {
     await expectNothingStored(page, 'A take refused once the update has gone');
     expectOnlyIds(traffic.addresses);
   });
+
+  test('a take refused for its reason keeps the versions it was opened at, so another admin’s change meanwhile is refused stale, never taken unseen', async ({
+    page,
+  }) => {
+    // Review A's D: the copy at version 2, offered Sineobex's version 1, its review open.
+    const pad = await named<ItemBody>('item', 'Hydrocolloid');
+    const shown = await changedMeanwhile<ItemBody>('item', pad.id, (b) => ({
+      ...b,
+      name: 'Demo: Hydrocolloid pad',
+    }));
+    offerPlatformVersion('item', pad.id);
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(`${LIST}/${pad.id}`);
+    const offer = (name: string) => page.getByRole('region', { name: `Update available for ${name}` });
+    const take = (name: string) => page.getByRole('form', { name: `Take Sineobex’s update to ${name}` });
+    const sent = (name: string, field: string) => take(name).locator(`input[type="hidden"][name="${field}"]`);
+    await offer('Demo: Hydrocolloid pad').locator('summary').click();
+    await expect(sent('Demo: Hydrocolloid pad', 'baseVersion')).toHaveValue(String(shown));
+    await expect(sent('Demo: Hydrocolloid pad', 'platformVersion')).toHaveValue('1');
+
+    // Another admin edits the copy; the take, sent without a reason, is refused for the reason
+    // alone, and the page is read again: the form still holds the versions the review was opened at.
+    const theirs = await changedMeanwhile<ItemBody>('item', pad.id, (b) => ({
+      ...b,
+      name: 'Demo: Hydrocolloid sheet',
+    }));
+    await take('Demo: Hydrocolloid pad')
+      .getByRole('button', { name: 'Replace with the new version' })
+      .click();
+    const form = take('Demo: Hydrocolloid sheet');
+    await expect(form.getByRole('alert')).toContainText('Give a reason of 3 to 300 characters.');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Hydrocolloid sheet');
+    await expect(sent('Demo: Hydrocolloid sheet', 'baseVersion')).toHaveValue(String(shown));
+    await expect(sent('Demo: Hydrocolloid sheet', 'platformVersion')).toHaveValue('1');
+
+    // With a reason, it is refused stale: the other admin's version is never replaced unseen.
+    await form.getByLabel('Reason').fill('Demo: Sineobex’s dressing again');
+    await form.getByRole('button', { name: 'Replace with the new version' }).click();
+    await expect(form.getByRole('alert')).toHaveText(TAKE_STALE.copyChanged);
+    expect(await offeredOf<ItemBody>('item', pad.id)).toMatchObject({
+      name: 'Demo: Hydrocolloid sheet',
+      version: theirs,
+      updateOnOffer: true,
+    });
+    expect((await historyOf('item', pad.id)).filter((e) => e.act === 'update_taken')).toEqual([]);
+    // Refused stale, the form follows the page, so the next take sends what the review shows now.
+    await expect(sent('Demo: Hydrocolloid sheet', 'baseVersion')).toHaveValue(String(theirs));
+    await expect(form.getByLabel('Reason')).toHaveValue('Demo: Sineobex’s dressing again');
+    await form.getByRole('button', { name: 'Replace with the new version' }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}\\?done=updated&preset=${pad.id}$`));
+    expect((await historyOf('item', pad.id)).map((e) => [e.act, e.version])).toEqual([
+      ['installed', 1],
+      ['updated', shown],
+      ['updated', theirs],
+      ['update_taken', theirs + 1],
+    ]);
+    await expectNothingStored(page, 'A take refused for its reason, then stale, then taken');
+    expectOnlyIds(traffic.addresses);
+  });
 });
 
 test.describe('Sineobex’s update, on a flag the team ranked', () => {
