@@ -10,7 +10,7 @@ import {
 import type { TeamScope } from '../auth/context.ts';
 import { mayViewProblems, type Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
-import { flagChangeShown, flagHidden, type TeamFlag } from '../sync/read-rules.ts';
+import { flagChangeShown, flagHidden, teamFlags, type TeamFlag } from '../sync/read-rules.ts';
 import { snapshot, type StoredRecord } from '../sync/records.ts';
 import type { BirthValue } from './matching.ts';
 import type {
@@ -93,6 +93,31 @@ export function flagsReader(
   const refs: Record<string, FlagRef> = Object.fromEntries(flags);
   const hidden = (flag: FlagRef) => flagHidden(permissions, flag);
   return (changes) => currentFlags({ changes, flags: refs, hidden });
+}
+
+/**
+ * The current flags of each of these groups as the caller may see them (flagsReader), by canonical
+ * ID, every group asked for included: the team index's entries and search's filter read them. Flag
+ * IDs only: nothing of a change's reason is read.
+ */
+export async function currentFlagsOf(
+  tx: Tx,
+  scope: TeamScope,
+  canonicalIds: readonly string[],
+): Promise<Map<string, CurrentFlags>> {
+  const out = new Map<string, CurrentFlags>();
+  if (canonicalIds.length === 0) return out;
+  const rows = await tx<(FlagChangeRef & { groupId: string })[]>`
+    select p.canonical_id as group_id, f.id, f.flag_id, f.action, f.effective_at,
+           f.status = 'entered_in_error' as entered_in_error
+    from sineobex.patient_flag_changes f
+    join sineobex.patients p on p.team_id = f.team_id and p.id = f.patient_id
+    where f.team_id = sineobex.current_team_id() and p.canonical_id = any (${[...canonicalIds]}::uuid[])`;
+  const changes = new Map<string, FlagChangeRef[]>();
+  for (const { groupId, ...change } of rows) changes.set(groupId, [...(changes.get(groupId) ?? []), change]);
+  const fold = flagsReader(scope.team.permissions, await teamFlags(tx, scope.team.teamId));
+  for (const id of canonicalIds) out.set(id, fold(changes.get(id) ?? []));
+  return out;
 }
 
 // The platform's window, for a team that holds no settings preset yet: the one the installer would

@@ -3391,6 +3391,7 @@ class IndexEntry {
     required this.allergyScreen,
     required this.birth,
     required this.duplicate,
+    this.flags,
     required this.idLinks,
     required this.lastSeenOn,
     required this.patientId,
@@ -3406,6 +3407,7 @@ class IndexEntry {
   final AllergyScreen allergyScreen;
   final BirthView? birth;
   final IndexDuplicateHint? duplicate;
+  final IndexFlags? flags;
   final List<IndexEntryIdLinksItem> idLinks;
   /// A calendar date, YYYY-MM-DD
   final String? lastSeenOn;
@@ -3423,6 +3425,7 @@ class IndexEntry {
         allergyScreen: AllergyScreen.fromJson(json['allergyScreen'] as String),
         birth: json['birth'] == null ? null : BirthView.fromJson(json['birth'] as Map<String, dynamic>),
         duplicate: json['duplicate'] == null ? null : IndexDuplicateHint.fromJson(json['duplicate'] as Map<String, dynamic>),
+        flags: json['flags'] == null ? null : IndexFlags.fromJson(json['flags'] as Map<String, dynamic>),
         idLinks: (json['idLinks'] as List<dynamic>).map((e) => IndexEntryIdLinksItem.fromJson(e as Map<String, dynamic>)).toList(),
         lastSeenOn: json['lastSeenOn'] == null ? null : json['lastSeenOn'] as String,
         patientId: json['patientId'] as String,
@@ -3439,6 +3442,7 @@ class IndexEntry {
         'allergyScreen': allergyScreen.toJson(),
         'birth': birth == null ? null : birth!.toJson(),
         'duplicate': duplicate == null ? null : duplicate!.toJson(),
+        if (flags != null) 'flags': flags!.toJson(),
         'idLinks': idLinks.map((e) => e.toJson()).toList(),
         'lastSeenOn': lastSeenOn == null ? null : lastSeenOn!,
         'patientId': patientId,
@@ -3549,6 +3553,29 @@ class IndexEntryVersions {
         'preferredName': preferredName,
         'usualArea': usualArea,
         'visualDescriptor': visualDescriptor,
+      };
+}
+
+/// The patient’s current flags by ID, as the reader may see them: a sensitive one only under idx1+sens. Sent with every entry; an entry without it, kept from before, holds none
+class IndexFlags {
+  const IndexFlags({
+    required this.primary,
+    required this.secondary,
+  });
+
+  /// The risk level, or none
+  final String? primary;
+  /// The conditions, by rank, then name, then ID
+  final List<String> secondary;
+
+  factory IndexFlags.fromJson(Map<String, dynamic> json) => IndexFlags(
+        primary: json['primary'] == null ? null : json['primary'] as String,
+        secondary: (json['secondary'] as List<dynamic>).map((e) => e as String).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'primary': primary == null ? null : primary!,
+        'secondary': secondary.map((e) => e).toList(),
       };
 }
 
@@ -6701,6 +6728,7 @@ class TeamIndexPage {
   final List<IndexEntry> entries;
   final DateTime generatedAt;
   final String? next;
+  /// idx1, or idx1+sens for a reader who sees sensitive flags: another copy, sent whole
   final String projection;
   /// First page only: the team’s complete list
   final List<PatientRedirect> redirects;
