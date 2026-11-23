@@ -28,9 +28,8 @@ const entityCorrection = 'note_correction';
 const entityReferral = 'referral';
 
 /// Phase 5's flag change (design 4.5, 6.2): a patient's flag set or cleared, with a reason, created
-/// once and marked entered in error at most once. Written ahead of P5-phone-entity, which makes it
-/// the server's entity name and registers its rules below.
-String get entityFlagChange => throw UnimplementedError('P5-phone-entity');
+/// once and marked entered in error at most once.
+const entityFlagChange = 'patient_flag_change';
 
 /// How two values for one field are reconciled on the server (design 2.4).
 enum FieldClass { draft, keepBoth, identity, status, setOnce }
@@ -365,7 +364,8 @@ final _idLinkCreate = _object({
   'reason': _req(_oneOf(idLinkReasons)),
 });
 
-/// Alias removal, allergy, problem or referral entered in error: set once, with a reason.
+/// Alias removal, allergy, problem, referral or flag change entered in error: set once, with a
+/// reason.
 final _retraction = _object({'reason': _req(_syncReason)});
 
 /// Most patients one offline audit entry may list: Show more displays up to SEARCH_MAX (50).
@@ -531,6 +531,28 @@ final _referralCreate = _object({
   'encounterId': _req(_nullable(_uuid)),
 });
 
+// Phase 5's flag change (services/api/src/sync/entities/values.ts, design 4.5 and 6.2).
+
+/// A patient's flag set or cleared: one of the team's flags, and why. The reason's bounds are no
+/// part of the schema: a change the schema refuses stays on the phone for good (D51), so a reason
+/// [flagReasonInvalid] refuses is answered by name (`reason_invalid`). The store refuses one before
+/// it is queued, and the server's refusal is settled by Change the reason.
+final _flagChangeCreate = _object({
+  'patientId': _req(_uuid),
+  'flagId': _req(_uuid),
+  'action': _req(_oneOf({'set', 'clear'})),
+  'reason': _req(_string()),
+});
+
+/// Longest reason a flag change takes, in code points, as the database counts it (0024).
+const flagReasonMax = 500;
+
+/// `reason_invalid`: a flag change's reason is not trimmed, or holds no character or more than
+/// [flagReasonMax]. Counted in code points, as the server counts them (`[...reason]`): an astral
+/// character is one, where [String.length] would count it twice.
+bool flagReasonInvalid(String reason) =>
+    reason != reason.trim() || reason.isEmpty || reason.runes.length > flagReasonMax;
+
 // ------------------------------------------------------------------------------------------------
 // Rules a value breaks on its own (values.ts valueProblem)
 // ------------------------------------------------------------------------------------------------
@@ -635,11 +657,15 @@ class EntityRules {
 
   /// The rule a valid value breaks on its own, as the server's `details.problem`: a patient create
   /// with nothing to recognise, a birth in the future, Other without its text, a referral dated
-  /// ahead. [today] is the date the rule is checked on (the server's; the phone's corrected date
-  /// before it sends).
+  /// ahead, a flag change's reason. [today] is the date the rule is checked on (the server's; the
+  /// phone's corrected date before it sends).
   String? valueProblem(String op, String? field, Object? value, String today) {
     if (entity == entityReferral) {
       return op == 'create' ? referralProblem(value! as Map<String, Object?>, today) : null;
+    }
+    if (entity == entityFlagChange) {
+      final reason = op == 'create' ? (value! as Map<String, Object?>)['reason'] : null;
+      return reason is String && flagReasonInvalid(reason) ? 'reason_invalid' : null;
     }
     if (entity != entityPatient) return null;
     if (op == 'create') {
@@ -674,7 +700,10 @@ class EntityRules {
   String? statusAfter(String field, Object? value) {
     if (field == 'status') return value is Map<String, Object?> ? value['status'] as String? : value as String?;
     if (field == 'removal') return 'removed';
-    if (field == 'enteredInError' && (entity == entityAllergy || entity == entityReferral)) return 'entered_in_error';
+    if (field == 'enteredInError' &&
+        (entity == entityAllergy || entity == entityReferral || entity == entityFlagChange)) {
+      return 'entered_in_error';
+    }
     return null;
   }
 
@@ -687,7 +716,8 @@ class EntityRules {
     entityConsent ||
     entityProblem ||
     entityIdLink ||
-    entityReferral => value['patientId'] as String?,
+    entityReferral ||
+    entityFlagChange => value['patientId'] as String?,
     _ => null,
   };
 
@@ -911,6 +941,24 @@ final Map<String, EntityRules> _registry = {
     fields: {'enteredInError': (_retraction, FieldClass.setOnce)},
     permission: (_, _) => 'referrals.create',
     parents: (v) => _refs([(entityPatient, v['patientId']), (entityEncounter, v['encounterId'])]),
+  ),
+  // Phase 5 (design 4.5, 6.2): as a referral, never overwritten, and marked entered in error once,
+  // with a reason, by its author or a Program Admin (the server's mayChange; anyone else is held). The
+  // server sets its time, so the phone keeps the value it sent.
+  entityFlagChange: EntityRules._(
+    entity: entityFlagChange,
+    category: 'patients',
+    // PLAN-OPEN (PL-24): do a patient's flag changes pause with the clock? Yes: they are ordered by
+    // their own time, as ID link conflicts are (D35), so one made while the clock is off could take
+    // the wrong place among them.
+    pausesWithClock: true,
+    patientSide: true,
+    create: _flagChangeCreate,
+    fields: {'enteredInError': (_retraction, FieldClass.setOnce)},
+    // PLAN-OPEN (BM-69): who may flag a patient? Whoever holds patients.edit, the key that edits the
+    // chart; its mark needs the same, as the server's entity says.
+    permission: (_, _) => _edit,
+    parents: (v) => _refs([(entityPatient, v['patientId'])]),
   ),
 };
 
