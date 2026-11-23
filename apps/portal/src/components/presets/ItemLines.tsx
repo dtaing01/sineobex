@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFieldId, useFormState } from '@/components/ActionForm';
 import type { LineQuantity } from '@/lib/presets';
 import { answerKey } from './answer';
@@ -104,6 +104,28 @@ function Lines({
   const [rows, setRows] = useState<Row[]>(() => start.map(rowOf));
   const groupId = useFieldId(name);
   const error = state.fieldErrors?.[name];
+  // Where focus goes once the lines are drawn again: a line's Item select, by its place, or the
+  // Add button. A line taken out takes its focused button with it, which would leave focus on the
+  // page; a line added is where the person goes next.
+  const focusNext = useRef<number | 'add' | null>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const next = focusNext.current;
+    focusNext.current = null;
+    if (next === null) return;
+    (next === 'add' ? addButton.current : document.getElementById(`${groupId}.${next}.itemId`))?.focus();
+  }, [rows, groupId]);
+  const takeOut = (key: number) => {
+    const i = rows.findIndex((r) => r.key === key);
+    const left = rows.length - 1;
+    // The line that takes its place, else the one before it, else Add.
+    focusNext.current = left === 0 ? 'add' : Math.min(i, left - 1);
+    setRows((now) => now.filter((r) => r.key !== key));
+  };
+  const add = () => {
+    focusNext.current = rows.length;
+    setRows((now) => [...now, rowOf({ itemId: '', quantity: 1, ...(core ? { core: true } : {}) })]);
+  };
   return (
     <fieldset
       id={groupId}
@@ -139,7 +161,7 @@ function Lines({
                 items={items}
                 quantity={quantity}
                 core={core}
-                onTakeOut={() => setRows((now) => now.filter((r) => r.key !== row.key))}
+                onTakeOut={() => takeOut(row.key)}
               />
             </li>
           ))}
@@ -147,13 +169,7 @@ function Lines({
       )}
       {rows.length < max && (
         <div className="px-actions">
-          <button
-            type="button"
-            className="sx-btn sx-btn--secondary"
-            onClick={() =>
-              setRows((now) => [...now, rowOf({ itemId: '', quantity: 1, ...(core ? { core: true } : {}) })])
-            }
-          >
+          <button ref={addButton} type="button" className="sx-btn sx-btn--secondary" onClick={add}>
             Add an item
           </button>
         </div>
