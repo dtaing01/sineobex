@@ -5745,4 +5745,480 @@ void main() {
       expect(second.presets, isNotEmpty);
     });
   });
+
+  // Phase 5's flag changes (design 4.5, 6.2, 6.3): every row of 6.2, each case named as
+  // services/api/test/sync-flag-change.test.ts names the API's own, so the two read side by side. Not
+  // mirrored, as the fake's header says: the team lock, the audit events and the review queue itself;
+  // a notice's shape is (6.3). Written ahead of P5-fake: each case fails until it lands. Alex and
+  // Dana are Healthcare Staff, who see sensitive flags; Blair holds no patients.edit; Casey is the
+  // CHW preset, who sees no sensitive flag; the admin manages the team's people (team.manage_users).
+  group('phase 5: flag changes (design 6.2)', () {
+    const otherTeam = '6b2a1d3f-9c8e-4f7b-8d4c-2e3f4a5b6c7d';
+    const reason = 'Demo: missed two follow-ups this month';
+    const markReason = 'Demo: set on the wrong patient';
+    const ice = '\u{1F9CA}';
+    late Map<String, String> flags;
+    late String patientA;
+    late String patientB;
+    // Merged into A: one person, two records.
+    late String patientC;
+
+    Map<String, Object?> flagBody(String name, String tier, String color, int rank, {Object? sensitive = false}) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': sensitive,
+    };
+
+    setUp(() async {
+      for (final user in [alex, blair, casey, dana, admin]) {
+        await register(user, 'dev-$user');
+      }
+      server.permissions
+        ..[blair] = const {'patients.view', 'billing.view_codes', 'inventory.view'}
+        ..[casey] = FakeSyncServer.chw
+        ..[admin] = {...FakeSyncServer.healthcareStaff, 'team.manage_users'};
+      flags = {
+        for (final (key, body) in [
+          ('flag.high', flagBody('High', 'primary', 'red', 10)),
+          ('flag.medium', flagBody('Medium', 'primary', 'yellow', 20)),
+          ('flag.low', flagBody('Low', 'primary', 'green', 30)),
+          ('flag.frost_risk', flagBody('Frost risk', 'secondary', 'blue', 10)),
+          ('flag.dehydration_risk', flagBody('Dehydration risk', 'secondary', 'orange', 20)),
+          ('flag.pregnancy', flagBody('Pregnancy', 'secondary', 'purple', 30, sensitive: true)),
+        ])
+          key: server.addPreset(team, 'flag', body, originKey: key),
+      };
+      patientA = server.seedPatient(preferredName: 'Demo Ash');
+      patientB = server.seedPatient(preferredName: 'Demo Birch');
+      patientC = server.seedPatient(preferredName: 'Demo Ash two');
+      server.merge(patientC, patientA);
+    });
+
+    Future<List<Map<String, Object?>>> send(String user, List<Map<String, Object?>> changes) async =>
+        results(await push(user, 'dev-$user', changes));
+
+    Map<String, Object?> flagChange(
+      String patientId,
+      String flagId, {
+      String action = 'set',
+      Object? why = reason,
+      String? recordId,
+      Map<String, Object?> more = const {},
+    }) => change(
+      entityFlagChange,
+      'create',
+      {'patientId': patientId, 'flagId': flagId, 'action': action, 'reason': why},
+      recordId: recordId,
+      more: more,
+    );
+
+    Map<String, Object?> markOf(String changeId, [String why = markReason, Map<String, Object?> more = const {}]) =>
+        change(entityFlagChange, 'set', {'reason': why}, recordId: changeId, field: 'enteredInError', more: more);
+
+    Map<String, Object?> taken(Map<String, Object?> c, [int serverVersion = 1]) => {
+      'changeId': c['changeId'],
+      'status': 'accepted',
+      'serverVersion': serverVersion,
+      'hash': c['valueHash'],
+    };
+
+    Matcher refusedAs(String reason, Map<String, Object?> details) =>
+        allOf(containsPair('status', 'rejected'), containsPair('reason', reason), containsPair('details', details));
+
+    Map<String, Object?> heldFor(Map<String, Object?> c, [String why = 'permission']) => {
+      'changeId': c['changeId'],
+      'status': 'rejected',
+      'reason': why,
+      'message': 'rejected: $why',
+      'quarantined': true,
+      'hash': c['valueHash'],
+    };
+
+    String idOf(Map<String, Object?> c) => c['recordId']! as String;
+
+    /// The server's notices about [recordId], through its own route: kinds, entities and IDs only.
+    Future<List<Map<String, Object?>>> noticesAbout(String user, String recordId) async => [
+      for (final n
+          in ((await server.handle(user, team, 'GET', '/v1/team/notices', null))! as List<Object?>)
+              .cast<Map<String, Object?>>())
+        if (n['recordId'] == recordId) n,
+    ];
+
+    test(
+      'is taken from anyone who holds patients.edit, at its own time, and logged in its transaction without its reason',
+      () async {
+        final deviceTime = now.subtract(const Duration(hours: 1)).toIso8601String();
+        final correctedTime = now.subtract(const Duration(minutes: 59, seconds: 56)).toIso8601String();
+        final made = flagChange(
+          patientA,
+          flags['flag.high']!,
+          more: {'deviceTime': deviceTime, 'correctedTime': correctedTime},
+        );
+        final answer = await send(alex, [made]);
+        expect(answer, [taken(made)]);
+        final row = server.records[idOf(made)]!;
+        expect([row.entity, row.status, row.author, row.patientId], [entityFlagChange, 'active', alex, patientA]);
+        expect(row.attributes, {
+          'patientId': patientA,
+          'flagId': flags['flag.high'],
+          'action': 'set',
+          'reason': reason,
+          // The corrected time, earlier than the receipt (4.5).
+          'effectiveAt': correctedTime,
+          'clockVerified': true,
+        });
+        expect(row.fields['enteredInError']?.value, isNull);
+        // Its one field is the mark: the create writes no history of its own.
+        expect(server.history.where((h) => h['recordId'] == idOf(made)), isEmpty);
+        // Sent again, it answers from its receipt.
+        expect(await send(alex, [made]), answer);
+      },
+    );
+
+    test(
+      'a clear and a condition are taken as a set is, each event naming its tier; a merged patient is stored as sent',
+      () async {
+        final clear = flagChange(patientA, flags['flag.medium']!, action: 'clear');
+        final frost = flagChange(patientC, flags['flag.frost_risk']!);
+        expect(await send(alex, [clear]), [taken(clear)]);
+        expect(await send(dana, [frost]), [taken(frost)]);
+        expect(server.records[idOf(clear)]!.attributes['action'], 'clear');
+        expect([server.records[idOf(frost)]!.patientId, server.records[idOf(frost)]!.author], [patientC, dana]);
+      },
+    );
+
+    test('is never later than the server’s receipt: a phone clock ahead is taken at the receipt', () async {
+      final ahead = flagChange(
+        patientB,
+        flags['flag.low']!,
+        more: {'deviceTime': now.add(const Duration(days: 1)).toIso8601String(), 'clockVerified': false},
+      );
+      final correctedAhead = flagChange(
+        patientB,
+        flags['flag.medium']!,
+        more: {'correctedTime': now.add(const Duration(hours: 1)).toIso8601String()},
+      );
+      expect(await send(alex, [ahead, correctedAhead]), [taken(ahead), taken(correctedAhead)]);
+      for (final c in [ahead, correctedAhead]) {
+        expect(server.records[idOf(c)]!.attributes['effectiveAt'], now.toIso8601String());
+      }
+      expect(server.records[idOf(ahead)]!.attributes['clockVerified'], isFalse);
+    });
+
+    test('held for review, it takes its time from when the server first received it, not from its accept', () async {
+      final ahead = flagChange(
+        patientA,
+        flags['flag.low']!,
+        more: {'deviceTime': now.add(const Duration(days: 1)).toIso8601String(), 'clockVerified': false},
+      );
+      final earlier = flagChange(
+        patientA,
+        flags['flag.dehydration_risk']!,
+        more: {'deviceTime': now.subtract(const Duration(minutes: 30)).toIso8601String()},
+      );
+      expect(await send(blair, [ahead, earlier]), [heldFor(ahead), heldFor(earlier)]);
+      server.now = () => now.add(const Duration(hours: 2));
+      for (final c in [ahead, earlier]) {
+        expect(server.acceptHeld(c['changeId']! as String, by: admin)['status'], 'accepted');
+      }
+      final row = server.records[idOf(ahead)]!;
+      expect(row.author, blair);
+      // The hold is the receipt.
+      expect(row.attributes['effectiveAt'], now.toIso8601String());
+      expect(server.records[idOf(earlier)]!.attributes['effectiveAt'], earlier['deviceTime']);
+    });
+
+    test('an archived flag, or one archived since, is taken and kept: it stays on the patient', () async {
+      final winter = server.addPreset(team, 'flag', flagBody('Demo: Winter outreach', 'secondary', 'teal', 40));
+      final setBefore = flagChange(
+        patientB,
+        winter,
+        more: {'deviceTime': now.subtract(const Duration(hours: 2)).toIso8601String()},
+      );
+      server.archivePreset(team, winter);
+      final setAfter = flagChange(patientA, winter);
+      final clearAfter = flagChange(patientA, winter, action: 'clear');
+      expect(await send(alex, [setBefore]), [taken(setBefore)]);
+      expect(await send(dana, [setAfter, clearAfter]), [taken(setAfter), taken(clearAfter)]);
+      expect(server.records[idOf(setBefore)]!.attributes['flagId'], winter);
+    });
+
+    test('a flag the team does not hold is refused unknown_flag before anything is written, the queue goes on, and Choose a flag settles it', () async {
+      final theirs = server.addPreset(otherTeam, 'flag', flagBody('High', 'primary', 'red', 10));
+      final item = server.addPreset(team, 'item', {
+        'name': 'Demo: Gauze',
+        'categoryId': uuid(),
+        'unit': 'each',
+        'medical': false,
+        'captureLot': false,
+        'result': null,
+      });
+      final changes = [
+        flagChange(patientA, uuid()),
+        flagChange(patientA, theirs),
+        // A preset of another kind is no flag.
+        flagChange(patientA, item),
+        flagChange(patientA, flags['flag.low']!),
+      ];
+      final answers = await send(alex, changes);
+      for (final a in answers.sublist(0, 3)) {
+        expect(a, refusedAs('validation', {'problem': 'unknown_flag'}));
+      }
+      expect(answers[3], taken(changes[3]));
+      for (final c in changes.sublist(0, 3)) {
+        expect(server.records[idOf(c)], isNull);
+      }
+      // Choose a flag: the same record, sent again with a flag of the team, settles the refusal.
+      final chosen = flagChange(
+        patientA,
+        flags['flag.medium']!,
+        recordId: idOf(changes[0]),
+        more: {'supersedes': changes[0]['changeId']},
+      );
+      expect(await send(alex, [chosen]), [taken(chosen)]);
+      expect(server.receipts[changes[0]['changeId']]!.resolved, isTrue);
+    });
+
+    test(
+      'reads whether a flag is sensitive from its stored body without a cast, so an odd body never stops the push',
+      () async {
+        final odd = server.addPreset(
+          team,
+          'flag',
+          flagBody('Demo: Odd flag', 'secondary', 'grey', 80, sensitive: 'unknown'),
+        );
+        final changes = [flagChange(patientB, odd), flagChange(patientB, flags['flag.low']!)];
+        expect(await send(casey, changes), [taken(changes[0]), taken(changes[1])]);
+      },
+    );
+
+    test(
+      'a reason empty, untrimmed or over 500 code points is refused reason_invalid, and Change the reason settles it',
+      () async {
+        final refused = [
+          for (final why in ['', '   ', ' Demo: a space before', 'Demo: a line break after\n', 'D' * 501, ice * 501])
+            flagChange(patientB, flags['flag.low']!, why: why),
+        ];
+        final fine = [
+          for (final why in ['x', 'D' * 500, ice * 500, '${'D' * 499}$ice'])
+            flagChange(patientB, flags['flag.low']!, why: why),
+        ];
+        // The value's own rule is answered before anything is read: an unknown flag with it too.
+        final both = flagChange(patientB, uuid(), why: '');
+        final answers = await send(alex, [...refused, ...fine, both]);
+        for (final a in [...answers.sublist(0, refused.length), answers.last]) {
+          expect(a, refusedAs('validation', {'problem': 'reason_invalid'}));
+        }
+        expect(answers.sublist(refused.length, refused.length + fine.length), [for (final c in fine) taken(c)]);
+        final changed = flagChange(
+          patientB,
+          flags['flag.low']!,
+          why: 'Demo: dehydrated twice this week',
+          recordId: idOf(refused[0]),
+          more: {'supersedes': refused[0]['changeId']},
+        );
+        expect(await send(alex, [changed]), [taken(changed)]);
+        expect(server.receipts[refused[0]['changeId']]!.resolved, isTrue);
+      },
+    );
+
+    test(
+      'a patient the server lacks is a stale reference; one whose create waits for review holds the change with it',
+      () async {
+        final nobody = flagChange(uuid(), flags['flag.high']!);
+        expect(await send(alex, [nobody]), [
+          refusedAs('stale_reference', {'problem': 'patient_missing'}),
+        ]);
+        // Intake's risk level (8.2): the patient create is held (a role lowered offline), so the risk
+        // level, sent once the role is back, waits behind it.
+        final intake = change(entityPatient, 'create', consented({'preferredName': 'Demo Mo'}));
+        server.permissions[dana] = const {'patients.view', 'billing.view_codes'};
+        expect(await send(dana, [intake]), [heldFor(intake)]);
+        server.permissions.remove(dana);
+        final risk = flagChange(idOf(intake), flags['flag.high']!);
+        expect(await send(dana, [risk]), [heldFor(risk, 'awaiting_review')]);
+        expect(server.held[risk['changeId']]!.waitsOn, intake['changeId']);
+      },
+    );
+
+    test('a member without patients.edit is held for a Program Admin, never refused, and the hold is logged', () async {
+      final theirs = flagChange(patientB, flags['flag.medium']!);
+      expect(await send(alex, [theirs]), [taken(theirs)]);
+      final set = flagChange(patientB, flags['flag.high']!);
+      final mark = markOf(idOf(theirs));
+      expect(await send(blair, [set, mark]), [heldFor(set), heldFor(mark)]);
+      expect(server.records[idOf(set)], isNull);
+      expect(server.records[idOf(theirs)]!.status, 'active');
+    });
+
+    test('a flag hidden from its sender is held, a set or a clear, and so is its author’s mark once it is hidden from them', () async {
+      final set = flagChange(patientA, flags['flag.pregnancy']!);
+      final clear = flagChange(patientA, flags['flag.pregnancy']!, action: 'clear');
+      expect(await send(casey, [set, clear]), [heldFor(set), heldFor(clear)]);
+      expect(server.records[idOf(set)], isNull);
+      final hers = flagChange(patientA, flags['flag.pregnancy']!);
+      expect(await send(dana, [hers]), [taken(hers)]);
+      server.permissions[dana] = FakeSyncServer.chw;
+      final mark = markOf(idOf(hers));
+      expect(await send(dana, [mark]), [heldFor(mark)]);
+      expect(server.records[idOf(hers)]!.status, 'active');
+    });
+
+    test('is entered in error once, by its author or a Program Admin; anyone else is held for review', () async {
+      final alexs = flagChange(patientB, flags['flag.medium']!);
+      final danas = flagChange(patientB, flags['flag.frost_risk']!);
+      final others = flagChange(patientB, flags['flag.dehydration_risk']!);
+      expect(await send(alex, [alexs]), [taken(alexs)]);
+      expect(await send(dana, [danas, others]), [taken(danas), taken(others)]);
+      final byAuthor = markOf(idOf(alexs));
+      expect(await send(alex, [byAuthor]), [taken(byAuthor)]);
+      final row = server.records[idOf(alexs)]!;
+      expect(
+        [row.status, row.fields['enteredInError']!.value, row.fields['enteredInError']!.by],
+        [
+          'entered_in_error',
+          {'reason': markReason},
+          alex,
+        ],
+      );
+      expect(row.attributes['reason'], reason);
+      // Set once: a second mark, the Program Admin's, is kept in history, and the first stands.
+      final second = markOf(idOf(alexs), 'Demo: second thoughts');
+      expect(await send(admin, [second]), [
+        {
+          ...taken(second),
+          'server': {
+            'value': {'reason': markReason},
+            'version': 1,
+            'changedBy': alex,
+            'changedAt': now.toIso8601String(),
+          },
+          'details': {'outcome': 'history_only'},
+        },
+      ]);
+      // The Program Admin takes back someone else's change.
+      final byAdmin = markOf(idOf(danas));
+      expect(await send(admin, [byAdmin]), [taken(byAdmin)]);
+      expect(server.records[idOf(danas)]!.fields['enteredInError']!.by, admin);
+      // Alex neither made Dana's other change nor manages the team's people: held, then accepted.
+      final notHis = markOf(idOf(others));
+      expect(await send(alex, [notHis]), [heldFor(notHis)]);
+      expect(server.records[idOf(others)]!.status, 'active');
+      expect(server.acceptHeld(notHis['changeId']! as String, by: admin)['status'], 'accepted');
+      expect(server.records[idOf(others)]!.status, 'entered_in_error');
+      // A mark never conflicts, so there is nothing to resolve.
+      final resolved = markOf(idOf(alexs), 'Demo: keep mine', {'baseVersion': 1, 'resolution': 'replace'});
+      expect(await send(alex, [resolved]), [
+        refusedAs('validation', {'problem': 'nothing_to_resolve'}),
+      ]);
+    });
+
+    test('changes only by its mark, and a mark’s value is checked before anything is read', () async {
+      final made = flagChange(patientA, flags['flag.low']!);
+      expect(await send(alex, [made]), [taken(made)]);
+      Map<String, Object?> setOf(String field, Object? value) =>
+          change(entityFlagChange, 'set', value, recordId: idOf(made), field: field);
+      final answers = await send(alex, [
+        setOf('reason', 'Demo: another reason'),
+        setOf('action', 'clear'),
+        setOf('flagId', flags['flag.high']),
+        markOf(idOf(made), 'No'),
+        markOf(idOf(made), 'E' * 301),
+        markOf(idOf(made), 'Demo: a space after '),
+        setOf('enteredInError', null),
+      ]);
+      for (final a in answers.sublist(0, 3)) {
+        expect(a, refusedAs('validation', {'problem': 'unknown_field'}));
+      }
+      expect(
+        [
+          for (final a in answers.sublist(3))
+            [
+              for (final p in ((a['details']! as Map<String, Object?>)['problems']! as List<Object?>))
+                (p! as Map)['path'],
+            ],
+        ],
+        [
+          ['reason'],
+          ['reason'],
+          ['reason'],
+          [''],
+        ],
+      );
+      expect(server.records[idOf(made)]!.status, 'active');
+    });
+
+    group('a held change that will not reach the chart tells its sender', () {
+      test('rejected: one notice, naming the change and its patient, with no text of it', () async {
+        final held = flagChange(patientA, flags['flag.high']!);
+        expect(await send(blair, [held]), [heldFor(held)]);
+        server.rejectHeld(held['changeId']! as String);
+        final told = await noticesAbout(blair, idOf(held));
+        expect(told, [
+          allOf(
+            containsPair('kind', 'flag_change_not_applied'),
+            containsPair('entity', entityFlagChange),
+            containsPair('patientId', patientA),
+            containsPair('noteId', null),
+          ),
+        ]);
+        expect(jsonEncode(told), isNot(contains('follow-ups')));
+      });
+
+      test('a held mark rejected names the change it was about and that change’s patient', () async {
+        final theirs = flagChange(patientC, flags['flag.frost_risk']!);
+        expect(await send(alex, [theirs]), [taken(theirs)]);
+        final mark = markOf(idOf(theirs));
+        expect(await send(blair, [mark]), [heldFor(mark)]);
+        server.rejectHeld(mark['changeId']! as String);
+        expect(await noticesAbout(blair, idOf(theirs)), [
+          allOf(containsPair('kind', 'flag_change_not_applied'), containsPair('patientId', patientC)),
+        ]);
+      });
+
+      test(
+        'refused at its accept: told once, logged on the patient, and the reject after it tells nobody again',
+        () async {
+          final held = flagChange(patientB, flags['flag.medium']!, why: '');
+          expect(await send(blair, [held]), [heldFor(held)]);
+          expect(
+            server.acceptHeld(held['changeId']! as String, by: admin),
+            refusedAs('validation', {'problem': 'reason_invalid'}),
+          );
+          expect(await noticesAbout(blair, idOf(held)), hasLength(1));
+          server.rejectHeld(held['changeId']! as String);
+          expect(await noticesAbout(blair, idOf(held)), hasLength(1));
+        },
+      );
+
+      test('each held change is told of on its own', () async {
+        final first = flagChange(patientA, flags['flag.low']!);
+        final second = flagChange(patientA, flags['flag.low']!);
+        expect(await send(blair, [first, second]), [heldFor(first), heldFor(second)]);
+        for (final c in [first, second]) {
+          server.rejectHeld(c['changeId']! as String);
+        }
+        for (final c in [first, second]) {
+          expect(await noticesAbout(blair, idOf(c)), hasLength(1));
+        }
+      });
+
+      test('a held patient create and its held risk level, both rejected, in either order: both rejects succeed and nobody is told', () async {
+        for (final riskFirst in [true, false]) {
+          final intake = change(entityPatient, 'create', consented({'preferredName': 'Demo Pip'}));
+          final risk = flagChange(idOf(intake), flags['flag.high']!);
+          expect(await send(blair, [intake, risk]), [heldFor(intake), heldFor(risk)]);
+          final ids = [risk['changeId']! as String, intake['changeId']! as String];
+          for (final id in riskFirst ? ids : ids.reversed) {
+            server.rejectHeld(id);
+          }
+          expect(await noticesAbout(blair, idOf(risk)), isEmpty);
+          expect(await noticesAbout(blair, idOf(intake)), isEmpty);
+        }
+      });
+    });
+  });
 }
