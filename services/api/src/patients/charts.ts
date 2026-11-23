@@ -31,12 +31,16 @@ export const CHART_TABLES: Readonly<Record<string, 'group' | 'not_chart'>> = {
   patient_corrections: 'group',
   problems: 'group',
   referrals: 'group',
+  // A merged chart shows both records' flags (phase 5 design 4.5).
+  patient_flag_changes: 'group',
   // Phase 4 lists a group's recent encounters; phase 2 rows may name patients that never existed.
   encounters: 'group',
   // Search keys: retrieval groups them by canonical_id (patient_candidates), never a chart.
   patient_name_keys: 'not_chart',
   // The access report reads it by patient_id and details.patientIds.
   audit_events: 'not_chart',
+  // A notice names the patient a held change was about, for its person to open (migration 0024).
+  user_notices: 'not_chart',
 };
 
 // ------------------------------------------------------------------------------------------------
