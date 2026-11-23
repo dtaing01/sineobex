@@ -1,6 +1,8 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import type { PresetKind } from '@sineobex/presets';
 import { teamScope, type TeamScope } from '../auth/context.ts';
+import { listTeamFlags } from '../patients/flags.ts';
+import { FlagList } from '../patients/schemas.ts';
 import { installPlatformPresets } from '../presets/store.ts';
 import type { App } from '../app.ts';
 import type { Deps } from '../types.ts';
@@ -8,7 +10,9 @@ import { errors, Uuid } from './schemas.ts';
 
 /**
  * The phone's copy of its team's presets (phase 5 design 6.1, 7; D130): one read, by revision and
- * epoch, after every sync that reached the server. It names no patient.
+ * epoch, after every sync that reached the server. And the portal's flag list, which holds only the
+ * flags the caller may see, so the portal holds no copy of the flag rule (D114). Neither names a
+ * patient.
  */
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
@@ -83,6 +87,19 @@ const pullRoute = createRoute({
   security: [{ bearer: [] }],
   request: { query: PresetsQuery },
   responses: { 200: { description: 'Presets', ...json(PresetsPull) }, ...errors(401, 403, 422) },
+});
+
+const flagListRoute = createRoute({
+  method: 'get',
+  path: '/v1/presets/flags',
+  operationId: 'listFlags',
+  tags: ['presets'],
+  summary: 'The team’s active flags the caller may see, for the portal’s Flags panel and search filters',
+  description:
+    'Needs patients.view. A sensitive flag only for a role that sees sensitive problems. The phone reads every flag ' +
+    'from GET /v1/presets instead, for its own copy of the rule.',
+  security: [{ bearer: [] }],
+  responses: { 200: { description: 'Flags', ...json(FlagList) }, ...errors(401, 403) },
 });
 
 interface PulledRow {
@@ -173,5 +190,11 @@ export function registerPresetRoutes(app: App, deps: Deps): void {
   app.openapi(pullRoute, async (c) => {
     const scope = await teamScope(c, deps);
     return c.json(await pullPresets(scope, c.req.valid('query')), 200);
+  });
+
+  // Not audited, as the pull is not: it names no patient (PL-13).
+  app.openapi(flagListRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
+    return c.json(await listTeamFlags(scope), 200);
   });
 }

@@ -551,6 +551,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a flag change of the chart entered in error, once, with a reason
+         * @description Needs patients.edit, and the change’s author or a Program Admin (team.manage_users), else 403, logged, as a change of a flag the role may not see is; 404 for a change the patient’s chart does not hold; 409 already_marked.
+         */
+        post: operations["markFlagChangeInError"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/patients/{patientId}/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set or clear a flag on the patient, with a reason. A retry of the same form gets the first answer.
+         * @description Needs patients.view and patients.edit. The refusals: 404 for a patient the team does not hold; 422 unknown_flag, then reason_invalid; 403 for a flag the role may not see, logged; 409 archived for a set of a flag no longer on the team’s list (a clear is taken), and id_taken for an ID another change holds.
+         */
+        post: operations["setPatientFlag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/patients/{patientId}/history": {
         parameters: {
             query?: never;
@@ -706,6 +746,26 @@ export interface paths {
         };
         /** The team’s presets changed since a revision, for the phone’s copy (any member) */
         get: operations["pullPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/presets/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The team’s active flags the caller may see, for the portal’s Flags panel and search filters
+         * @description Needs patients.view. A sensitive flag only for a role that sees sensitive problems. The phone reads every flag from GET /v1/presets instead, for its own copy of the rule.
+         */
+        get: operations["listFlags"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1814,6 +1874,8 @@ export interface components {
             reason?: string;
             tier: components["schemas"]["FlagTier"];
         };
+        /** @description Primary before secondary, then by rank, then name, then ID */
+        FlagList: components["schemas"]["ListedFlag"][];
         /**
          * @description primary: the risk level, one at a time; secondary: conditions
          * @enum {string}
@@ -2015,6 +2077,25 @@ export interface components {
         LegalNameView: {
             family: string | null;
             given: string | null;
+        };
+        /** @description One of the team’s active flags the caller may see */
+        ListedFlag: {
+            color: components["schemas"]["FlagColor"];
+            /** @description The colour’s plain name, shown before the flag’s own */
+            colorName: string;
+            /** Format: uuid */
+            flagId: string;
+            name: string;
+            rank: number;
+            tier: components["schemas"]["FlagTier"];
+        };
+        MarkFlagChange: {
+            /** @description Why: trimmed, 3 to 300 characters. Shown only to the change’s author and Program Admins */
+            reason: string;
+        };
+        MarkFlagChangeResult: {
+            /** @description The change’s version after its mark */
+            version: number;
         };
         /** @enum {string} */
         MatchBand: "likely" | "possible" | "weak";
@@ -2808,6 +2889,23 @@ export interface components {
             epochMs: number;
             /** Format: date-time */
             serverTime: string;
+        };
+        SetPatientFlag: {
+            /** @enum {string} */
+            action: "set" | "clear";
+            /** Format: uuid */
+            flagId: string;
+            /**
+             * Format: uuid
+             * @description The change’s ID, made once per form by the page, so a retry gets the first answer
+             */
+            id: string;
+            /** @description Why: trimmed, 1 to 500 characters, else reason_invalid. Kept with the change, never logged */
+            reason: string;
+        };
+        SetPatientFlagResult: {
+            /** Format: uuid */
+            id: string;
         };
         SignatureQueue: {
             rows: components["schemas"]["QueueVisit"][];
@@ -5106,6 +5204,149 @@ export interface operations {
             };
         };
     };
+    markFlagChangeInError: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                changeId: string;
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkFlagChange"];
+            };
+        };
+        responses: {
+            /** @description Marked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkFlagChangeResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setPatientFlag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPatientFlag"];
+            };
+        };
+        responses: {
+            /** @description Made, now or by an earlier send of the same form */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetPatientFlagResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getPatientHistory: {
         parameters: {
             query?: {
@@ -5635,6 +5876,44 @@ export interface operations {
             };
             /** @description Validation failed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listFlags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Flags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagList"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

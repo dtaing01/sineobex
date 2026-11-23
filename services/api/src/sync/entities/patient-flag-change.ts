@@ -118,9 +118,10 @@ export async function insertFlagChange(
 /**
  * What a flag change's audit event names of its flag: its tier, and its id only when it is not
  * sensitive. Every member reads the team's flags by id, and the audit chain is never redacted (D41),
- * so a sensitive flag's id would tell any reader of the log what the chart hides (design 9).
+ * so a sensitive flag's id would tell any reader of the log what the chart hides (design 9). The
+ * portal's mark (patients/flags.ts) names it the same way.
  */
-const flagDetails = (flag: FlagHead | null, flagId: string) => ({
+export const flagDetails = (flag: FlagHead | null, flagId: string) => ({
   tier: flag?.tier ?? null,
   ...(flag && !flag.sensitive ? { flagId } : {}),
 });
