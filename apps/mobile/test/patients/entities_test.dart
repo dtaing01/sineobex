@@ -1,13 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/sync/entities.dart';
+import 'package:sineobex_field/sync/local_db.dart';
+import 'package:sineobex_field/sync/local_store.dart';
 
 /// The phone's entity registry against the shared vectors (packages/contract/test-vectors/
 /// sync-values.json), which the API's Zod schemas pass too: the same values are valid, an invalid
 /// one fails at the same issue paths or breaks the same named rule, and every valid change names
 /// the same parents. The fake server checks values with this registry, so it is pinned as well.
+///
+/// Phase 5's flag change (design 4.5, 6.2) is written ahead of P5-phone-entity: its cases, and the
+/// vectors' flag change cases this reader runs, fail until that card registers it.
 
 void main() {
   final vectors = jsonDecode(
@@ -30,9 +36,10 @@ void main() {
   }
 
   test('the vectors cover every patient-side entity, valid and invalid', () {
+    // The flag change's own group below holds its cases (phase 5 design 6.2).
     final patientSide = [
       for (final e in recordEntities)
-        if (rulesFor(e)!.patientSide) e,
+        if (rulesFor(e)!.patientSide && e != 'patient_flag_change') e,
     ];
     expect(patientSide, hasLength(11));
     for (final entity in patientSide) {
@@ -73,7 +80,10 @@ void main() {
   }
 
   test('the clock pause covers problems, their notes and ID links, never registering someone (D35)', () {
-    final paused = {for (final e in recordEntities) e: rulesFor(e)!.pausesWithClock};
+    final paused = {
+      for (final e in recordEntities)
+        if (e != 'patient_flag_change') e: rulesFor(e)!.pausesWithClock,
+    };
     expect(paused, {
       entityEncounter: true,
       entityNote: true,
@@ -355,6 +365,166 @@ void main() {
     expect(rulesFor(entityIdLink)!.attributes({'patientId': 'x', 'token': 't', 'reason': 'lost'}), {
       'patientId': 'x',
       'reason': 'lost',
+    });
+  });
+
+  // Phase 5 (design 4.5, 6.2): services/api/src/sync/entities/patient-flag-change.ts and values.ts
+  // hold the server's side; sync-flag-change.test.ts the same rules through a push.
+  group('the flag change (phase 5 design 6.2)', () {
+    const patient = '5eed0000-0000-4000-8000-000000000001';
+    const high = 'f1a90000-0000-4000-8000-000000000001';
+    const change = 'c4a90000-0000-4000-8000-000000000001';
+    Map<String, Object?> setHigh({String reason = 'Demo: missed two follow-ups this month'}) => {
+      'patientId': patient,
+      'flagId': high,
+      'action': 'set',
+      'reason': reason,
+    };
+
+    test('the vectors cover the flag change, valid and invalid, its reason’s rule among them', () {
+      expect(cases('valid').where((c) => c['entity'] == entityFlagChange), isNotEmpty);
+      expect(cases('invalid').where((c) => c['entity'] == entityFlagChange), isNotEmpty);
+      expect(
+        cases('invalid').where((c) => (c['expect']! as Map<String, Object?>)['problem'] == 'reason_invalid'),
+        isNotEmpty,
+      );
+    });
+
+    test('is the server’s patient_flag_change: about its patient, set once, and paused with the clock', () {
+      expect(entityFlagChange, 'patient_flag_change');
+      expect(recordEntities, contains(entityFlagChange));
+      final rules = rulesFor(entityFlagChange)!;
+      // Ordered by their time, as ID link conflicts are (design 6.2, D35).
+      expect([rules.patientSide, rules.pausesWithClock, rules.category], [true, true, 'patients']);
+      expect(categoryOf(entityFlagChange), 'patients');
+      // Who may flag a patient, and mark a flag change entered in error (section 11, row 8).
+      expect(rules.permission('create'), 'patients.edit');
+      expect(rules.permission('set', 'enteredInError'), 'patients.edit');
+      expect(rules.fieldClass('enteredInError'), FieldClass.setOnce);
+      // Its one field is the mark; what it set, why and when are fixed at its create.
+      expect(rules.settable('enteredInError'), isTrue);
+      for (final field in ['reason', 'action', 'flagId', 'patientId', 'status', 'effectiveAt']) {
+        expect(rules.settable(field), isFalse, reason: field);
+      }
+      expect(rules.fieldIssues('enteredInError', const {'reason': 'Demo: set on the wrong patient'}), isEmpty);
+    });
+
+    test('names its patient, who is its one parent, and keeps what it set as the phone made it', () {
+      final rules = rulesFor(entityFlagChange)!;
+      expect(rules.parentsOfCreate(setHigh()), [(entity: entityPatient, id: patient)]);
+      expect(parentsOf(entity: entityFlagChange, op: 'create', value: setHigh()), [
+        (entity: entityPatient, id: patient),
+      ]);
+      expect(rules.parentsOfSet('enteredInError', const {'reason': 'Demo: set on the wrong patient'}), isEmpty);
+      expect(rules.patientOfCreate(change, setHigh()), patient);
+      expect(rules.patientVia(setHigh()), isNull);
+      // The server sets its time (4.5); the phone keeps the value it sent, its reason in the store only.
+      expect(rules.attributes(setHigh()), setHigh());
+      expect(rules.createdFields(setHigh()), isEmpty);
+      expect(rules.initialStatus(setHigh()), 'active');
+      expect(
+        rules.statusAfter('enteredInError', const {'reason': 'Demo: set on the wrong patient'}),
+        'entered_in_error',
+      );
+    });
+
+    test('a reason is trimmed and 1 to 500 code points, so an astral character counts once', () {
+      final rules = rulesFor(entityFlagChange)!;
+      String? problemOf(String reason) => rules.valueProblem('create', null, setHigh(reason: reason), today);
+      expect(problemOf('x'), isNull);
+      expect(problemOf('\u{1F9CA}' * 500), isNull);
+      expect(problemOf('${'D' * 499}\u{1F9CA}'), isNull);
+      for (final reason in ['', ' ', 'Demo: a space after ', '\u{1F9CA}' * 501, 'D' * 501]) {
+        expect(problemOf(reason), 'reason_invalid', reason: reason);
+      }
+      // A reason the rule refuses still passes the value's schema: the server answers it by name.
+      expect(rules.createIssues(setHigh(reason: '')), isEmpty);
+    });
+
+    group('in the store', () {
+      const userId = '7d1c1b9e-5f6a-4c1e-9d3a-2b4c6d8e0f12';
+      final key = Uint8List.fromList(List<int>.generate(32, (i) => i * 7 % 256));
+      late Directory dir;
+      late LocalDatabase db;
+      late LocalStore store;
+      var paused = false;
+      final now = DateTime.utc(2026, 10, 22, 15);
+
+      setUp(() {
+        dir = Directory.systemTemp.createTempSync('flags');
+        db = LocalDatabase.open(LocalDatabase.fileFor(dir.path, userId, 'team-1'), key);
+        paused = false;
+        store = LocalStore(
+          db,
+          userId: userId,
+          stamp: () => ClockStamp(deviceTime: now, correctedTime: now, verified: true),
+          chartingPaused: () => paused,
+          now: () => now,
+        );
+      });
+      tearDown(() {
+        db.close();
+        dir.deleteSync(recursive: true);
+      });
+
+      test('a flag change made here waits under its patient, in the patients category', () {
+        final id = store.createRecord(entityFlagChange, setHigh());
+        final entry = store.outbox().single;
+        expect(
+          [entry.entity, entry.recordId, entry.op, entry.category, entry.patientId],
+          [entityFlagChange, id, 'create', 'patients', patient],
+        );
+        expect(store.record(id)!.patientId, patient);
+        expect(store.unsynced().counts, {'patients': 1});
+      });
+
+      test('its mark waits under the patient of the change, a change the chart brought here too', () {
+        store.importServerRecord(
+          const ServerRecord(
+            entity: 'patient_flag_change',
+            id: change,
+            status: 'active',
+            authorUserId: userId,
+            attributes: {
+              'patientId': patient,
+              'flagId': high,
+              'action': 'set',
+              'reason': 'Demo: missed two follow-ups this month',
+              'effectiveAt': '2026-10-21T09:00:00.000Z',
+              'clockVerified': true,
+            },
+            fields: {'enteredInError': ServerField(value: null, version: 0)},
+          ),
+          open: false,
+        );
+        expect(store.record(change)!.patientId, patient);
+        store.setField(change, 'enteredInError', const {'reason': 'Demo: set on the wrong patient'});
+        final mark = store.outbox().single;
+        expect(
+          [mark.entity, mark.op, mark.field, mark.category, mark.patientId],
+          [entityFlagChange, 'set', 'enteredInError', 'patients', patient],
+        );
+      });
+
+      test('waits for the clock check, as an ID link does, and is never queued with a reason the server refuses', () {
+        paused = true;
+        expect(() => store.createRecord(entityFlagChange, setHigh()), throwsA(isA<ChartingPaused>()));
+        paused = false;
+        expect(
+          () => store.createRecord(entityFlagChange, setHigh(reason: '')),
+          throwsA(isA<LocalValidationError>().having((e) => e.problem, 'problem', 'reason_invalid')),
+        );
+        expect(store.outbox(), isEmpty);
+      });
+
+      test('the notice that a held flag change will not be applied is the server’s kind, kept under its patient', () {
+        expect(noticeFlagChangeNotApplied, 'flag_change_not_applied');
+        store.addNotice(noticeFlagChangeNotApplied, patientId: patient, recordId: change);
+        expect(
+          [for (final n in store.notices()) (n.kind, n.patientId, n.recordId, n.noteId)],
+          [('flag_change_not_applied', patient, change, null)],
+        );
+      });
     });
   });
 }
