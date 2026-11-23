@@ -4218,6 +4218,41 @@ test.describe('Sineobex’s update, to the team’s settings', () => {
   });
 });
 
+test.describe('Sineobex’s update, to two categories nobody edited', () => {
+  test.afterEach(noOfferLeft);
+  test('each offer says Sineobex updated the category, and says nothing of an edited copy, since nobody edited it', async ({
+    page,
+  }) => {
+    const PAGE = '/team/presets/categories';
+    const offered = [
+      await named<CategoryBody>('order_category', 'OTC'),
+      await named<CategoryBody>('order_category', 'Rx'),
+    ];
+    for (const row of offered) {
+      offerPlatformVersion('order_category', row.id);
+      expect(await offeredOf<CategoryBody>('order_category', row.id)).toMatchObject({
+        customized: false,
+        updateOnOffer: true,
+        update: { platformVersion: 1, changesFixed: [] },
+      });
+    }
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(PAGE);
+    for (const { name } of offered) {
+      const offer = page.getByRole('region', { name: `Update available for ${name}` });
+      await expect(offer.locator('p', { hasText: /^Sineobex updated/ })).toHaveText(
+        'Sineobex updated this preset.',
+      );
+      await expect(offer).not.toContainText('Your edited copy');
+    }
+    await expectAccessible(page, 'Categories, two offered an update');
+    await expectReflow(page, 'Categories, two offered an update');
+    await expectNothingStored(page, 'Categories, two offered an update');
+    expectOnlyIds(traffic.addresses);
+  });
+});
+
 test.describe('an item the template for new bags holds', () => {
   test('its page says the template uses it, and Remove is refused while the template holds it', async ({
     page,

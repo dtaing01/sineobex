@@ -13,6 +13,11 @@ export interface Offer {
   platformVersion: number;
   /** It changes a field fixed at creation, so it is added as a new preset (5.1). */
   asNew: boolean;
+  /**
+   * The copy is the team's own edit (the row's `customized`), which the update has left as it is. A
+   * copy nobody edited is offered an update only when it changes a field fixed at creation (5.2).
+   */
+  customized: boolean;
 }
 
 /**
@@ -94,7 +99,12 @@ export function OfferForm({
       <ActionForm id={`take-${id}`} action={take} label={`Take Sineobex’s update to ${name}`}>
         {offer ? (
           <>
-            <p>Sineobex updated this preset. Your edited copy hasn’t changed.</p>
+            {/* 8.1's words, of a copy the team edited; a copy nobody edited has no edit to keep. */}
+            <p>
+              {offer.customized
+                ? 'Sineobex updated this preset. Your edited copy hasn’t changed.'
+                : 'Sineobex updated this preset.'}
+            </p>
             {offer.asNew && <p>{PRESET_SENTENCES.updateChangesFixed}</p>}
             <Review>{review}</Review>
             <input type="hidden" name="kind" value={kind} />

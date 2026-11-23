@@ -102,7 +102,9 @@ describe('the list', () => {
     const offered = ROWS.map((r) =>
       r.id === LABS
         ? {
+            // A copy the team edited: an update that changes no fixed field is only offered (5.2).
             ...r,
+            customized: true,
             updateOnOffer: true,
             update: { platformVersion: 2, body: { ...r.body, sort: 25 }, changesFixed: [] },
           }
