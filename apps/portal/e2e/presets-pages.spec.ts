@@ -4518,6 +4518,95 @@ test.describe('a list of lines or of boxes, by keyboard', () => {
   });
 });
 
+/**
+ * What the page's live regions say from now on, each change of a status or an alert's words once
+ * (a screen reader says a live region's words when they change), read with `heard`.
+ */
+async function listen(page: Page) {
+  await page.evaluate(() => {
+    const w = window as unknown as { heard: string[]; seen: WeakMap<Element, string> };
+    w.heard = [];
+    w.seen = new WeakMap();
+    const scan = () => {
+      for (const el of document.querySelectorAll('[role="status"], [role="alert"], [aria-live]')) {
+        const text = (el.textContent ?? '').trim();
+        if (w.seen.get(el) === text) continue;
+        w.seen.set(el, text);
+        if (text) w.heard.push(text);
+      }
+    };
+    scan();
+    w.heard = [];
+    new MutationObserver(scan).observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  });
+}
+
+/** What the live regions said since `listen`, or since this was asked last. */
+async function heard(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const w = window as unknown as { heard: string[] };
+    return w.heard.splice(0);
+  });
+}
+
+test.describe('a done save, by keyboard', () => {
+  test('keeps focus on Save and says each save, a second one with the same words as the first too', async ({
+    page,
+  }) => {
+    const gauze = await named<ItemBody>('item', 'Gauze');
+    const id = await made('bag', { name: 'Demo: Keyboard bag', minimums: [{ itemId: gauze.id, min: 5 }] });
+    await signIn(page, 'admin@example.com');
+    await page.goto('/team/presets/bag-minimums');
+    await page.getByRole('button', { name: 'Edit Demo: Keyboard bag', exact: true }).click();
+    const edit = page.getByRole('form', { name: 'Edit Demo: Keyboard bag' });
+    const save = edit.getByRole('button', { name: 'Save' });
+    const said = 'Saved: Demo: Keyboard bag. It’s on the phones after their next sync.';
+    await listen(page);
+    for (const [i, min] of ['6', '7'].entries()) {
+      await edit.getByRole('group', { name: 'Line 1', exact: true }).getByLabel('Minimum').fill(min);
+      await edit.getByLabel('Reason').fill(`Demo: change ${i + 1} by keyboard`);
+      await save.focus();
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await listed('bag')).find((b) => b.id === id)?.version).toBe(i + 2);
+      await expect(edit.getByRole('status')).toHaveText(said);
+      await expect(save).toBeFocused();
+      expect(await heard(page), `save ${i + 1}`).toEqual([said]);
+    }
+    await expectAccessible(page, 'A bag saved twice by keyboard', { inPlace: true });
+    await expectNothingStored(page, 'A bag saved twice by keyboard');
+  });
+
+  test('on a list sorted by place, a save that moves its form down keeps focus in it, on its message', async ({
+    page,
+  }) => {
+    const first = await made('order_category', { name: 'Demo: First shelf', behaviour: 'supply', sort: 1 });
+    await made('order_category', { name: 'Demo: Second shelf', behaviour: 'supply', sort: 2 });
+    await signIn(page, 'admin@example.com');
+    await page.goto('/team/presets/categories');
+    await page.getByRole('button', { name: 'Edit Demo: First shelf', exact: true }).click();
+    const edit = page.getByRole('form', { name: 'Edit Demo: First shelf' });
+    await listen(page);
+    await edit.getByLabel('Place in the list').fill('3');
+    await edit.getByLabel('Reason').fill('Demo: below the second shelf');
+    await edit.getByRole('button', { name: 'Save' }).focus();
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(async () => (await listed<CategoryBody>('order_category')).find((c) => c.id === first)?.body.sort)
+      .toBe(3);
+    const status = edit.getByRole('status');
+    await expect(status).toHaveText('Saved: Demo: First shelf. It’s on the phones after their next sync.');
+    // Moved below the second shelf, so the browser took focus from it: it is on the message.
+    await expect(edit.locator(':focus')).toHaveCount(1);
+    expect(await heard(page)).toEqual([
+      'Saved: Demo: First shelf. It’s on the phones after their next sync.',
+    ]);
+  });
+});
+
 test.describe('an item the template for new bags holds', () => {
   test('its page says the template uses it, and Remove is refused while the template holds it', async ({
     page,

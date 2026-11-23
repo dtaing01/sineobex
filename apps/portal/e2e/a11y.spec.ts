@@ -207,6 +207,22 @@ test('@responsive a Program Admin’s phase 4 screens, and a visit page, are acc
   expect(csp).toEqual([]);
 });
 
+test('a done form keeps focus on the button pressed and says its message, on an older page too: Roles', async ({
+  page,
+}) => {
+  // Review B's R-B1: a button disabled while its form was on its way lost focus to the page.
+  await signIn(page, 'admin@example.com');
+  await page.goto('/team/roles');
+  const form = page.getByRole('form', { name: 'New custom role' });
+  await form.getByLabel('Name', { exact: true }).fill('Demo: Keyboard role');
+  await form.getByLabel('See routes and runs').check();
+  const create = form.getByRole('button', { name: 'Create role' });
+  await create.focus();
+  await page.keyboard.press('Enter');
+  await expect(form.getByRole('status')).toContainText('Demo: Keyboard role');
+  await expect(create).toBeFocused();
+});
+
 // Phase 5's Team setup (design 8.1): the hub, each area's page, and a preset's own page for each
 // kind that has one, opened as a Program Admin finds them, each in all three themes and at 320 px.
 const TEAM_SETUP_AREAS = ['Categories', 'Items', 'Bundles', 'Flags', 'Condition supplies', 'Bag minimums'];
