@@ -74,6 +74,36 @@ export const PRESET_SENTENCES = {
   sensitivePath: 'Only some people may read this answer, so it can’t suggest supplies.',
 } as const;
 
+/**
+ * A take refused stale (design 5.1, 8.1): the copy changed since the review, Sineobex offered a newer
+ * version meanwhile (a phone's pull runs the installer), or the update went with a change to the
+ * copy. The page is read again, so the review below already shows what is on offer now: each says
+ * what happened and asks for no reload, which 8.1's stale sentence asks of a form that keeps what
+ * it sent.
+ */
+export const TAKE_STALE = {
+  copyChanged:
+    'Someone else changed this while you were reviewing the update. Review it again below before you take it.',
+  newerOffer:
+    'Sineobex offered a newer version while you were reviewing this one. Review it below before you take it.',
+  noOffer:
+    'Someone else changed this while you were reviewing the update, and there’s no update to take now.',
+} as const;
+
+/**
+ * Which of TAKE_STALE a take's stale answer is, from its details (`currentVersion`, and
+ * `platformVersion`, the version on offer now or null) against the versions the form sent; 8.1's
+ * stale sentence when the details say neither.
+ */
+function takeStale(details: Record<string, unknown> | undefined, values: Record<string, string>): string {
+  const offered = details?.platformVersion;
+  if (offered === null) return TAKE_STALE.noOffer;
+  const current = details?.currentVersion;
+  if (typeof current === 'number' && current !== Number(values.baseVersion)) return TAKE_STALE.copyChanged;
+  if (typeof offered === 'number' && offered !== Number(values.platformVersion)) return TAKE_STALE.newerOffer;
+  return PRESET_SENTENCES.stale;
+}
+
 export const REASON_PROBLEM = 'Give a reason of 3 to 300 characters.';
 
 /** What names a preset, by the kind of each preset that does, in the order the pages list kinds. */
@@ -254,8 +284,9 @@ export function presetRefusalState(
   });
 
   switch (code) {
-    // A flag order made from a list that has gained or lost a flag since is stale too (8.1).
     case 'stale':
+      return state(act === 'take' ? takeStale(details, values) : PRESET_SENTENCES.stale);
+    // A flag order made from a list that has gained or lost a flag since is stale too (8.1).
     case 'ids_mismatch':
       return state(PRESET_SENTENCES.stale);
     case 'referenced':

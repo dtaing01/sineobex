@@ -714,6 +714,17 @@ async function longCategory(): Promise<void> {
 
 const STALE = 'Someone else changed this while you were editing. Reload to see their version.';
 
+/**
+ * A take refused stale (lib/refusals.ts, TAKE_STALE): the page is read again, so each says what
+ * changed since the review instead of asking for a reload.
+ */
+const TAKE_STALE = {
+  copyChanged:
+    'Someone else changed this while you were reviewing the update. Review it again below before you take it.',
+  noOffer:
+    'Someone else changed this while you were reviewing the update, and there’s no update to take now.',
+};
+
 /** A stale sign-in for the admin: their next write goes through /reauth. */
 async function staleSignIn() {
   const stale = await fetch(`${IDP}/test/stale-sign-in`, {
@@ -3867,7 +3878,7 @@ test.describe('Sineobex’s update, on an item’s page', () => {
     await changedMeanwhile<ItemBody>('item', mepilex.id, (b) => ({ ...b, name: 'Demo: Mepilex dressing' }));
     await take('Demo: Mepilex border').getByLabel('Reason').fill('Demo: back to Sineobex’s dressing');
     await take('Demo: Mepilex border').getByRole('button', { name: 'Replace with the new version' }).click();
-    await expect(take('Demo: Mepilex dressing').getByRole('alert')).toContainText(STALE);
+    await expect(take('Demo: Mepilex dressing').getByRole('alert')).toHaveText(TAKE_STALE.copyChanged);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Mepilex dressing');
     await expect(review('Demo: Mepilex dressing')).toBeVisible();
     await expectReview(review('Demo: Mepilex dressing'), values('Demo: Mepilex dressing', 'Yes'));
@@ -3963,7 +3974,7 @@ test.describe('Sineobex’s update, on an item’s page', () => {
     await take('Demo: Aquacel ribbon').getByLabel('Reason').fill('Demo: Sineobex’s ribbon');
     await take('Demo: Aquacel ribbon').getByRole('button', { name: 'Replace with the new version' }).click();
     const gone = page.getByRole('region', { name: 'Sineobex’s update for Aquacel' });
-    await expect(gone.getByRole('alert')).toContainText(STALE);
+    await expect(gone.getByRole('alert')).toHaveText(TAKE_STALE.noOffer);
     await expect(gone).toContainText('Nothing is on offer for this now.');
     await expect(gone.getByRole('button')).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Aquacel');
