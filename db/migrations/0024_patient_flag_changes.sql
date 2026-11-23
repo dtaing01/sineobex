@@ -16,8 +16,8 @@ create table sineobex.patient_flag_changes (
   id                uuid primary key,
   team_id           uuid not null references sineobex.teams (id),
   patient_id        uuid not null,
-  -- A preset of the team. That it is a flag is the sync rule's check, made before the insert, so this
-  -- key never throws inside a push (design 6.2).
+  -- One of the team's flags: the sync rule checks it before the insert (unknown_flag), so this key
+  -- never throws inside a push, and the key holds only the team (design 6.2).
   flag_id           uuid not null,
   action            text not null check (action in ('set', 'clear')),
   -- Patient detail: never in audit details, logs or notices. Counted in code points, as the phone
