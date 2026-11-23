@@ -4553,6 +4553,11 @@ async function heard(page: Page): Promise<string[]> {
   });
 }
 
+/** What the live regions said since `listen` or `heard`, left to be asked again. */
+async function heardSoFar(page: Page): Promise<string[]> {
+  return page.evaluate(() => [...(window as unknown as { heard: string[] }).heard]);
+}
+
 test.describe('a done save, by keyboard', () => {
   test('keeps focus on Save and says each save, a second one with the same words as the first too', async ({
     page,
@@ -4571,10 +4576,13 @@ test.describe('a done save, by keyboard', () => {
       await edit.getByLabel('Reason').fill(`Demo: change ${i + 1} by keyboard`);
       await save.focus();
       await page.keyboard.press('Enter');
-      await expect.poll(async () => (await listed('bag')).find((b) => b.id === id)?.version).toBe(i + 2);
+      // The API may hold the new version before the answer reaches the page, whose status line
+      // still holds the first save's words then: wait for this save's line to be said.
+      await expect.poll(() => heardSoFar(page), { message: `save ${i + 1}` }).toEqual([said]);
+      expect(await heard(page)).toEqual([said]);
       await expect(edit.getByRole('status')).toHaveText(said);
       await expect(save).toBeFocused();
-      expect(await heard(page), `save ${i + 1}`).toEqual([said]);
+      expect((await listed('bag')).find((b) => b.id === id)?.version).toBe(i + 2);
     }
     await expectAccessible(page, 'A bag saved twice by keyboard', { inPlace: true });
     await expectNothingStored(page, 'A bag saved twice by keyboard');
