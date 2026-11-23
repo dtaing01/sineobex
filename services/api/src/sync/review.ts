@@ -792,11 +792,12 @@ export async function listNotices(scope: TeamScope) {
         entity: string | null;
         recordId: string | null;
         noteId: string | null;
+        patientId: string | null;
         createdAt: Date;
         readAt: Date | null;
       }[]
     >`
-      select id, kind, entity, record_id, note_id, created_at, read_at from sineobex.user_notices
+      select id, kind, entity, record_id, note_id, patient_id, created_at, read_at from sineobex.user_notices
       where user_id = ${scope.principal.userId}
       order by created_at desc limit 100`,
   );
@@ -806,6 +807,7 @@ export async function listNotices(scope: TeamScope) {
     entity: r.entity,
     recordId: r.recordId,
     noteId: r.noteId,
+    patientId: r.patientId,
     createdAt: r.createdAt.toISOString(),
     readAt: r.readAt?.toISOString() ?? null,
   }));

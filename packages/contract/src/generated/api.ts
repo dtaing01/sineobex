@@ -1457,7 +1457,7 @@ export interface components {
             reason: string;
         };
         /** @enum {string} */
-        ChangeEntity: "encounter" | "encounter_note" | "audit" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral";
+        ChangeEntity: "encounter" | "encounter_note" | "audit" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral" | "patient_flag_change";
         ChangeRole: {
             /** @description Why, in a few words. Logged. */
             reason: string;
@@ -2166,6 +2166,11 @@ export interface components {
              * @description The note a `signoff_not_applied` or `correction_not_applied` notice is about: its record is the held sign-off or correction, which no sync read gives, so a phone that never held it opens the note by this. Null for every other notice
              */
             noteId: string | null;
+            /**
+             * Format: uuid
+             * @description The patient a `flag_change_not_applied` notice is about: its record is the flag change a held create or Entered in error mark was for, which the phone let go of when it was held, so a phone opens the chart by this. Null for every other notice
+             */
+            patientId: string | null;
             /** Format: date-time */
             readAt: string | null;
             /** Format: uuid */
@@ -2605,7 +2610,7 @@ export interface components {
             text: string;
         };
         /** @enum {string} */
-        RecordEntity: "encounter" | "encounter_note" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral";
+        RecordEntity: "encounter" | "encounter_note" | "patient" | "patient_alias" | "patient_allergy" | "patient_consent" | "problem" | "problem_note" | "id_link" | "note_signoff" | "note_addendum" | "note_correction" | "referral" | "patient_flag_change";
         RecordRef: {
             entity: components["schemas"]["RecordEntity"];
             /** Format: uuid */
