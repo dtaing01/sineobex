@@ -20,14 +20,29 @@
  *     edited one maps to and every field that maps to that one (edit-fanout.ts), never in an `auto`
  *     note type.
  *
- * Pure, and loaded by the API: nothing here may import a package.
+ * Renaming the type, hiding and showing, and rewording a label are here; the option operations are
+ * edit-options.ts's, and adding and copying edit-add.ts's. What none of them may touch is
+ * edit-protected.ts's, which each asks.
  *
- * Written ahead of its code (card P4-tests): applyNoteTypeEdit and applyNoteTypeEdits throw until
- * card P4-edit-basic builds them; the option operations are edit-options.ts's (P4-edit-options), and
- * adding and copying are edit-add.ts's (P4-edit-add).
+ * Pure, and loaded by the API: nothing here may import a package.
  */
-import type { FileProblem, ResolvedNoteType } from './resolve.ts';
-import type { Rename } from './types.ts';
+import { applyAddEdit } from './edit-add.ts';
+import { applyOptionEdit } from './edit-options.ts';
+import {
+  copyPart,
+  fieldPlace,
+  fieldsAt,
+  holdsProtected,
+  isProtected,
+  isWords,
+  typeProtected,
+  withFields,
+  type NoteTypePart,
+} from './edit-protected.ts';
+import { leafAt, pathModel, pathsOf } from './paths.ts';
+import type { FieldNode, SectionNode } from './paths.ts';
+import type { FileProblem, ResolvedField, ResolvedNoteType, ResolvedSection } from './resolve.ts';
+import type { Condition, Rename } from './types.ts';
 
 /**
  * A field an operation adds: text, a choice (Yes or No is a choice with two options) or a number.
@@ -113,7 +128,9 @@ export const OPTION_EDIT_OPS: readonly NoteTypeEditOp[] = [
  *    target's, or the section has `needs`;
  *  - `id_taken`: a copied section's id, or a `t_` id or code in it, was used in a version of the
  *    target;
- *  - `invalid`: a copied section leaves a definition phase 4's validator refuses, with what it found.
+ *  - `invalid`: a copied section leaves a definition phase 4's validator refuses, with what it
+ *    found; or a field to add whose shape the schema refuses (a length, a range, a unit, no
+ *    options), or a hide that is neither true nor false, with what is wrong.
  */
 export type NoteTypeEditCode =
   | 'protected'
@@ -134,7 +151,7 @@ export type NoteTypeEditRefusal = {
   code: NoteTypeEditCode;
   /** The note type whose field refused an option operation that reached it through `mapsTo`. */
   noteTypeKey?: string;
-  /** For `invalid`: what phase 4's validator found. */
+  /** For `invalid`: what phase 4's validator found, or what the schema would refuse. */
   problems?: FileProblem[];
 };
 
@@ -148,6 +165,8 @@ export type NoteTypeEditContext = {
   /**
    * The team's other active note types, each at its current version, by key: a field that maps
    * to this one (`in_use`), a section to copy, and what the validator looks another key up in.
+   * Within a publish that changes several types (edit-fanout.ts), each at the version the publish
+   * has made of it so far.
    */
   team: Readonly<Record<string, ResolvedNoteType>>;
   /** The platform's note types, each at its newest released version, by key: a section to copy. */
@@ -163,22 +182,58 @@ export type NoteTypeEditContext = {
 export type NoteTypeEditStep =
   { ok: true; definition: ResolvedNoteType; renames: Rename[] } | { ok: false; refusal: NoteTypeEditRefusal };
 
+/** The most characters a note type's title has, as the admin list and the timeline show it. */
+export const NOTE_TYPE_TITLE_MAX = 80;
+
+/** Whether `title` may name a note type: words the schema takes, 1 to 80 characters (code points). */
+export const isNoteTypeTitle = (title: unknown): title is string =>
+  isWords(title) && [...title].length <= NOTE_TYPE_TITLE_MAX;
+
+const refused = (code: NoteTypeEditCode): NoteTypeEditStep => ({ ok: false, refusal: { code } });
+const changed = (definition: ResolvedNoteType, renames: Rename[] = []): NoteTypeEditStep => ({
+  ok: true,
+  definition,
+  renames,
+});
+
 /**
  * Applies one operation to `definition`, the type's newest version with the publish's earlier
  * operations applied, whose version and key it keeps. `rename_label` of a field that stores an
  * answer and `rename_option` yield the renames versionProblems reads (forms 2.6): a field's at its
  * own path, an option's at each path its answers are stored at (each side of a field with
- * `sides`); a section's title, a group's label and every other operation yield none.
+ * `sides`); a section's title, a group's label and every other operation yield none. Nothing it is
+ * given is changed: the definition it answers shares every part it did not change with
+ * `definition`.
  */
 export function applyNoteTypeEdit(
   definition: ResolvedNoteType,
   edit: NoteTypeEdit,
   context: NoteTypeEditContext,
 ): NoteTypeEditStep {
-  void definition;
-  void edit;
-  void context;
-  throw new Error('P4-edit-basic');
+  // Every part of an auto note type, its title too, whatever the operation names (5.4).
+  if (typeProtected(definition)) return refused('protected');
+  switch (edit.op) {
+    case 'rename_type':
+      return isNoteTypeTitle(edit.title)
+        ? changed({ ...definition, title: edit.title })
+        : refused('title_invalid');
+    case 'set_hidden':
+      // A JSON value that is neither: a "false" sent as text would otherwise hide what it names.
+      if (edit.hidden === true) return hide(definition, edit.path, context);
+      if (edit.hidden === false) return show(definition, edit.path, context);
+      return refused('invalid');
+    case 'rename_label':
+      return renameLabel(definition, edit.path, edit.label);
+    case 'add_option':
+    case 'rename_option':
+    case 'retire_option':
+    case 'move_option':
+      return applyOptionEdit(definition, edit, context);
+    case 'add_field':
+    case 'add_section':
+    case 'copy_section':
+      return applyAddEdit(definition, edit, context);
+  }
 }
 
 /** A publish's answer: the next version with the renames it declares, or the first refusal. */
@@ -197,7 +252,243 @@ export function applyNoteTypeEdits(
   edits: readonly NoteTypeEdit[],
   context: NoteTypeEditContext,
 ): NoteTypeEditOutcome {
-  void edits;
-  void context;
-  throw new Error('P4-edit-basic');
+  const newest = context.versions.at(-1);
+  if (!newest) throw new Error('a note type is edited from its newest version, and there is none');
+  let definition = newest;
+  const renamed: Rename[] = [];
+  for (const [opIndex, edit] of edits.entries()) {
+    const step = applyNoteTypeEdit(definition, edit, context);
+    if (!step.ok) return { ok: false, opIndex, refusal: step.refusal };
+    definition = step.definition;
+    renamed.push(...step.renames);
+  }
+  // Its own copy: the steps share what they did not change with the versions they were given.
+  const next = copyPart({ ...definition, key: newest.key, version: newest.version + 1 });
+  return { ok: true, definition: next, renames: declaredRenames(context.versions, next, renamed) };
+}
+
+/**
+ * The renames a version declares for what a publish reworded (forms 2.6), as versionProblems reads
+ * them: for each part a step renamed, in the order first renamed, from the label it last had in
+ * `earlier` to the one it has in `next`. So two renames of one label are one; one back to the label
+ * it had, of a part `next` no longer has, or of one no earlier version had, is none. edit-fanout.ts
+ * declares each note type's the same way.
+ */
+export function declaredRenames(
+  earlier: readonly ResolvedNoteType[],
+  next: ResolvedNoteType,
+  renamed: readonly Rename[],
+): Rename[] {
+  if (renamed.length === 0) return [];
+  // A path holds no space, so a field's label and an option's are kept apart.
+  const keyOf = (path: string, code: string | undefined) => (code === undefined ? path : `${path} ${code}`);
+  const labelsOf = (definitions: readonly ResolvedNoteType[]) => {
+    const labels = new Map<string, string>();
+    for (const definition of definitions)
+      for (const stored of pathsOf(definition)) {
+        if (stored.field) labels.set(stored.field.path, stored.field.label);
+        for (const option of stored.options ?? []) labels.set(keyOf(stored.path, option.code), option.label);
+      }
+    return labels;
+  };
+  const was = labelsOf(earlier);
+  const now = labelsOf([next]);
+  const declared: Rename[] = [];
+  const seen = new Set<string>();
+  for (const { path, code } of renamed) {
+    const key = keyOf(path, code);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const from = was.get(key);
+    const to = now.get(key);
+    if (from === undefined || to === undefined || from === to) continue;
+    declared.push(code === undefined ? { path, from, to } : { path, code, from, to });
+  }
+  return declared;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Rewording a label
+
+function renameLabel(definition: ResolvedNoteType, path: string, label: string): NoteTypeEditStep {
+  // A section's id is one path part: a path with no dot names a section, and its title.
+  if (!path.includes('.')) {
+    const section = definition.sections.find((s) => s.id === path);
+    if (!section) return refused('not_found');
+    if (isProtected(definition, { section: path })) return refused('protected');
+    if (!isWords(label)) return refused('label_invalid');
+    return changed({
+      ...definition,
+      sections: definition.sections.map((s) => (s === section ? { ...section, title: label } : s)),
+    });
+  }
+  const place = fieldPlace(definition, path);
+  if (!place) return refused('not_found');
+  if (isProtected(definition, { path })) return refused('protected');
+  if (!isWords(label)) return refused('label_invalid');
+  const { field } = place;
+  // A group stores no answer: no earlier note reads its label.
+  const renames =
+    field.kind === 'group' || field.label === label ? [] : [{ path, from: field.label, to: label }];
+  return changed(
+    withFields(definition, place, (fields) => fields.map((f) => (f === field ? { ...field, label } : f))),
+    renames,
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Hiding and showing
+
+const partOf = (path: string): NoteTypePart => (path.includes('.') ? { path } : { section: path });
+
+/**
+ * Leaves the section or field at `path` out of the new version. Every earlier version keeps it, so
+ * every note that has it still reads it (rule 4).
+ */
+function hide(definition: ResolvedNoteType, path: string, context: NoteTypeEditContext): NoteTypeEditStep {
+  const part = partOf(path);
+  const section = 'section' in part ? definition.sections.find((s) => s.id === part.section) : undefined;
+  const place = 'path' in part ? fieldPlace(definition, part.path) : undefined;
+  if (!section && !place) return refused('not_found');
+  if (holdsProtected(definition, part)) return refused('protected');
+  if (namedFromOutside(definition, part, context)) return refused('in_use');
+  if (section) {
+    // A definition has no empty lists (forms 2.2): the type keeps a section, a section a field.
+    if (definition.sections.length === 1) return refused('last_section');
+    return changed({ ...definition, sections: definition.sections.filter((s) => s !== section) });
+  }
+  if (place!.siblings.length === 1) return refused('last_field');
+  return changed(withFields(definition, place!, (fields) => fields.filter((f) => f !== place!.field)));
+}
+
+/**
+ * Whether anything outside the part names what is inside it: a condition, a grid's `pickedIn`, a
+ * flag's `clears`, or a field of another of the team's note types that maps to it. Hidden, the
+ * part would leave each naming nothing (forms 2.2; Expand, lifecycle 6.4).
+ */
+function namedFromOutside(
+  definition: ResolvedNoteType,
+  part: NoteTypePart,
+  context: NoteTypeEditContext,
+): boolean {
+  const model = pathModel(definition);
+  const hidden =
+    'section' in part
+      ? model.sections.find((s) => s.section.id === part.section)!
+      : model.nodes.find((n) => n.base?.join('.') === (part as { path: string }).path)!;
+  const within = (node: FieldNode | SectionNode): boolean => {
+    if (!('field' in node)) return node === hidden;
+    if ('nodes' in hidden) return node.section === hidden;
+    for (let at: FieldNode | null = node; at; at = at.parent) if (at === hidden) return true;
+    return false;
+  };
+  const names = (condition: Condition | undefined, carrier: FieldNode | SectionNode, row: string | null) => {
+    let named = false;
+    const read = (c: Condition) => {
+      if ('field' in c) {
+        const found = leafAt(model, c.field, carrier, row);
+        if ('leaf' in found && within(found.leaf.node)) named = true;
+      } else if ('all' in c) c.all.forEach(read);
+      else if ('any' in c) c.any.forEach(read);
+      else read(c.not);
+    };
+    if (condition) read(condition);
+    return named;
+  };
+  for (const section of model.sections)
+    if (!within(section) && names(section.section.showWhen, section, null)) return true;
+  for (const node of model.nodes) {
+    if (within(node)) continue;
+    // In a grid's cell a condition is read in each row (validate.ts reads it so).
+    const rows: (string | null)[] = node.grid ? node.grid.rows : [null];
+    if (rows.some((row) => names(node.field.showWhen, node, row))) return true;
+    if (node.picked && within(node.picked.node)) return true;
+    if (node.field.kind === 'flag')
+      for (const id of node.field.clears ?? []) {
+        const cleared = node.siblings.find((s) => s.field.id === id);
+        if (cleared && within(cleared)) return true;
+      }
+  }
+  const prefix = 'section' in part ? `${part.section}.` : `${part.path}.`;
+  const at = 'section' in part ? null : part.path;
+  for (const [key, other] of Object.entries(context.team)) {
+    if (key === definition.key) continue;
+    for (const target of mapsToIn(other.sections)) {
+      const [toKey, toPath] = target.split(':') as [string, string];
+      if (toKey === definition.key && (toPath === at || toPath.startsWith(prefix))) return true;
+    }
+  }
+  return false;
+}
+
+/** Every `mapsTo` of a note type's fields, at any depth. */
+function mapsToIn(sections: readonly ResolvedSection[]): string[] {
+  const found: string[] = [];
+  const walk = (fields: readonly ResolvedField[]) => {
+    for (const field of fields) {
+      if (field.mapsTo !== undefined) found.push(field.mapsTo);
+      if (field.kind === 'group') walk(field.fields);
+      if (field.kind === 'grid') walk([field.cell]);
+    }
+  };
+  for (const section of sections) walk(section.fields);
+  return found;
+}
+
+/**
+ * Copies the section or field at `path` back, unchanged, from the last version that had it, after
+ * the part it followed there (or, when the new version lacks that one, the nearest before it that
+ * it has; else first). A part the version already has is left as it is. Nothing is shown back that
+ * holds a protected field, nor into a protected section: protected parts are the platform's to add.
+ */
+function show(definition: ResolvedNoteType, path: string, context: NoteTypeEditContext): NoteTypeEditStep {
+  const part = partOf(path);
+  const versions = [...context.versions].reverse();
+  if ('section' in part) {
+    if (definition.sections.some((s) => s.id === part.section)) return changed(definition);
+    for (const version of versions) {
+      const index = version.sections.findIndex((s) => s.id === part.section);
+      if (index < 0) continue;
+      if (holdsProtected(version, part)) return refused('protected');
+      const at = placeAfter(
+        version.sections.slice(0, index).map((s) => s.id),
+        definition.sections.map((s) => s.id),
+      );
+      const sections = [...definition.sections];
+      sections.splice(at, 0, copyPart(version.sections[index]!));
+      return changed({ ...definition, sections });
+    }
+    return refused('not_found');
+  }
+  if (fieldPlace(definition, part.path)) return changed(definition);
+  for (const version of versions) {
+    const was = fieldPlace(version, part.path);
+    if (!was) continue;
+    if (holdsProtected(version, part)) return refused('protected');
+    const parent = fieldsAt(definition, part.path.split('.').slice(0, -1));
+    if (!parent) return refused('not_found');
+    if (isProtected(definition, { section: parent.section.id })) return refused('protected');
+    const siblings = parent.groups.at(-1)?.fields ?? parent.section.fields;
+    const at = placeAfter(
+      was.siblings.slice(0, was.index).map((f) => f.id),
+      siblings.map((f) => f.id),
+    );
+    return changed(
+      withFields(definition, parent, (fields) => [
+        ...fields.slice(0, at),
+        copyPart(was.field),
+        ...fields.slice(at),
+      ]),
+    );
+  }
+  return refused('not_found');
+}
+
+/** Where a part goes back among `now`: just after the nearest of `before` (the parts it followed) still there, else first. */
+function placeAfter(before: readonly string[], now: readonly string[]): number {
+  for (const id of [...before].reverse()) {
+    const index = now.indexOf(id);
+    if (index >= 0) return index + 1;
+  }
+  return 0;
 }

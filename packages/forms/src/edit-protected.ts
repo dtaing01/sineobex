@@ -164,8 +164,7 @@ function protects(
   definition: ResolvedNoteType,
   part: { section: ResolvedSection; field?: ResolvedField; option?: Option },
 ): boolean {
-  // The server refuses to finish a Medical note without it (lifecycle 3.3).
-  if (definition.auto !== undefined) return true;
+  if (typeProtected(definition)) return true;
   // Only a credential with the capability sets these answers; nothing a team adds can stand in for it.
   if (part.section.needs !== undefined) return true;
   if (part.field !== undefined && marked(part.field)) return true;
@@ -180,6 +179,15 @@ function inside(field: ResolvedField): ResolvedField[] {
 
 const holdsMarked = (fields: readonly ResolvedField[]): boolean =>
   fields.some((field) => marked(field) || inside(field).some(marked));
+
+/**
+ * Whether an edit may touch nothing of the note type, its title and what an operation would add to
+ * it included: every part of an `auto` one, since the server refuses to finish a Medical note
+ * without it (lifecycle 3.3). Every operation asks it first, before what it names is looked up.
+ */
+export function typeProtected(definition: ResolvedNoteType): boolean {
+  return definition.auto !== undefined;
+}
 
 /**
  * Whether an edit may not touch `part` itself (5.4). A part the definition does not have is not
