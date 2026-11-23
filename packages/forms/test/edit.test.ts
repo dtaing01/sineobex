@@ -968,6 +968,200 @@ describe('the option operations (edit-options.ts)', () => {
   });
 });
 
+describe('adding and copying (edit-add.ts)', () => {
+  const contextOf2 = (
+    versions: ResolvedNoteType[],
+    team: ResolvedNoteType[] = [],
+    platform: ResolvedNoteType[] = [],
+  ): NoteTypeEditContext => ({
+    versions,
+    team: Object.fromEntries(team.map((d) => [d.key, d])),
+    platform: Object.fromEntries(platform.map((d) => [d.key, d])),
+  });
+  const codeOf = (edits: NoteTypeEdit[], context: NoteTypeEditContext) => {
+    const outcome = applyNoteTypeEdits(edits, context);
+    return outcome.ok ? 'published' : outcome.refusal.code;
+  };
+  const text = { kind: 'text', label: 'Demo: Note', lines: 'one', maxLength: 200 } as const;
+
+  it('builds a field and a section of what the request gives for them alone: no mark is ever written (rule 1)', () => {
+    const marks = {
+      id: 'mine',
+      code: 'mine',
+      required: true,
+      noNormal: true,
+      handoff: true,
+      sides: true,
+      recap: false,
+      help: 'Demo: Help',
+      mapsTo: 'demo_full:wound.dressing',
+      showWhen: { field: 'visit.reason', is: 'other' },
+      sensitiveExam: true,
+      treatmentRecord: true,
+      needs: 'orderMedications',
+      normal: true,
+      repeat: { max: 3, itemTitle: 'Demo: One {n}' },
+    };
+    const edits = [
+      { ...marks, op: 'add_field', sectionId: 'visit', ...text },
+      {
+        ...marks,
+        op: 'add_field',
+        sectionId: 'visit',
+        kind: 'choice',
+        label: 'Demo: Asked?',
+        many: true,
+        options: ['Demo: Yes'],
+        excludes: [['a', 'b']],
+      },
+      {
+        ...marks,
+        op: 'add_field',
+        sectionId: 'visit',
+        kind: 'number',
+        label: 'Demo: Count',
+        min: 0,
+        max: 9,
+        decimals: 0,
+        display: 'stepper',
+        normal: 4,
+        altUnit: { unit: 'x', perUnit: 2 },
+      },
+      {
+        ...marks,
+        op: 'add_section',
+        title: 'Demo: More',
+        afterSectionId: null,
+        fields: [{ ...marks, ...text }],
+      },
+    ] as unknown as NoteTypeEdit[];
+    const visit = named('demo_visit@1');
+    const outcome = applyNoteTypeEdits(edits, contextOf2([visit]));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.definition.sections[0]).toEqual({
+      id: 't_5',
+      title: 'Demo: More',
+      fields: [{ id: 't_6', kind: 'text', label: 'Demo: Note', lines: 'one', maxLength: 200 }],
+    });
+    expect(outcome.definition.sections[1]!.fields.slice(-3)).toEqual([
+      { id: 't_1', kind: 'text', label: 'Demo: Note', lines: 'one', maxLength: 200 },
+      {
+        id: 't_2',
+        kind: 'choice',
+        label: 'Demo: Asked?',
+        many: true,
+        options: [{ code: 't_3', label: 'Demo: Yes' }],
+      },
+      { id: 't_4', kind: 'number', label: 'Demo: Count', min: 0, max: 9, decimals: 0 },
+    ]);
+    expectStorable(outcome.definition, [visit], [], () => undefined, 'built');
+  });
+
+  it('refuses a field whose shape the schema refuses, naming where it would be', () => {
+    const visit = named('demo_visit@1');
+    for (const [field, path] of [
+      [{ ...text, lines: 'three' }, '$.sections[0].fields[6].lines'],
+      [{ ...text, maxLength: 0 }, '$.sections[0].fields[6].maxLength'],
+      [{ ...text, maxLength: 4001 }, '$.sections[0].fields[6].maxLength'],
+      [{ ...text, maxLength: 2.5 }, '$.sections[0].fields[6].maxLength'],
+      [
+        { kind: 'choice', label: 'Demo: Asked?', many: 'yes', options: ['Demo: Yes'] },
+        '$.sections[0].fields[6].many',
+      ],
+      [
+        { kind: 'choice', label: 'Demo: Asked?', many: false, options: [] },
+        '$.sections[0].fields[6].options',
+      ],
+      [
+        { kind: 'number', label: 'Demo: Count', min: '0', max: 9, decimals: 0 },
+        '$.sections[0].fields[6].min',
+      ],
+      [
+        { kind: 'number', label: 'Demo: Count', min: 0, max: null, decimals: 0 },
+        '$.sections[0].fields[6].max',
+      ],
+      [
+        { kind: 'number', label: 'Demo: Count', min: 0, max: 9, decimals: 3 },
+        '$.sections[0].fields[6].decimals',
+      ],
+      [
+        { kind: 'number', label: 'Demo: Count', min: 0, max: 9, decimals: 0, unit: ' ' },
+        '$.sections[0].fields[6].unit',
+      ],
+      [{ kind: 'flag', label: 'Demo: Ticked' }, '$.sections[0].fields[6].kind'],
+    ] as [Record<string, unknown>, string][]) {
+      const outcome = applyNoteTypeEdits(
+        [{ op: 'add_field', sectionId: 'visit', ...field } as unknown as NoteTypeEdit],
+        contextOf2([visit]),
+      );
+      expect(outcome, JSON.stringify(field)).toMatchObject({
+        ok: false,
+        opIndex: 0,
+        refusal: { code: 'invalid', problems: [{ path, rule: 'edit.new_field' }] },
+      });
+    }
+    expect(
+      codeOf(
+        [{ op: 'add_section', title: 'Demo: Empty', afterSectionId: null, fields: [] }],
+        contextOf2([visit]),
+      ),
+    ).toBe('invalid');
+  });
+
+  it('counts a copied section’s made ids against the limits (BM-84)', () => {
+    const source: ResolvedNoteType = {
+      ...named('t_000000000002@1'),
+      key: 't_000000000005',
+      sections: [
+        {
+          id: 't_50',
+          title: 'Demo: Brought',
+          fields: [
+            { id: 't_51', ...text },
+            { id: 't_52', ...text },
+          ],
+        },
+      ],
+    };
+    const copy: NoteTypeEdit = {
+      op: 'copy_section',
+      fromKey: source.key,
+      sectionId: 't_50',
+      afterSectionId: null,
+    };
+    const parts = named('t_000000000004@1');
+    expect(codeOf([copy], contextOf2([parts], [source]))).toBe('published');
+    expect(
+      codeOf(
+        [{ op: 'add_section', title: 'Demo: Part 10', afterSectionId: null, fields: [text] }, copy],
+        contextOf2([parts], [source]),
+      ),
+    ).toBe('too_many_sections');
+    expect(codeOf([copy], contextOf2([named('t_000000000003@1')], [source]))).toBe('too_many_fields');
+  });
+
+  it('refuses a copy for what it brings, never for what an earlier operation of the publish left', () => {
+    // A retired code a condition names is the publish's check to report (the validator), not the copy's.
+    const street = named('demo_street@1');
+    const team = [named('t_000000000001@1')];
+    const retire: NoteTypeEdit = { op: 'retire_option', path: 'route.stop', code: 'yes' };
+    const copy: NoteTypeEdit = {
+      op: 'copy_section',
+      fromKey: 't_000000000001',
+      sectionId: 't_1',
+      afterSectionId: 'notes',
+    };
+    const outcome = applyNoteTypeEdits([retire, copy], contextOf2([street], team));
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(validate(outcome.definition, { noteType: () => undefined }).map((p) => p.rule)).toEqual([
+      'validate.condition_unknown_code',
+    ]);
+    expect(codeOf([copy], contextOf2([street], team))).toBe('published');
+  });
+});
+
 describe('over the released note types', () => {
   it('reads the protected parts of each straight from phase 4’s marks', () => {
     for (const definition of released.values()) {
