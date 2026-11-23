@@ -357,6 +357,24 @@ describe('POST /v1/patients/{patientId}/flags', () => {
     }
   });
 
+  it('reads IDs in capitals as the database writes them: stored and logged in lowercase', async () => {
+    const id = randomUUID();
+    const before = await auditMark(h);
+    const made = await send(team.staff, 'POST', `/v1/patients/${patient.toUpperCase()}/flags`, {
+      id: id.toUpperCase(),
+      flagId: flagId('flag.low').toUpperCase(),
+      action: 'set',
+      reason: REASON,
+    });
+    expect([made.status, made.body]).toEqual([201, { id }]);
+    expect(await row(id)).toMatchObject({ patientId: patient, flagId: flagId('flag.low') });
+    const [event] = await expectAudit(h, 'patient_flag.changed', { after: before, count: 1 });
+    expect(event!.details).toMatchObject({ flagId: flagId('flag.low') });
+    // The same form sent again in lowercase is the same change.
+    expect((await setFlag(team.staff, patient, { id, flagId: flagId('flag.low') })).status).toBe(201);
+    await expectAudit(h, 'patient_flag.changed', { after: before, count: 1 });
+  });
+
   it('refuses an id another change holds, id_taken, writing nothing, whatever the first one was', async () => {
     const id = randomUUID();
     expect((await setFlag(team.staff, patient, { id, flagId: flagId('flag.medium') })).status).toBe(201);
