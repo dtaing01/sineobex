@@ -181,8 +181,8 @@ describe('adding a bag', () => {
     });
     answer = refusal(409, 'name_taken');
     expect((await run(addBagAction, fields)).state).toMatchObject({
-      error: 'Another bag already has this name.',
-      fieldErrors: { name: 'Another bag already has this name.' },
+      error: 'Some fields need changing. Check each one below.',
+      fieldErrors: { name: 'Name: Another bag already has this name.' },
     });
     answer = refusal(409, 'reference_archived', {
       problems: [{ path: 'minimums.0.itemId', code: 'reference_archived' }],
@@ -198,7 +198,7 @@ describe('adding a bag', () => {
   it('says a refused reason beside the Reason box', async () => {
     answer = refusal(422, 'validation_failed', { fields: [{ path: 'reason', problem: 'too_small' }] });
     const r = await run(addBagAction, { ...fields, reason: 'no' });
-    expect(r.state?.fieldErrors).toEqual({ reason: 'Give a reason of 3 to 300 characters.' });
+    expect(r.state?.fieldErrors).toEqual({ reason: 'Reason: Give a reason of 3 to 300 characters.' });
   });
 
   it('goes through /reauth and back to the page when the sign-in is too old', async () => {

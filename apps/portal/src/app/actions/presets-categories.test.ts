@@ -136,8 +136,8 @@ describe('adding a category', () => {
     answer = refusal(409, 'name_taken');
     const r = await run(addCategoryAction, { ...fields, name: 'otc' });
     expect(r.state).toEqual({
-      error: 'Another category already has this name.',
-      fieldErrors: { name: 'Another category already has this name.' },
+      error: 'Some fields need changing. Check each one below.',
+      fieldErrors: { name: 'Name: Another category already has this name.' },
       values: { ...fields, name: 'otc' },
     });
   });
@@ -145,8 +145,8 @@ describe('adding a category', () => {
   it('says a refused reason beside the Reason box', async () => {
     answer = refusal(422, 'validation_failed', { fields: [{ path: 'reason', problem: 'too_small' }] });
     const r = await run(addCategoryAction, { ...fields, reason: 'no' });
-    expect(r.state?.error).toBe('Give a reason of 3 to 300 characters.');
-    expect(r.state?.fieldErrors).toEqual({ reason: 'Give a reason of 3 to 300 characters.' });
+    expect(r.state?.error).toBe('Some fields need changing. Check each one below.');
+    expect(r.state?.fieldErrors).toEqual({ reason: 'Reason: Give a reason of 3 to 300 characters.' });
   });
 
   it('goes through /reauth and back to the page when the sign-in is too old', async () => {

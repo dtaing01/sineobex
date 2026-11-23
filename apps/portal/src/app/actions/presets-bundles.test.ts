@@ -183,8 +183,8 @@ describe('adding a bundle', () => {
   it('says a name another bundle holds, and a removed item a line names', async () => {
     answer = refusal(409, 'name_taken');
     expect((await run(addBundleAction, fields)).state).toMatchObject({
-      error: 'Another bundle already has this name.',
-      fieldErrors: { name: 'Another bundle already has this name.' },
+      error: 'Some fields need changing. Check each one below.',
+      fieldErrors: { name: 'Name: Another bundle already has this name.' },
     });
     answer = refusal(409, 'reference_archived', {
       problems: [{ path: 'lines.1.itemId', code: 'reference_archived' }],
@@ -200,7 +200,7 @@ describe('adding a bundle', () => {
   it('says a refused reason beside the Reason box', async () => {
     answer = refusal(422, 'validation_failed', { fields: [{ path: 'reason', problem: 'too_small' }] });
     const r = await run(addBundleAction, { ...fields, reason: 'no' });
-    expect(r.state?.fieldErrors).toEqual({ reason: 'Give a reason of 3 to 300 characters.' });
+    expect(r.state?.fieldErrors).toEqual({ reason: 'Reason: Give a reason of 3 to 300 characters.' });
   });
 
   it('goes through /reauth and back to the page when the sign-in is too old', async () => {
