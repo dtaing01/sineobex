@@ -261,6 +261,9 @@ export function isWords(value: unknown): value is string {
 /** An id or a code the server made: `t_` and a number (rule 3). */
 const MADE = /^t_(\d+)$/;
 
+/** Whether an id or a code is one the server made (rule 3): what the team's limits count (BM-84). */
+export const isMadeId = (value: string): boolean => MADE.test(value);
+
 // A definition never changes once made, and every version is read again for each id an operation makes.
 const highest = new WeakMap<ResolvedNoteType, bigint>();
 
@@ -296,8 +299,11 @@ export function madeIds(definitions: readonly ResolvedNoteType[]): () => string 
   return () => `t_${(n += 1n)}`;
 }
 
-/** Every made id and code `definition` uses, in any part: what a copied section may not bring (rule 3). */
-export function madeIn(definition: ResolvedNoteType): Set<string> {
+/**
+ * Every made id and code a definition, or a part of one, uses as a section's or a field's id or an
+ * option's code, at any depth: what a copied section may not bring into a note type (rule 3).
+ */
+export function madeIn(part: unknown): Set<string> {
   const found = new Set<string>();
   const walk = (value: unknown): void => {
     if (Array.isArray(value)) value.forEach(walk);
@@ -308,6 +314,6 @@ export function madeIn(definition: ResolvedNoteType): Set<string> {
         else walk(child);
       }
   };
-  walk(definition.sections);
+  walk(part);
   return found;
 }
