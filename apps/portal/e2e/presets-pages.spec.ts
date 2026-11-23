@@ -3172,12 +3172,12 @@ test.describe('bag minimums, /team/presets/bag-minimums', () => {
       .filter((b) => b.state === 'active')
       .sort((a, b) => byName.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
 
+  /** A bag with a long name, which holds no minimums. */
+  const LONG_BAG = 'Demo: Winter outreach van bag for the shelter and the river camp';
   /**
    * A bag with a long name, made once: Copy from offers it, so a reflow check at 320 px also checks
    * the choice never widens the page, whichever cases ran before.
    */
-  /** A bag with a long name and no minimums, made once. */
-  const LONG_BAG = 'Demo: Winter outreach van bag for the shelter and the river camp';
   async function longBag(): Promise<void> {
     if ((await listed('bag')).some((b) => b.name === LONG_BAG)) return;
     await made('bag', { name: LONG_BAG, minimums: [] });
@@ -4434,9 +4434,9 @@ test.describe('a preset’s history and the review of its update, at 320 px', ()
   }) => {
     test.slow();
     const otc = await named<CategoryBody>('order_category', 'OTC');
-    const gauze = await named<ItemBody>('item', 'Xeroform');
+    const xeroform = await named<ItemBody>('item', 'Xeroform');
     offerPlatformVersion('order_category', otc.id);
-    offerPlatformVersion('item', gauze.id);
+    offerPlatformVersion('item', xeroform.id);
     await signIn(page, 'admin@example.com');
 
     // A list page: each category's history, and OTC's review, in its own panel, unboxed.
@@ -4448,7 +4448,7 @@ test.describe('a preset’s history and the review of its update, at 320 px', ()
     await expectWholeWordsAt320(page, 'Categories, a history and a review');
 
     // A preset's page: its history, and its review, each in a panel of its own.
-    await page.goto(`/team/presets/items/${gauze.id}`);
+    await page.goto(`/team/presets/items/${xeroform.id}`);
     await page.getByRole('region', { name: 'Update available for Xeroform' }).locator('summary').click();
     await expect(
       page.getByRole('group', { name: 'What taking the update changes in Xeroform' }),
@@ -4493,9 +4493,9 @@ test.describe('a list of lines or of boxes, by keyboard', () => {
 
     // A test's options.
     await page.goto('/team/presets/items');
-    const test_ = page.getByRole('form', { name: 'Add an item' });
-    await test_.getByRole('radio', { name: 'A choice from a list' }).check();
-    const options = test_.getByRole('group', { name: 'Options' });
+    const newItem = page.getByRole('form', { name: 'Add an item' });
+    await newItem.getByRole('radio', { name: 'A choice from a list' }).check();
+    const options = newItem.getByRole('group', { name: 'Options' });
     const option = (n: number) => options.getByLabel(`Option ${n}`, { exact: true });
     await press(options.getByRole('button', { name: 'Add an option' }));
     await expect(option(3)).toBeFocused();
