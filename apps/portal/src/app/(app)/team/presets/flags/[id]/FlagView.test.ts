@@ -181,7 +181,9 @@ describe('a flag’s page', () => {
     expect(html).toContain(
       'This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.',
     );
-    expect(html).toContain('Add as new<span class="sr-only">: Pregnancy</span></button>');
+    expect(html).toContain(
+      'Add as new<span class="sr-only"> from Sineobex’s update to Pregnancy</span></button>',
+    );
     expect(html).toContain(
       '<th scope="row">Sensitive <span class="sx-pill sx-pill--info">Changes</span></th>',
     );

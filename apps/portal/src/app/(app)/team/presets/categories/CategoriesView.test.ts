@@ -140,7 +140,7 @@ describe('the list', () => {
     expect(otc).toContain(
       '<p>This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.</p>',
     );
-    expect(otc).toContain('Add as new<span class="sr-only">: OTC</span></button>');
+    expect(otc).toContain('Add as new<span class="sr-only"> from Sineobex’s update to OTC</span></button>');
   });
 
   it('lists the removed ones under Removed, with Restore, and none of them above', () => {

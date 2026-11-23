@@ -117,7 +117,9 @@ describe('the update offer', () => {
     expect(html).toContain(
       '<p>This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.</p>',
     );
-    expect(html).toContain('Add as new<span class="sr-only">: Frost risk</span></button>');
+    expect(html).toContain(
+      'Add as new<span class="sr-only"> from Sineobex’s update to Frost risk</span></button>',
+    );
     expect(html).not.toContain('Replace with the new version');
     expect(hidden(html, 'asNew')).toContain('value="true"');
     expect(hidden(html, 'back')).toContain('value="/team/presets/flags"');
