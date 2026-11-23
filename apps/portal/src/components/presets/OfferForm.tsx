@@ -123,7 +123,7 @@ export function OfferForm({
               <SubmitButton>
                 {offer.asNew ? (
                   <>
-                    Add as new<span className="sr-only">: {name}</span>
+                    Add as new<span className="sr-only"> from Sineobex’s update to {name}</span>
                   </>
                 ) : (
                   <>
