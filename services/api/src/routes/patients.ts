@@ -5,6 +5,7 @@ import { teamScope } from '../auth/context.ts';
 import { fetchCharts, getChart } from '../patients/charts.ts';
 import { correctIdentity } from '../patients/corrections.ts';
 import { decideFieldReview, listFieldReviews } from '../patients/field-reviews.ts';
+import { markFlagChangeInError, setPatientFlag } from '../patients/flags.ts';
 import { fieldHistory } from '../patients/history.ts';
 import { getIdLinks, issueIdLink } from '../patients/id-links.ts';
 import { matchPatients } from '../patients/match.ts';
@@ -16,10 +17,13 @@ import {
   FieldReviewPage,
   FieldReviewQuery,
   FieldReviewView,
+  FlagChangeParam,
   HistoryQuery,
   IdentityCorrection,
   IdLinkState,
   IssueIdLink,
+  MarkFlagChange,
+  MarkFlagChangeResult,
   PatientChart,
   PatientMatchRequest,
   PatientMatchResult,
@@ -27,6 +31,8 @@ import {
   PatientSearch,
   PatientSearchResult,
   ReviewParam,
+  SetPatientFlag,
+  SetPatientFlagResult,
   TeamIndexPage,
   TeamIndexRequest,
 } from '../patients/schemas.ts';
@@ -38,9 +44,9 @@ import { errors } from './schemas.ts';
 
 /**
  * Patients: search, the intake match, charts, the phone's team index, history, identity
- * corrections, field reviews and ID links (phase 3 design 3.1, 3.2, 3.5). Every permission is an
- * existing catalog key (D37); a refusal is logged as access.denied. Names, birth dates and search
- * text travel only in POST bodies.
+ * corrections, field reviews, ID links (phase 3 design 3.1, 3.2, 3.5) and flags (phase 5 design 7).
+ * Every permission is an existing catalog key (D37); a refusal is logged as access.denied. Names,
+ * birth dates, search text and a flag's reason travel only in POST bodies.
  */
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
@@ -192,6 +198,43 @@ const issueIdLinkRoute = createRoute({
   },
 });
 
+const setFlagRoute = createRoute({
+  method: 'post',
+  path: '/v1/patients/{patientId}/flags',
+  operationId: 'setPatientFlag',
+  tags: ['patients'],
+  summary:
+    'Set or clear a flag on the patient, with a reason. A retry of the same form gets the first answer.',
+  description:
+    'Needs patients.view and patients.edit. The refusals: 404 for a patient the team does not hold; 422 ' +
+    'unknown_flag, then reason_invalid; 403 for a flag the role may not see, logged; 409 archived for a set of a ' +
+    'flag no longer on the team’s list (a clear is taken), and id_taken for an ID another change holds.',
+  security: [{ bearer: [] }],
+  request: { params: PatientParam, body: { required: true, ...json(SetPatientFlag) } },
+  responses: {
+    201: { description: 'Made, now or by an earlier send of the same form', ...json(SetPatientFlagResult) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const markFlagChangeRoute = createRoute({
+  method: 'post',
+  path: '/v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error',
+  operationId: 'markFlagChangeInError',
+  tags: ['patients'],
+  summary: 'Mark a flag change of the chart entered in error, once, with a reason',
+  description:
+    'Needs patients.edit, and the change’s author or a Program Admin (team.manage_users), else 403, logged, as a ' +
+    'change of a flag the role may not see is; 404 for a change the patient’s chart does not hold; 409 ' +
+    'already_marked.',
+  security: [{ bearer: [] }],
+  request: { params: FlagChangeParam, body: { required: true, ...json(MarkFlagChange) } },
+  responses: {
+    200: { description: 'Marked', ...json(MarkFlagChangeResult) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
 export function registerPatientRoutes(app: App, deps: Deps) {
   // Only these two are gzipped: what they return is chart text team members wrote, and nothing a
   // caller sends is reflected in them.
@@ -264,5 +307,22 @@ export function registerPatientRoutes(app: App, deps: Deps) {
   app.openapi(issueIdLinkRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.edit'] });
     return c.json(await issueIdLink(scope, c.req.valid('param').patientId, c.req.valid('json')), 200);
+  });
+
+  // PLAN-OPEN (BM-69): who may flag a patient? Whoever holds patients.edit, as a phone's change needs
+  // (patient-flag-change.ts); the set answers with nothing of the chart, the mark with its version.
+  app.openapi(setFlagRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['patients.view', 'patients.edit'] });
+    const { patientId } = c.req.valid('param');
+    return c.json(await setPatientFlag(scope, patientId, c.req.valid('json'), c.req.routePath), 201);
+  });
+
+  app.openapi(markFlagChangeRoute, async (c) => {
+    const scope = await teamScope(c, deps, { permissions: ['patients.edit'] });
+    const { patientId, changeId } = c.req.valid('param');
+    return c.json(
+      await markFlagChangeInError(scope, patientId, changeId, c.req.valid('json'), c.req.routePath),
+      200,
+    );
   });
 }

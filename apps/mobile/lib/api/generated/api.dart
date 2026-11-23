@@ -1207,6 +1207,22 @@ enum ReviewNeeds {
   String toJson() => wire;
 }
 
+enum SetPatientFlagAction {
+  setValue('set'),
+  clear('clear'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const SetPatientFlagAction(this.wire);
+  final String wire;
+
+  static SetPatientFlagAction fromJson(String value) =>
+      SetPatientFlagAction.values.firstWhere((e) => e.wire == value, orElse: () => SetPatientFlagAction.unknown);
+
+  String toJson() => wire;
+}
+
 enum SignoffViewAct {
   complete('complete'),
   sign('sign'),
@@ -3677,6 +3693,78 @@ class LegalNameView {
       };
 }
 
+/// One of the team’s active flags the caller may see
+class ListedFlag {
+  const ListedFlag({
+    required this.color,
+    required this.colorName,
+    required this.flagId,
+    required this.name,
+    required this.rank,
+    required this.tier,
+  });
+
+  final FlagColor color;
+  /// The colour’s plain name, shown before the flag’s own
+  final String colorName;
+  final String flagId;
+  final String name;
+  final int rank;
+  final FlagTier tier;
+
+  factory ListedFlag.fromJson(Map<String, dynamic> json) => ListedFlag(
+        color: FlagColor.fromJson(json['color'] as String),
+        colorName: json['colorName'] as String,
+        flagId: json['flagId'] as String,
+        name: json['name'] as String,
+        rank: (json['rank'] as num).toInt(),
+        tier: FlagTier.fromJson(json['tier'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'color': color.toJson(),
+        'colorName': colorName,
+        'flagId': flagId,
+        'name': name,
+        'rank': rank,
+        'tier': tier.toJson(),
+      };
+}
+
+class MarkFlagChange {
+  const MarkFlagChange({
+    required this.reason,
+  });
+
+  /// Why: trimmed, 3 to 300 characters. Shown only to the change’s author and Program Admins
+  final String reason;
+
+  factory MarkFlagChange.fromJson(Map<String, dynamic> json) => MarkFlagChange(
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'reason': reason,
+      };
+}
+
+class MarkFlagChangeResult {
+  const MarkFlagChangeResult({
+    required this.version,
+  });
+
+  /// The change’s version after its mark
+  final int version;
+
+  factory MarkFlagChangeResult.fromJson(Map<String, dynamic> json) => MarkFlagChangeResult(
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'version': version,
+      };
+}
+
 class Me {
   const Me({
     required this.idLinkBaseUrl,
@@ -6106,6 +6194,52 @@ class ServerTime {
       };
 }
 
+class SetPatientFlag {
+  const SetPatientFlag({
+    required this.action,
+    required this.flagId,
+    required this.id,
+    required this.reason,
+  });
+
+  final SetPatientFlagAction action;
+  final String flagId;
+  /// The change’s ID, made once per form by the page, so a retry gets the first answer
+  final String id;
+  /// Why: trimmed, 1 to 500 characters, else reason_invalid. Kept with the change, never logged
+  final String reason;
+
+  factory SetPatientFlag.fromJson(Map<String, dynamic> json) => SetPatientFlag(
+        action: SetPatientFlagAction.fromJson(json['action'] as String),
+        flagId: json['flagId'] as String,
+        id: json['id'] as String,
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'action': action.toJson(),
+        'flagId': flagId,
+        'id': id,
+        'reason': reason,
+      };
+}
+
+class SetPatientFlagResult {
+  const SetPatientFlagResult({
+    required this.id,
+  });
+
+  final String id;
+
+  factory SetPatientFlagResult.fromJson(Map<String, dynamic> json) => SetPatientFlagResult(
+        id: json['id'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+      };
+}
+
 class SignatureQueue {
   const SignatureQueue({
     required this.rows,
@@ -7604,6 +7738,12 @@ class SineobexApi {
     return FieldReviewPage.fromJson(json as Map<String, dynamic>);
   }
 
+  /// The team’s active flags the caller may see, for the portal’s Flags panel and search filters
+  Future<List<ListedFlag>> listFlags() async {
+    final json = await _transport.send('GET', '/v1/presets/flags');
+    return (json as List<dynamic>).map((e) => ListedFlag.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// Everyone on the team, active and removed
   Future<List<Member>> listMembers() async {
     final json = await _transport.send('GET', '/v1/team/members');
@@ -7656,6 +7796,12 @@ class SineobexApi {
   Future<List<Role>> listRoles() async {
     final json = await _transport.send('GET', '/v1/team/roles');
     return (json as List<dynamic>).map((e) => Role.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Mark a flag change of the chart entered in error, once, with a reason
+  Future<MarkFlagChangeResult> markFlagChangeInError({required String patientId, required String changeId, required MarkFlagChange body}) async {
+    final json = await _transport.send('POST', '/v1/patients/${Uri.encodeComponent(patientId)}/flag-changes/${Uri.encodeComponent(changeId)}/entered-in-error', body: body.toJson());
+    return MarkFlagChangeResult.fromJson(json as Map<String, dynamic>);
   }
 
   Future<Ok> markNoticeRead({required String noticeId}) async {
@@ -7751,6 +7897,12 @@ class SineobexApi {
   Future<PatientSearchResult> searchPatients({required PatientSearch body}) async {
     final json = await _transport.send('POST', '/v1/patients/search', body: body.toJson());
     return PatientSearchResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Set or clear a flag on the patient, with a reason. A retry of the same form gets the first answer.
+  Future<SetPatientFlagResult> setPatientFlag({required String patientId, required SetPatientFlag body}) async {
+    final json = await _transport.send('POST', '/v1/patients/${Uri.encodeComponent(patientId)}/flags', body: body.toJson());
+    return SetPatientFlagResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Send change entries; get a receipt for each (accepted with hash, rejected with reason, or conflict)

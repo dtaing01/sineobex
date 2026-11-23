@@ -1776,6 +1776,13 @@
         ],
         "type": "object"
       },
+      "FlagList": {
+        "description": "Primary before secondary, then by rank, then name, then ID",
+        "items": {
+          "$ref": "#/components/schemas/ListedFlag"
+        },
+        "type": "array"
+      },
       "FlagTier": {
         "description": "primary: the risk level, one at a time; secondary: conditions",
         "enum": [
@@ -2459,6 +2466,66 @@
         "required": [
           "given",
           "family"
+        ],
+        "type": "object"
+      },
+      "ListedFlag": {
+        "description": "One of the team’s active flags the caller may see",
+        "properties": {
+          "color": {
+            "$ref": "#/components/schemas/FlagColor"
+          },
+          "colorName": {
+            "description": "The colour’s plain name, shown before the flag’s own",
+            "type": "string"
+          },
+          "flagId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rank": {
+            "type": "integer"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/FlagTier"
+          }
+        },
+        "required": [
+          "flagId",
+          "name",
+          "tier",
+          "color",
+          "colorName",
+          "rank"
+        ],
+        "type": "object"
+      },
+      "MarkFlagChange": {
+        "properties": {
+          "reason": {
+            "description": "Why: trimmed, 3 to 300 characters. Shown only to the change’s author and Program Admins",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "MarkFlagChangeResult": {
+        "properties": {
+          "version": {
+            "description": "The change’s version after its mark",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
         ],
         "type": "object"
       },
@@ -5128,6 +5195,49 @@
         "required": [
           "serverTime",
           "epochMs"
+        ],
+        "type": "object"
+      },
+      "SetPatientFlag": {
+        "properties": {
+          "action": {
+            "enum": [
+              "set",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "flagId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "description": "The change’s ID, made once per form by the page, so a retry gets the first answer",
+            "format": "uuid",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why: trimmed, 1 to 500 characters, else reason_invalid. Kept with the change, never logged",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "flagId",
+          "action",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SetPatientFlagResult": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -9312,6 +9422,211 @@
         ]
       }
     },
+    "/v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error": {
+      "post": {
+        "description": "Needs patients.edit, and the change’s author or a Program Admin (team.manage_users), else 403, logged, as a change of a flag the role may not see is; 404 for a change the patient’s chart does not hold; 409 already_marked.",
+        "operationId": "markFlagChangeInError",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "changeId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkFlagChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkFlagChangeResult"
+                }
+              }
+            },
+            "description": "Marked"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark a flag change of the chart entered in error, once, with a reason",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
+    "/v1/patients/{patientId}/flags": {
+      "post": {
+        "description": "Needs patients.view and patients.edit. The refusals: 404 for a patient the team does not hold; 422 unknown_flag, then reason_invalid; 403 for a flag the role may not see, logged; 409 archived for a set of a flag no longer on the team’s list (a clear is taken), and id_taken for an ID another change holds.",
+        "operationId": "setPatientFlag",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPatientFlag"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetPatientFlagResult"
+                }
+              }
+            },
+            "description": "Made, now or by an earlier send of the same form"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set or clear a flag on the patient, with a reason. A retry of the same form gets the first answer.",
+        "tags": [
+          "patients"
+        ]
+      }
+    },
     "/v1/patients/{patientId}/history": {
       "get": {
         "operationId": "getPatientHistory",
@@ -9786,6 +10101,53 @@
           }
         ],
         "summary": "The team’s presets changed since a revision, for the phone’s copy (any member)",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/presets/flags": {
+      "get": {
+        "description": "Needs patients.view. A sensitive flag only for a role that sees sensitive problems. The phone reads every flag from GET /v1/presets instead, for its own copy of the rule.",
+        "operationId": "listFlags",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlagList"
+                }
+              }
+            },
+            "description": "Flags"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The team’s active flags the caller may see, for the portal’s Flags panel and search filters",
         "tags": [
           "presets"
         ]

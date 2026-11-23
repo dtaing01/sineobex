@@ -352,8 +352,27 @@ describe('POST /v1/patients/{patientId}/flags', () => {
       const r = await setFlag(who, patient, { flagId: flagId('flag.low') });
       expect(r.status).toBe(403);
       const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
-      expect(denied!.details).toMatchObject({ route: '/v1/patients/{patientId}/flags' });
+      // The route as every refusal names it: the router's path, as c.req.routePath gives it.
+      expect(denied!.details).toMatchObject({ route: '/v1/patients/:patientId/flags' });
     }
+  });
+
+  it('refuses an id another change holds, id_taken, writing nothing, whatever the first one was', async () => {
+    const id = randomUUID();
+    expect((await setFlag(team.staff, patient, { id, flagId: flagId('flag.medium') })).status).toBe(201);
+    const before = await auditMark(h);
+    for (const [who, patientId, body] of [
+      [team.staff, otherPatient, { id, flagId: flagId('flag.medium') }],
+      [team.staff, patient, { id, flagId: flagId('flag.low') }],
+      [team.staff, patient, { id, flagId: flagId('flag.medium'), action: 'clear' }],
+      [team.staff, patient, { id, flagId: flagId('flag.medium'), reason: 'Demo: another reason' }],
+      [nurse, patient, { id, flagId: flagId('flag.medium') }],
+    ] as const) {
+      const r = await setFlag(who, patientId, body);
+      expect([r.status, errorOf(r).code], JSON.stringify(body)).toEqual([409, 'id_taken']);
+    }
+    expect(await row(id)).toMatchObject({ patientId: patient, flagId: flagId('flag.medium'), action: 'set' });
+    expect(await auditMark(h)).toBe(before);
   });
 });
 
@@ -598,7 +617,13 @@ describe('GET /v1/presets/flags', () => {
     // Billing/Data reads the problem list but not sensitive problems; the CHW preset no problem list.
     for (const who of [chw, billing]) expect(names(await list(who))).not.toContain('Pregnancy');
     const other = await presetsTeam(h, 'Other list');
-    const theirs = (await list(other.staff)).map((f) => f.flagId);
+    // Asked in their own team, as a member of it.
+    const answer = await call(h, '/v1/presets/flags', {
+      token: await tokenOf(h, other.staff),
+      teamId: other.teamId,
+    });
+    expect(answer.status).toBe(200);
+    const theirs = (answer.body as unknown as Listed[]).map((f) => f.flagId);
     expect(theirs).not.toContain(flagId('flag.high'));
     expect(theirs).toContain(idOf(other, 'flag.high'));
   });

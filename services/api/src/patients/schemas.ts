@@ -1,6 +1,8 @@
 import { z } from '@hono/zod-openapi';
 import { FLAG_COLORS, type FlagColor as FlagColorValue } from '@sineobex/presets';
 import { Credential, Reason, Uuid } from '../routes/schemas.ts';
+import { Retraction } from '../sync/entities/values.ts';
+import { jsonProblem } from '../sync/records.ts';
 import { DateTime, FieldState, RecordSnapshot, UserRef } from '../sync/schemas.ts';
 
 /**
@@ -570,6 +572,9 @@ export const EncounterParam = z.object({ encounterId: Uuid });
 // Flags on the chart (phase 5 design 6.1, 7): worked out on the server, so the portal holds no rule
 // ------------------------------------------------------------------------------------------------
 
+/** A text the database can store: no NUL, no half of a surrogate pair, which would fail the insert. */
+const storableText = (s: string) => jsonProblem(s) === null;
+
 export const FlagTier = z
   .enum(['primary', 'secondary'])
   .openapi('FlagTier', { description: 'primary: the risk level, one at a time; secondary: conditions' });
@@ -629,6 +634,52 @@ export const ChartFlags = z
     description:
       'The patient’s current flags and their history, as the reader may see them: a sensitive flag only for a reader who sees sensitive problems, and every change of a flag hidden from them left out. Sent with every chart; a chart without it holds none',
   });
+
+// The portal's flag routes (design 7): a flag set or cleared, its Entered in error mark, the list.
+
+/** One flag change of a chart, by its patient and its own ID. */
+export const FlagChangeParam = z.object({ patientId: Uuid, changeId: Uuid });
+
+export const SetPatientFlag = z
+  .object({
+    id: Uuid.openapi({
+      description: 'The change’s ID, made once per form by the page, so a retry gets the first answer',
+    }),
+    flagId: Uuid,
+    action: z.enum(['set', 'clear']),
+    reason: z.string().refine(storableText, { message: 'unstorable' }).openapi({
+      description:
+        'Why: trimmed, 1 to 500 characters, else reason_invalid. Kept with the change, never logged',
+    }),
+  })
+  .openapi('SetPatientFlag');
+export const SetPatientFlagResult = z.object({ id: Uuid }).openapi('SetPatientFlagResult');
+
+// The reason a phone's mark sends (Retraction), so the desk and the phone mark by one rule.
+export const MarkFlagChange = z
+  .object({
+    reason: Retraction.shape.reason.refine(storableText, { message: 'unstorable' }).openapi({
+      description: 'Why: trimmed, 3 to 300 characters. Shown only to the change’s author and Program Admins',
+    }),
+  })
+  .openapi('MarkFlagChange');
+export const MarkFlagChangeResult = z
+  .object({ version: z.number().int().openapi({ description: 'The change’s version after its mark' }) })
+  .openapi('MarkFlagChangeResult');
+
+export const ListedFlag = z
+  .object({
+    flagId: Uuid,
+    name: z.string(),
+    tier: FlagTier,
+    color: FlagColor,
+    colorName: z.string().openapi({ description: 'The colour’s plain name, shown before the flag’s own' }),
+    rank: z.number().int(),
+  })
+  .openapi('ListedFlag', { description: 'One of the team’s active flags the caller may see' });
+export const FlagList = z
+  .array(ListedFlag)
+  .openapi('FlagList', { description: 'Primary before secondary, then by rank, then name, then ID' });
 
 export const PatientChart = z
   .object({
@@ -1137,6 +1188,11 @@ export type PatientMatchInput = z.infer<typeof PatientMatchRequest>;
 export type PatientMatchResultValue = z.infer<typeof PatientMatchResult>;
 export type PatientChartValue = z.infer<typeof PatientChart>;
 export type ChartFlagValue = z.infer<typeof ChartFlag>;
+export type SetPatientFlagInput = z.infer<typeof SetPatientFlag>;
+export type SetPatientFlagResultValue = z.infer<typeof SetPatientFlagResult>;
+export type MarkFlagChangeInput = z.infer<typeof MarkFlagChange>;
+export type MarkFlagChangeResultValue = z.infer<typeof MarkFlagChangeResult>;
+export type ListedFlagValue = z.infer<typeof ListedFlag>;
 export type ChartFlagsValue = z.infer<typeof ChartFlags>;
 export type FlagHistoryRowValue = z.infer<typeof FlagHistoryRow>;
 export type VisitReadValue = z.infer<typeof VisitRead>;
