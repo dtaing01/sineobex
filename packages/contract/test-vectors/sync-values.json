@@ -1,5 +1,5 @@
 {
-  "note": "Hand-written from the phase 3 design (2.1, 2.6, 2.8). Valid and invalid values for every patient-side change, read by services/api (Zod, sync-values.test.ts and the entity rules), apps/mobile lib/sync/entities.dart and the phone's fake server. An invalid value fails its schema at `expect.paths` (issue paths, '' for the value itself), or passes it and breaks the named rule `expect.problem` (a validation rejection with details.problem). Every valid change lists the `parents` both registries derive from it: records that must exist in the team, or be held. Rules are checked against `today`, the server date. Strings are never trimmed for you: an untrimmed one is refused. Phase 4 (lifecycle 4.6, 4.7, 4.8) adds the sign-off, the addendum, the correction and the referral, and the two offline audit actions of a visit; a referral is dated no more than a day after `today` (referral_in_future).",
+  "note": "Hand-written from the phase 3 design (2.1, 2.6, 2.8). Valid and invalid values for every patient-side change, read by services/api (Zod, sync-values.test.ts and the entity rules), apps/mobile lib/sync/entities.dart and the phone's fake server. An invalid value fails its schema at `expect.paths` (issue paths, '' for the value itself), or passes it and breaks the named rule `expect.problem` (a validation rejection with details.problem). Every valid change lists the `parents` both registries derive from it: records that must exist in the team, or be held. Rules are checked against `today`, the server date. Strings are never trimmed for you: an untrimmed one is refused. Phase 4 (lifecycle 4.6, 4.7, 4.8) adds the sign-off, the addendum, the correction and the referral, and the two offline audit actions of a visit; a referral is dated no more than a day after `today` (referral_in_future). Phase 5 (design 4.5, 6.2) adds the flag change: a create names its patient and one of the team's flags, sets or clears it, and carries a reason, which the rule reason_invalid refuses when it is not trimmed, is empty, or holds more than 500 code points (an astral character is one, though it is two UTF-16 units); its one field, enteredInError, takes a retraction of 3 to 300 characters, as a referral's.",
   "today": "2026-10-22",
   "valid": [
     {
@@ -907,6 +907,138 @@
       "field": "enteredInError",
       "value": {
         "reason": "Made for the wrong person"
+      },
+      "parents": []
+    },
+    {
+      "name": "a risk level set on a patient",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "Demo: missed two follow-ups this month"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a condition cleared from a patient",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000004",
+        "action": "clear",
+        "reason": "Demo: indoors for the winter"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a flag change whose reason is one character",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "x"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a flag change whose reason is 500 characters",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a flag change whose reason is 500 astral characters, 1,000 UTF-16 units",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a flag change whose reason is 499 characters and an astral one, 501 UTF-16 units",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD🧊"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a flag change entered in error",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "Demo: set on the wrong patient"
+      },
+      "parents": []
+    },
+    {
+      "name": "a flag change entered in error with a reason of 3 characters",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "Oop"
+      },
+      "parents": []
+    },
+    {
+      "name": "a flag change entered in error with a reason of 300 characters",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
       },
       "parents": []
     },
@@ -2216,6 +2348,240 @@
       "value": {
         "reason": ""
       },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change whose reason is empty",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": ""
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "a flag change whose reason is only spaces",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "   "
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "a flag change whose reason has a space before it",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": " Demo: missed two follow-ups"
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "a flag change whose reason ends with a line break",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "Demo: missed two follow-ups\n"
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "a flag change whose reason is 501 characters",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "a flag change whose reason is 501 astral characters",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊"
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "a flag change whose reason is not text",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": 42
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change without a reason",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change for no patient",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "P1",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "Demo: missed two follow-ups"
+      },
+      "expect": {
+        "paths": [
+          "patientId"
+        ]
+      }
+    },
+    {
+      "name": "a flag change naming no flag",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "high",
+        "action": "set",
+        "reason": "Demo: missed two follow-ups"
+      },
+      "expect": {
+        "paths": [
+          "flagId"
+        ]
+      }
+    },
+    {
+      "name": "a flag change that toggles its flag",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "toggle",
+        "reason": "Demo: missed two follow-ups"
+      },
+      "expect": {
+        "paths": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "a flag change with a key it does not know",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "Demo: missed two follow-ups",
+        "tier": "primary"
+      },
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error with a reason too short",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "No"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error with a reason of 301 characters",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error with a space after its reason",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "Demo: set on the wrong patient "
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error without a reason",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {},
       "expect": {
         "paths": [
           "reason"

@@ -27,6 +27,11 @@ const entityAddendum = 'note_addendum';
 const entityCorrection = 'note_correction';
 const entityReferral = 'referral';
 
+/// Phase 5's flag change (design 4.5, 6.2): a patient's flag set or cleared, with a reason, created
+/// once and marked entered in error at most once. Written ahead of P5-phone-entity, which makes it
+/// the server's entity name and registers its rules below.
+String get entityFlagChange => throw UnimplementedError('P5-phone-entity');
+
 /// How two values for one field are reconciled on the server (design 2.4).
 enum FieldClass { draft, keepBoth, identity, status, setOnce }
 
