@@ -562,6 +562,16 @@ describe('0024 patient flag changes', () => {
           `${column} with the mark`,
         ).toEqual(keeps(column));
       }
+      // A create sent again as an upsert rewrites nothing either: its update is an update.
+      expect(
+        await refusal(
+          inTeam(
+            (tx) => tx`
+              insert into sineobex.patient_flag_changes ${values(tx, change({ id, reason: 'Demo: sent again' }))}
+              on conflict (id) do update set reason = excluded.reason`,
+          ),
+        ),
+      ).toEqual(keeps('reason'));
       expect(await rowOf(id)).toEqual(before);
     });
 
