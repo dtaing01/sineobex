@@ -65,7 +65,9 @@ export async function restorePresetAction(_: ActionState, form: FormData): Promi
  * Takes the update on offer, in place or as a new preset (5.1), sending back the version shown and
  * the platform version offered, so only what was reviewed is taken. A take refused stale means the
  * copy changed, or a newer version came on offer, since the page was read: the page is read again,
- * so the review shows what is on offer now (8.1), and the form says why.
+ * so the review shows what is on offer now (8.1), and the form says why. Only then are the two
+ * versions left out of what the form keeps, so its next take sends the ones the review now shows;
+ * any other refusal keeps the versions sent, so a change made meanwhile is still refused stale.
  */
 export async function takePresetUpdateAction(_: ActionState, form: FormData): Promise<ActionState> {
   const values = sentValues(form);
@@ -89,8 +91,10 @@ export async function takePresetUpdateAction(_: ActionState, form: FormData): Pr
     });
   } catch (err) {
     const refused = presetFailure(err, values, { kind: preset.kind, act: 'take' });
-    if (err instanceof PortalApiError && err.code === 'stale') revalidatePath(await landing(values));
-    return refused;
+    if (!(err instanceof PortalApiError && err.code === 'stale')) return refused;
+    revalidatePath(await landing(values));
+    const { baseVersion: _shown, platformVersion: _offered, ...kept } = values;
+    return { ...refused, values: kept };
   }
   const page = await landing(values);
   revalidatePath(page);

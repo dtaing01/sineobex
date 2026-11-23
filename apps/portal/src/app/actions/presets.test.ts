@@ -169,15 +169,31 @@ describe('taking Sineobex’s update', () => {
     expect(r.to).toBe(`/team/presets/flags?done=added&preset=${NEW}`);
   });
 
-  it('reads the page again when refused stale, so the review shows what is on offer now', async () => {
+  it('reads the page again when refused stale, and lets the form send what the review shows now', async () => {
     answer = refusal(409, 'stale', { currentVersion: 3, platformVersion: 3 });
     const r = await run(takePresetUpdateAction, fields);
+    // The two versions are left out of what the form keeps, so it takes the page's again.
+    const { baseVersion: _shown, platformVersion: _offered, ...kept } = fields;
     expect(r.state).toEqual({
       error:
         'Sineobex offered a newer version while you were reviewing this one. Review it below before you take it.',
-      values: fields,
+      values: kept,
     });
     expect(revalidated).toEqual(['/team/presets/flags']);
+  });
+
+  it('keeps the versions it sent when refused for anything but stale, so a change made since is still stale', async () => {
+    for (const [status, code, details] of [
+      [422, 'validation_failed', { fields: [{ path: 'reason', problem: 'too_small' }] }],
+      [409, 'name_taken', undefined],
+      [409, 'reference_archived', { problems: [] }],
+      [422, 'invalid', { problems: [{ path: 'categoryId', code: 'unknown_reference' }] }],
+    ] as const) {
+      answer = refusal(status, code, details);
+      const r = await run(takePresetUpdateAction, { ...fields, reason: '' });
+      expect(r.state?.values, code).toMatchObject({ baseVersion: '3', platformVersion: '2' });
+    }
+    expect(revalidated).toEqual([]);
   });
 
   it('reads nothing again for any other refusal', async () => {

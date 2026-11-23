@@ -38,6 +38,18 @@ function Review({ children }: { children: ReactNode }) {
 }
 
 /**
+ * A version the take sends back: the one a refused take sent, else the page's. The page is read
+ * again after every answer, so a take refused for its reason, or for anything but stale, would
+ * otherwise send the copy and the offer as they are now, and take what nobody reviewed without
+ * being refused stale (5.1). Refused stale, the action sends neither back, so the form follows
+ * the page and its review (8.1).
+ */
+function SentVersion({ name, version }: { name: 'baseVersion' | 'platformVersion'; version: number }) {
+  const sent = useFormState().values?.[name];
+  return <input type="hidden" name={name} value={sent ?? String(version)} />;
+}
+
+/**
  * The update offer's form (phase 5 design 5.1, 8.1). It sends back the version shown and the
  * platform version it offered, so only what was reviewed is taken. A take that is done sends the
  * browser back to the page, which says so (PresetNotice), and the offer has gone. A refused one
@@ -87,9 +99,9 @@ export function OfferForm({
             <Review>{review}</Review>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={id} />
-            {/* The version shown and the version offered, from the page as it was read last. */}
-            <input type="hidden" name="baseVersion" value={version} />
-            <input type="hidden" name="platformVersion" value={offer.platformVersion} />
+            {/* The version shown and the version offered, as the review was opened. */}
+            <SentVersion name="baseVersion" version={version} />
+            <SentVersion name="platformVersion" version={offer.platformVersion} />
             <input type="hidden" name="asNew" value={offer.asNew ? 'true' : 'false'} />
             {back && <input type="hidden" name="back" value={back} />}
             <ReasonBox />
