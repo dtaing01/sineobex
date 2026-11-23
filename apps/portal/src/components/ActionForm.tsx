@@ -1,6 +1,15 @@
 'use client';
 
-import { createContext, useActionState, useContext, useEffect, useRef, type ReactNode } from 'react';
+import {
+  createContext,
+  useActionState,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { useFormStatus } from 'react-dom';
 import type { ActionState } from '@/lib/forms';
 
@@ -15,9 +24,16 @@ export function useFieldId(name: string): string {
   return `${useContext(FormState).prefix}-${name}`;
 }
 
+/** How long the done message stays empty before it is said, so the same words are said again. */
+const SAY_AFRESH_MS = 100;
+
 /**
  * A form posting to a server action. Errors appear in a summary that takes focus and links to
- * each field (WCAG 3.3.1, 3.3.3); the fields keep what was typed.
+ * each field (WCAG 3.3.1, 3.3.3); the fields keep what was typed. A done answer's message is said
+ * in a status line, emptied and then said again at each answer, so a second save with the same
+ * words as the first is heard too (WCAG 4.1.3); focus stays on the button pressed (SubmitButton),
+ * and where the answer moved the form in the page, which takes focus with it, it goes to the
+ * message.
  */
 export function ActionForm({
   action,
@@ -35,8 +51,19 @@ export function ActionForm({
 }) {
   const [state, formAction] = useActionState(action, {});
   const summary = useRef<HTMLDivElement>(null);
+  const status = useRef<HTMLParagraphElement>(null);
+  // The message said for an answer, set a moment after it comes: until then each answer's is empty.
+  const [said, setSaid] = useState<{ at: ActionState; text: string } | null>(null);
+  const saying = said?.at === state ? said.text : '';
   useEffect(() => {
     if (state.error) summary.current?.focus();
+    if (!(state.ok && state.message)) return;
+    // A list sorted by name or place may move this form when the page is read again, and a node
+    // moved in the page loses focus: then the message takes it.
+    if (document.activeElement === document.body) status.current?.focus();
+    const text = state.message;
+    const later = window.setTimeout(() => setSaid({ at: state, text }), SAY_AFRESH_MS);
+    return () => window.clearTimeout(later);
   }, [state]);
   const fieldErrors = Object.entries(state.fieldErrors ?? {});
   return (
@@ -57,8 +84,13 @@ export function ActionForm({
           </div>
         )}
         {state.ok && state.message && (
-          <p role="status" className="px-alert px-alert--ok">
-            {state.message}
+          <p
+            ref={status}
+            role="status"
+            tabIndex={-1}
+            className={saying ? 'px-alert px-alert--ok' : 'sr-only'}
+          >
+            {saying}
           </p>
         )}
         {children}
@@ -67,6 +99,10 @@ export function ActionForm({
   );
 }
 
+/**
+ * A form's button. Not disabled while its action is on its way, since a disabled button loses
+ * focus to the page: it says so, and a second press does nothing until the answer comes.
+ */
 export function SubmitButton({
   children,
   variant = 'primary',
@@ -75,8 +111,11 @@ export function SubmitButton({
   variant?: 'primary' | 'secondary' | 'danger';
 }) {
   const { pending } = useFormStatus();
+  const wait = (e: MouseEvent) => {
+    if (pending) e.preventDefault();
+  };
   return (
-    <button type="submit" className={`sx-btn sx-btn--${variant}`} disabled={pending} aria-disabled={pending}>
+    <button type="submit" className={`sx-btn sx-btn--${variant}`} aria-disabled={pending} onClick={wait}>
       {pending ? 'Working…' : children}
     </button>
   );
