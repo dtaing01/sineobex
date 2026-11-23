@@ -778,6 +778,13 @@ describe('hiding, showing and rewording (edit.ts)', () => {
     );
   });
 
+  it('refuses to hide what a section’s own condition names, from inside a part or as the whole of it', () => {
+    // demo_street's look section shows when route.stop is yes.
+    const street = named('demo_street@1');
+    expect(refusedWith([{ op: 'set_hidden', path: 'route', hidden: true }], [street])).toBe('in_use');
+    expect(refusedWith([{ op: 'set_hidden', path: 'look', hidden: true }], [street])).toBe('published');
+  });
+
   it('refuses a hide that is neither true nor false, so a "false" sent as text hides nothing', () => {
     const edit = { op: 'set_hidden', path: 'visit.kits', hidden: 'false' } as unknown as NoteTypeEdit;
     expect(refusedWith([edit], [named('demo_visit@1')])).toBe('invalid');
@@ -1199,6 +1206,24 @@ describe('adding and copying (edit-add.ts)', () => {
         contextOf2([visit]),
       ),
     ).toBe('invalid');
+  });
+
+  it('refuses a copy bringing a made id the target used in another part: a field’s id that was an option’s code', () => {
+    // demo_visit's version 2 used t_2 as an option's code; the copied section's field has that id.
+    const source: ResolvedNoteType = {
+      ...named('t_000000000002@1'),
+      key: 't_000000000005',
+      sections: [{ id: 't_9', title: 'Demo: Brought', fields: [{ id: 't_2', ...text }] }],
+    };
+    const versions = ['demo_visit@1', 'demo_visit@2', 'demo_visit@3'].map(named);
+    const copy: NoteTypeEdit = {
+      op: 'copy_section',
+      fromKey: source.key,
+      sectionId: 't_9',
+      afterSectionId: null,
+    };
+    expect(codeOf([copy], contextOf2(versions, [source]))).toBe('id_taken');
+    expect(codeOf([copy], contextOf2([named('demo_visit@1')], [source]))).toBe('published');
   });
 
   it('counts a copied section’s made ids against the limits (BM-84)', () => {
