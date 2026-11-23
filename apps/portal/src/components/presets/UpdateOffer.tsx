@@ -55,10 +55,11 @@ export function ReviewTable({ rows, name }: { rows: readonly ReviewRow[]; name: 
 
 /**
  * The update offer of 8.1, for one preset the page shows: "Sineobex updated this preset. Your
- * edited copy hasn’t changed.", with Review, the list row's `update.body` against its current body,
- * rank included, and Replace with the new version; or, for an update that changes a field fixed at
- * creation, Add as new with its sentence. A take sends back the version shown and the update's
- * platform version, so only what was reviewed is taken (5.1).
+ * edited copy hasn’t changed." (the second sentence only of a copy the team edited), with Review,
+ * the list row's `update.body` against its current body, rank included, and Replace with the new
+ * version; or, for an update that changes a field fixed at creation, Add as new with its sentence.
+ * A take sends back the version shown and the update's platform version, so only what was reviewed
+ * is taken (5.1).
  *
  * Place it for every active preset the page shows, whether or not one is on offer: it draws
  * nothing while none is, and a take refused stale stays to say so when the page is read again.
@@ -74,7 +75,7 @@ export function UpdateOffer({
   headingLevel = 2,
 }: {
   kind: PresetKind;
-  preset: Pick<PresetRow, 'id' | 'name' | 'state' | 'version' | 'body' | 'update'>;
+  preset: Pick<PresetRow, 'id' | 'name' | 'state' | 'version' | 'customized' | 'body' | 'update'>;
   names: Readonly<Record<string, string>>;
   back?: string;
   headingLevel?: 2 | 3;
@@ -88,7 +89,13 @@ export function UpdateOffer({
       name={preset.name}
       version={preset.version}
       offer={
-        update ? { platformVersion: update.platformVersion, asNew: update.changesFixed.length > 0 } : null
+        update
+          ? {
+              platformVersion: update.platformVersion,
+              asNew: update.changesFixed.length > 0,
+              customized: preset.customized,
+            }
+          : null
       }
       review={
         update ? (

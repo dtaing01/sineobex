@@ -57,6 +57,24 @@ describe('the update offer', () => {
     expect(html).toContain('<label for="take-' + FLAG + '-reason">Reason</label>');
   });
 
+  it('says the copy hasn’t changed only of a copy the team edited', () => {
+    // A copy nobody edited is offered an update that changes a field fixed at creation (5.2).
+    const fixed = {
+      ...flag().update!,
+      body: { ...flag().update!.body, sensitive: true },
+      changesFixed: ['sensitive'],
+    };
+    const html = offer(flag({ customized: false, update: fixed }));
+    expect(html).toContain('<p>Sineobex updated this preset.</p>');
+    expect(html).not.toContain('Your edited copy');
+    expect(html).toContain(
+      '<p>This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.</p>',
+    );
+    expect(offer(flag({ customized: true }))).toContain(
+      '<p>Sineobex updated this preset. Your edited copy hasn’t changed.</p>',
+    );
+  });
+
   it('sends back the version shown and the platform version offered, so only what was reviewed is taken', () => {
     const html = offer(flag());
     expect(hidden(html, 'baseVersion')).toContain('value="3"');
