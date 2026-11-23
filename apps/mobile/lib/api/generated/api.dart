@@ -450,6 +450,61 @@ enum FieldReviewViewStatus {
   String toJson() => wire;
 }
 
+enum FlagColor {
+  red('red'),
+  orange('orange'),
+  yellow('yellow'),
+  green('green'),
+  teal('teal'),
+  blue('blue'),
+  purple('purple'),
+  grey('grey'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const FlagColor(this.wire);
+  final String wire;
+
+  static FlagColor fromJson(String value) =>
+      FlagColor.values.firstWhere((e) => e.wire == value, orElse: () => FlagColor.unknown);
+
+  String toJson() => wire;
+}
+
+enum FlagHistoryRowAction {
+  setValue('set'),
+  clear('clear'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const FlagHistoryRowAction(this.wire);
+  final String wire;
+
+  static FlagHistoryRowAction fromJson(String value) =>
+      FlagHistoryRowAction.values.firstWhere((e) => e.wire == value, orElse: () => FlagHistoryRowAction.unknown);
+
+  String toJson() => wire;
+}
+
+/// primary: the risk level, one at a time; secondary: conditions
+enum FlagTier {
+  primary('primary'),
+  secondary('secondary'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const FlagTier(this.wire);
+  final String wire;
+
+  static FlagTier fromJson(String value) =>
+      FlagTier.values.firstWhere((e) => e.wire == value, orElse: () => FlagTier.unknown);
+
+  String toJson() => wire;
+}
+
 enum HealthEnvironment {
   local('local'),
   test('test'),
@@ -1887,6 +1942,77 @@ class ChartBundle {
       };
 }
 
+/// A flag as the team holds it now
+class ChartFlag {
+  const ChartFlag({
+    required this.archived,
+    required this.color,
+    required this.colorName,
+    required this.flagId,
+    required this.name,
+    required this.rank,
+    required this.tier,
+  });
+
+  /// No longer on the team’s list: it stays on the patient, and is never offered to be set
+  final bool archived;
+  final FlagColor color;
+  /// The colour’s plain name, shown before the flag’s own
+  final String colorName;
+  final String flagId;
+  final String name;
+  final int rank;
+  final FlagTier tier;
+
+  factory ChartFlag.fromJson(Map<String, dynamic> json) => ChartFlag(
+        archived: json['archived'] as bool,
+        color: FlagColor.fromJson(json['color'] as String),
+        colorName: json['colorName'] as String,
+        flagId: json['flagId'] as String,
+        name: json['name'] as String,
+        rank: (json['rank'] as num).toInt(),
+        tier: FlagTier.fromJson(json['tier'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'archived': archived,
+        'color': color.toJson(),
+        'colorName': colorName,
+        'flagId': flagId,
+        'name': name,
+        'rank': rank,
+        'tier': tier.toJson(),
+      };
+}
+
+/// The patient’s current flags and their history, as the reader may see them: a sensitive flag only for a reader who sees sensitive problems, and every change of a flag hidden from them left out. Sent with every chart; a chart without it holds none
+class ChartFlags {
+  const ChartFlags({
+    required this.history,
+    required this.primary,
+    required this.secondary,
+  });
+
+  /// Every change the reader may see, oldest first: by its time, then ID
+  final List<FlagHistoryRow> history;
+  /// The risk level, or none
+  final ChartFlag? primary;
+  /// The conditions, by rank, then name, then ID
+  final List<ChartFlag> secondary;
+
+  factory ChartFlags.fromJson(Map<String, dynamic> json) => ChartFlags(
+        history: (json['history'] as List<dynamic>).map((e) => FlagHistoryRow.fromJson(e as Map<String, dynamic>)).toList(),
+        primary: json['primary'] == null ? null : ChartFlag.fromJson(json['primary'] as Map<String, dynamic>),
+        secondary: (json['secondary'] as List<dynamic>).map((e) => ChartFlag.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'history': history.map((e) => e.toJson()).toList(),
+        'primary': primary == null ? null : primary!.toJson(),
+        'secondary': secondary.map((e) => e.toJson()).toList(),
+      };
+}
+
 class ConsentView {
   const ConsentView({
     required this.decision,
@@ -2834,6 +2960,32 @@ class FieldState {
       };
 }
 
+class FlagChangeMark {
+  const FlagChangeMark({
+    required this.at,
+    required this.byName,
+    this.reason,
+  });
+
+  final DateTime at;
+  /// Who marked it, by their display name now
+  final String byName;
+  /// Left out as the change’s own reason is
+  final String? reason;
+
+  factory FlagChangeMark.fromJson(Map<String, dynamic> json) => FlagChangeMark(
+        at: DateTime.parse(json['at'] as String),
+        byName: json['byName'] as String,
+        reason: json['reason'] == null ? null : json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'at': at.toUtc().toIso8601String(),
+        'byName': byName,
+        if (reason != null) 'reason': reason!,
+      };
+}
+
 class FlagDuplicate {
   const FlagDuplicate({
     required this.comment,
@@ -2856,6 +3008,58 @@ class FlagDuplicate {
         'comment': comment,
         'patientA': patientA,
         'patientB': patientB,
+      };
+}
+
+class FlagHistoryRow {
+  const FlagHistoryRow({
+    required this.action,
+    required this.authorName,
+    required this.changeId,
+    required this.effectiveAt,
+    required this.enteredInError,
+    required this.flagId,
+    required this.name,
+    this.reason,
+    required this.tier,
+  });
+
+  final FlagHistoryRowAction action;
+  /// Who made it, by their display name now
+  final String authorName;
+  final String changeId;
+  /// The change’s time, never later than its receipt
+  final DateTime effectiveAt;
+  final FlagChangeMark? enteredInError;
+  final String flagId;
+  /// The flag’s name now
+  final String name;
+  /// Left out of a change entered in error for a reader who neither made it nor is a Program Admin
+  final String? reason;
+  final FlagTier tier;
+
+  factory FlagHistoryRow.fromJson(Map<String, dynamic> json) => FlagHistoryRow(
+        action: FlagHistoryRowAction.fromJson(json['action'] as String),
+        authorName: json['authorName'] as String,
+        changeId: json['changeId'] as String,
+        effectiveAt: DateTime.parse(json['effectiveAt'] as String),
+        enteredInError: json['enteredInError'] == null ? null : FlagChangeMark.fromJson(json['enteredInError'] as Map<String, dynamic>),
+        flagId: json['flagId'] as String,
+        name: json['name'] as String,
+        reason: json['reason'] == null ? null : json['reason'] as String,
+        tier: FlagTier.fromJson(json['tier'] as String),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'action': action.toJson(),
+        'authorName': authorName,
+        'changeId': changeId,
+        'effectiveAt': effectiveAt.toUtc().toIso8601String(),
+        'enteredInError': enteredInError == null ? null : enteredInError!.toJson(),
+        'flagId': flagId,
+        'name': name,
+        if (reason != null) 'reason': reason!,
+        'tier': tier.toJson(),
       };
 }
 
@@ -4325,6 +4529,8 @@ class PatientChart {
     required this.canonicalId,
     required this.consents,
     required this.duplicate,
+    this.flagChanges,
+    this.flags,
     required this.idLinks,
     required this.mergedFrom,
     required this.patient,
@@ -4343,6 +4549,9 @@ class PatientChart {
   final String canonicalId;
   final List<ConsentView> consents;
   final DuplicateHint? duplicate;
+  /// The group’s flag changes the reader may see, oldest first, as records for the phone’s copy. Sent with every chart; a chart without it holds none
+  final List<RecordSnapshot>? flagChanges;
+  final ChartFlags? flags;
   /// Active links of the group: usually one; one per merged record that had a card until the next new card
   final List<IdLinkSummary> idLinks;
   final List<PatientChartMergedFromItem> mergedFrom;
@@ -4365,6 +4574,8 @@ class PatientChart {
         canonicalId: json['canonicalId'] as String,
         consents: (json['consents'] as List<dynamic>).map((e) => ConsentView.fromJson(e as Map<String, dynamic>)).toList(),
         duplicate: json['duplicate'] == null ? null : DuplicateHint.fromJson(json['duplicate'] as Map<String, dynamic>),
+        flagChanges: json['flagChanges'] == null ? null : (json['flagChanges'] as List<dynamic>).map((e) => RecordSnapshot.fromJson(e as Map<String, dynamic>)).toList(),
+        flags: json['flags'] == null ? null : ChartFlags.fromJson(json['flags'] as Map<String, dynamic>),
         idLinks: (json['idLinks'] as List<dynamic>).map((e) => IdLinkSummary.fromJson(e as Map<String, dynamic>)).toList(),
         mergedFrom: (json['mergedFrom'] as List<dynamic>).map((e) => PatientChartMergedFromItem.fromJson(e as Map<String, dynamic>)).toList(),
         patient: RecordSnapshot.fromJson(json['patient'] as Map<String, dynamic>),
@@ -4384,6 +4595,8 @@ class PatientChart {
         'canonicalId': canonicalId,
         'consents': consents.map((e) => e.toJson()).toList(),
         'duplicate': duplicate == null ? null : duplicate!.toJson(),
+        if (flagChanges != null) 'flagChanges': flagChanges!.map((e) => e.toJson()).toList(),
+        if (flags != null) 'flags': flags!.toJson(),
         'idLinks': idLinks.map((e) => e.toJson()).toList(),
         'mergedFrom': mergedFrom.map((e) => e.toJson()).toList(),
         'patient': patient.toJson(),
@@ -5486,7 +5699,7 @@ class RecordSnapshot {
     required this.version,
   });
 
-  /// What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now
+  /// What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now. A problem’s statusCheckDue says whether its status check is due, by the team’s window at the server’s time
   final Map<String, Object?> attributes;
   final String authorUserId;
   final DateTime createdAt;

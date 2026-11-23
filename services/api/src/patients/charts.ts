@@ -1,12 +1,25 @@
 import type { z } from '@hono/zod-openapi';
+import { problemCheckDue } from '@sineobex/presets';
 import type { AuditFn, TeamScope } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
 import { cachedRecentVisits, chartTimeline } from '../encounters/timeline.ts';
 import { notFound } from '../lib/errors.ts';
+import {
+  flagChangeColumns,
+  flagChangeRecord,
+  type FlagChangeRow,
+} from '../sync/entities/patient-flag-change.ts';
+import { teamFlags } from '../sync/read-rules.ts';
 import type { FieldMeta } from '../sync/records.ts';
 import type { FieldStateValue, RecordSnapshotValue } from '../sync/schemas.ts';
 import { idLinkTokenRef, idLinkUrl } from './id-links.ts';
-import { birthFromRow, duplicateHints, projectChart } from './projection.ts';
+import {
+  birthFromRow,
+  duplicateHints,
+  problemCheckDays,
+  projectChart,
+  type LoadedChart,
+} from './projection.ts';
 import type {
   HistoryKind,
   ChartBundleValue,
@@ -230,8 +243,11 @@ interface ProblemRow extends Bookkeeping {
   updatedAt: Date;
 }
 
-/** A problem's attributes include `sensitive`, which the projection reads. */
-const problemSnapshot = (r: ProblemRow): RecordSnapshotValue => ({
+/**
+ * A problem's attributes include `sensitive`, which the projection reads, and `statusCheckDue`,
+ * whether its status check is due by the team's window (problemCheckDue, phase 5 design 5.3).
+ */
+const problemSnapshot = (r: ProblemRow, statusCheckDue: boolean): RecordSnapshotValue => ({
   entity: 'problem',
   id: r.id,
   version: r.version,
@@ -254,12 +270,17 @@ const problemSnapshot = (r: ProblemRow): RecordSnapshotValue => ({
     mergedInto: r.mergedInto,
     statusChangedAt: r.statusChangedAt.toISOString(),
     statusCheckedAt: r.statusCheckedAt.toISOString(),
+    statusCheckDue,
   },
   fields: fieldStates(r, {
     status: { status: r.status, encounterId: r.statusEncounterId },
     enteredInError: r.errorReason === null ? null : { reason: r.errorReason },
   }),
 });
+
+/** Flag changes by their time, then ID by code units: the order the fold reads them in (currentFlags). */
+const byTimeThenId = (a: FlagChangeRow, b: FlagChangeRow) =>
+  a.effectiveAt.getTime() - b.effectiveAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 // ------------------------------------------------------------------------------------------------
 // Loading groups
@@ -322,14 +343,15 @@ export async function groupRedirects(
 
 /**
  * The full charts (before projection) of these groups, keyed by canonical ID. One query per part,
- * whatever the number of groups (a chart bundle holds up to 50).
+ * whatever the number of groups (a chart bundle holds up to 50). Its flags are worked out for each
+ * reader from their flag source (projection.ts projectChart).
  */
 async function loadGroupCharts(
   tx: Tx,
   scope: TeamScope,
   canonicalIds: readonly string[],
-): Promise<Map<string, PatientChartValue>> {
-  const charts = new Map<string, PatientChartValue>();
+): Promise<Map<string, LoadedChart>> {
+  const charts = new Map<string, LoadedChart>();
   if (canonicalIds.length === 0) return charts;
   const ids = [...canonicalIds];
   const patients = await tx<PatientRow[]>`
@@ -454,13 +476,24 @@ async function loadGroupCharts(
       and h.review_id = any (${reviews.map((r) => r.id)}::uuid[])
       and h.id <> all (r.withdrawn_history_ids)
     order by h.id`;
+  // A merged chart shows both records' flags (design 4.5), each change as sync reads it.
+  const flagChanges = await tx<(FlagChangeRow & { groupId: string })[]>`
+    select ${flagChangeColumns(tx)}, p.canonical_id as group_id
+    from sineobex.patient_flag_changes f
+    join sineobex.patients p on p.team_id = f.team_id and p.id = f.patient_id
+    where f.team_id = sineobex.current_team_id() and p.canonical_id = any (${ids}::uuid[])`;
+  const flags = await teamFlags(tx, scope.team.teamId);
+  const checkDays = await problemCheckDays(tx, scope.team.teamId);
+  const now = scope.deps.now();
   const hints = await duplicateHints(tx, ids);
   const users = await userRefs(tx, [
     ...consents.map((c) => c.recordedBy),
     ...statusHistory.map((h) => h.changedBy),
     ...notes.map((n) => n.authorUserId),
     ...alternates.map((a) => a.changedBy),
+    ...flagChanges.flatMap((f) => [f.authorUserId, f.errorBy]),
   ]);
+  const names = new Map([...users].map(([id, u]) => [id, u.displayName]));
 
   const byId = new Map(patients.map((p) => [p.id, p]));
   const baseUrl = scope.deps.config.ID_LINK_BASE_URL;
@@ -490,7 +523,20 @@ async function loadGroupCharts(
           recordedAt: c.recordedAt.toISOString(),
           recordedBy: ref(users, c.recordedBy),
         })),
-      problems: groupProblems.map(problemSnapshot),
+      problems: groupProblems.map((r) =>
+        problemSnapshot(
+          r,
+          problemCheckDue(
+            {
+              status: r.status as 'new' | 'ongoing' | 'resolved',
+              statusCheckedAt: r.statusCheckedAt,
+              enteredInError: r.errorReason !== null,
+            },
+            now,
+            checkDays,
+          ),
+        ),
+      ),
       problemHistory: statusHistory
         .filter((h) => groupProblemIds.has(h.recordId))
         .map((h) => ({
@@ -546,6 +592,18 @@ async function loadGroupCharts(
         }),
       duplicate: hints.get(canonicalId) ?? null,
       projection: '',
+      flagSource: {
+        flags,
+        changes: flagChanges
+          .filter((f) => f.groupId === canonicalId)
+          .sort(byTimeThenId)
+          .map((f) => ({
+            record: flagChangeRecord(f, flags.get(f.flagId) ?? null),
+            errorBy: f.errorBy,
+            errorAt: f.errorAt,
+          })),
+        names,
+      },
     });
   }
   return charts;

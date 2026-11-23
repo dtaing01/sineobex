@@ -128,7 +128,8 @@ const flagDetails = (flag: FlagHead | null, flagId: string) => ({
 /** The change's flag as the team holds it now, read with the change (load). */
 const flagOf = (rec: StoredRecord) => rec.internal.flag as FlagHead | null;
 
-interface FlagChangeRow {
+/** A flag change as its row holds it (flagChangeColumns). */
+export interface FlagChangeRow {
   id: string;
   teamId: string;
   patientId: string;
@@ -139,12 +140,53 @@ interface FlagChangeRow {
   clockVerified: boolean;
   status: 'active' | 'entered_in_error';
   errorReason: string | null;
+  errorBy: string | null;
+  errorAt: Date | null;
   authorUserId: string;
   version: number;
   fieldVersions: Record<string, number>;
   fieldMeta: Record<string, FieldMeta>;
   receivedAt: Date;
   updatedAt: Date;
+}
+
+/** The columns of a flag change `f`, as load reads them and the chart reads its group's (charts.ts). */
+export const flagChangeColumns = (tx: Tx) => tx`
+  f.id, f.team_id, f.patient_id, f.flag_id, f.action, f.reason, f.effective_at, f.clock_verified, f.status,
+  f.error_reason, f.error_by, f.error_at, f.author_user_id, f.version, f.field_versions, f.field_meta,
+  f.received_at, f.updated_at`;
+
+/**
+ * A flag change as sync reads it, from its row and its flag as the team holds it now: the one shape
+ * the sync read, a value sent back and the chart's flagChanges all snapshot (design 6.1), so the
+ * phone imports the same record whichever way it came.
+ */
+export function flagChangeRecord(r: FlagChangeRow, flag: FlagHead | null): StoredRecord {
+  return {
+    entity: 'patient_flag_change',
+    id: r.id,
+    teamId: r.teamId,
+    status: r.status,
+    authorUserId: r.authorUserId,
+    version: r.version,
+    patientId: r.patientId,
+    fieldVersions: r.fieldVersions,
+    fieldMeta: r.fieldMeta,
+    values: { enteredInError: r.status === 'entered_in_error' ? { reason: r.errorReason } : null },
+    attributes: {
+      patientId: r.patientId,
+      flagId: r.flagId,
+      action: r.action,
+      reason: r.reason,
+      effectiveAt: r.effectiveAt.toISOString(),
+      clockVerified: r.clockVerified,
+    },
+    // The flag as the team holds it now, which mayChange and the mark's event read.
+    internal: { flag },
+    // Made when the server received it: a held change's hold time.
+    createdAt: r.receivedAt,
+    updatedAt: r.updatedAt,
+  };
 }
 
 export const flagChangeRules: EntityRules<Value> = {
@@ -201,37 +243,10 @@ export const flagChangeRules: EntityRules<Value> = {
 
   async load(tx, id, lock) {
     const rows = await tx<FlagChangeRow[]>`
-      select id, team_id, patient_id, flag_id, action, reason, effective_at, clock_verified, status, error_reason,
-             author_user_id, version, field_versions, field_meta, received_at, updated_at
-      from sineobex.patient_flag_changes where id = ${id}
+      select ${flagChangeColumns(tx)} from sineobex.patient_flag_changes f where f.id = ${id}
       ${lock ? tx`for no key update` : tx``}`;
     const r = rows[0];
-    if (!r) return null;
-    return {
-      entity: 'patient_flag_change',
-      id: r.id,
-      teamId: r.teamId,
-      status: r.status,
-      authorUserId: r.authorUserId,
-      version: r.version,
-      patientId: r.patientId,
-      fieldVersions: r.fieldVersions,
-      fieldMeta: r.fieldMeta,
-      values: { enteredInError: r.status === 'entered_in_error' ? { reason: r.errorReason } : null },
-      attributes: {
-        patientId: r.patientId,
-        flagId: r.flagId,
-        action: r.action,
-        reason: r.reason,
-        effectiveAt: r.effectiveAt.toISOString(),
-        clockVerified: r.clockVerified,
-      },
-      // The flag as the team holds it now, which mayChange and the mark's event read.
-      internal: { flag: await flagHead(tx, r.teamId, r.flagId) },
-      // Made when the server received it: a held change's hold time.
-      createdAt: r.receivedAt,
-      updatedAt: r.updatedAt,
-    };
+    return r ? flagChangeRecord(r, await flagHead(tx, r.teamId, r.flagId)) : null;
   },
 
   async write(tx, rec, field, value, version, meta) {

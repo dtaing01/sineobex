@@ -558,6 +558,81 @@
         ],
         "type": "object"
       },
+      "ChartFlag": {
+        "description": "A flag as the team holds it now",
+        "properties": {
+          "archived": {
+            "description": "No longer on the team’s list: it stays on the patient, and is never offered to be set",
+            "type": "boolean"
+          },
+          "color": {
+            "$ref": "#/components/schemas/FlagColor"
+          },
+          "colorName": {
+            "description": "The colour’s plain name, shown before the flag’s own",
+            "type": "string"
+          },
+          "flagId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rank": {
+            "type": "integer"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/FlagTier"
+          }
+        },
+        "required": [
+          "flagId",
+          "name",
+          "tier",
+          "color",
+          "colorName",
+          "rank",
+          "archived"
+        ],
+        "type": "object"
+      },
+      "ChartFlags": {
+        "description": "The patient’s current flags and their history, as the reader may see them: a sensitive flag only for a reader who sees sensitive problems, and every change of a flag hidden from them left out. Sent with every chart; a chart without it holds none",
+        "properties": {
+          "history": {
+            "description": "Every change the reader may see, oldest first: by its time, then ID",
+            "items": {
+              "$ref": "#/components/schemas/FlagHistoryRow"
+            },
+            "type": "array"
+          },
+          "primary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChartFlag"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The risk level, or none"
+          },
+          "secondary": {
+            "description": "The conditions, by rank, then name, then ID",
+            "items": {
+              "$ref": "#/components/schemas/ChartFlag"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "primary",
+          "secondary",
+          "history"
+        ],
+        "type": "object"
+      },
       "ConsentView": {
         "properties": {
           "decision": {
@@ -1583,6 +1658,40 @@
         ],
         "type": "object"
       },
+      "FlagChangeMark": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "byName": {
+            "description": "Who marked it, by their display name now",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Left out as the change’s own reason is",
+            "type": "string"
+          }
+        },
+        "required": [
+          "byName",
+          "at"
+        ],
+        "type": "object"
+      },
+      "FlagColor": {
+        "enum": [
+          "red",
+          "orange",
+          "yellow",
+          "green",
+          "teal",
+          "blue",
+          "purple",
+          "grey"
+        ],
+        "type": "string"
+      },
       "FlagDuplicate": {
         "properties": {
           "comment": {
@@ -1606,6 +1715,74 @@
           "comment"
         ],
         "type": "object"
+      },
+      "FlagHistoryRow": {
+        "properties": {
+          "action": {
+            "enum": [
+              "set",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "authorName": {
+            "description": "Who made it, by their display name now",
+            "type": "string"
+          },
+          "changeId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "effectiveAt": {
+            "description": "The change’s time, never later than its receipt",
+            "format": "date-time",
+            "type": "string"
+          },
+          "enteredInError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlagChangeMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flagId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "description": "The flag’s name now",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Left out of a change entered in error for a reader who neither made it nor is a Program Admin",
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/FlagTier"
+          }
+        },
+        "required": [
+          "changeId",
+          "flagId",
+          "name",
+          "tier",
+          "action",
+          "effectiveAt",
+          "authorName",
+          "enteredInError"
+        ],
+        "type": "object"
+      },
+      "FlagTier": {
+        "description": "primary: the risk level, one at a time; secondary: conditions",
+        "enum": [
+          "primary",
+          "secondary"
+        ],
+        "type": "string"
       },
       "Health": {
         "properties": {
@@ -3191,6 +3368,16 @@
               }
             ]
           },
+          "flagChanges": {
+            "description": "The group’s flag changes the reader may see, oldest first, as records for the phone’s copy. Sent with every chart; a chart without it holds none",
+            "items": {
+              "$ref": "#/components/schemas/RecordSnapshot"
+            },
+            "type": "array"
+          },
+          "flags": {
+            "$ref": "#/components/schemas/ChartFlags"
+          },
           "idLinks": {
             "description": "Active links of the group: usually one; one per merged record that had a card until the next new card",
             "items": {
@@ -4521,7 +4708,7 @@
         "properties": {
           "attributes": {
             "additionalProperties": {},
-            "description": "What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now",
+            "description": "What the server holds of the record beyond its fields; no change sets them. Most are set at creation. Some follow what the server records later: a patient’s lastSeenAt, a problem’s status times, merge and reversal request, and a note’s attestation, actingAuthorId and actingAuthorName (who acts as its author, by their display name now), everSigned (signed once, signed now or not), completedAt and signoffId (lifecycle 4.4), and a visit’s hasFinishedNote (a note of it the reader is shown is finished, so its patient, place and summary are locked, lifecycle 3.1). A problem note’s patientId is its problem’s patient, which nothing else of it names (lifecycle 8.4). A note’s createdAt is when the server made it (an admin’s accept, for a create held for review), the order the visit read gives a visit’s notes in, then by ID: to the microsecond, with all six places, so the text sorts as the time does. A sign-off’s signerName, a correction’s correctorName and an addendum’s authorName are as they were then; a referral’s authorName, who recorded it, is their name now. A problem’s statusCheckDue says whether its status check is due, by the team’s window at the server’s time",
             "type": "object"
           },
           "authorUserId": {

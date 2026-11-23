@@ -1,3 +1,4 @@
+import type { FlagTier } from '@sineobex/presets';
 import { ACCESS_RULES, type AccessRule, type Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import { projectionFor } from '../patients/projection.ts';
@@ -52,21 +53,42 @@ export interface FlagHead {
   state: 'active' | 'archived';
 }
 
+/** One of the team's flags with what the chart, the team index, search and the flag list show of it. */
+export interface TeamFlag extends FlagHead {
+  id: string;
+  tier: FlagTier;
+  name: string;
+  /** One of the named colours (FLAG_COLORS). */
+  color: string;
+  rank: number;
+}
+
 /**
- * One of the team's flags as it is now, its head and its current version's body; null when the id
- * names no flag of the team (another kind of preset, another team's, nothing). Sensitive is read
- * without a cast: a cast of a body no writer leaves would fail with class 22, which stops a push at
- * every retry (lifecycle 4.1), so such a body reads as not sensitive.
+ * The team's flags as they are now, each its head and its current version's body; only [flagId]'s
+ * when one is named. Sensitive is read without a cast: a cast of a body no writer leaves would fail
+ * with class 22, which stops a push at every retry (lifecycle 4.1), so such a body reads as not
+ * sensitive. The one read of a flag every reader of the flag rule asks.
  */
-export async function flagHead(tx: Tx, teamId: string, flagId: string): Promise<FlagHead | null> {
-  const [flag] = await tx<FlagHead[]>`
-    select v.body ->> 'tier' as tier, coalesce(v.body -> 'sensitive' = 'true'::jsonb, false) as sensitive,
-           p.state
+const flagRows = (tx: Tx, teamId: string, flagId: string | null) => tx<TeamFlag[]>`
+    select p.id, v.body ->> 'tier' as tier, coalesce(v.body -> 'sensitive' = 'true'::jsonb, false) as sensitive,
+           p.state, v.body ->> 'name' as name, v.body ->> 'color' as color, v.body -> 'rank' as rank
     from sineobex.team_presets p
     join sineobex.team_preset_versions v
       on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
-    where p.team_id = ${teamId} and p.id = ${flagId} and p.kind = 'flag'`;
+    where p.team_id = ${teamId} and p.kind = 'flag' ${flagId === null ? tx`` : tx`and p.id = ${flagId}`}`;
+
+/**
+ * One of the team's flags as it is now; null when the id names no flag of the team (another kind of
+ * preset, another team's, nothing).
+ */
+export async function flagHead(tx: Tx, teamId: string, flagId: string): Promise<FlagHead | null> {
+  const [flag] = await flagRows(tx, teamId, flagId);
   return flag ?? null;
+}
+
+/** Every flag of the team as it is now, archived ones included, by ID. */
+export async function teamFlags(tx: Tx, teamId: string): Promise<ReadonlyMap<string, TeamFlag>> {
+  return new Map((await flagRows(tx, teamId, null)).map((f) => [f.id, f]));
 }
 
 /**
