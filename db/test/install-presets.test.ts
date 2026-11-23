@@ -4,10 +4,12 @@ import {
   installPresets,
   PresetDiffers,
   sha256Hex,
+  takeRevision,
   type InstallSql,
   type Preset,
   type ResolvedNoteType,
 } from '@sineobex/forms';
+import postgres, { type ReservedSql, type Sql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fixturePresets } from '../../packages/forms/test/fixtures/presets.ts';
 import { NEIGHBOUR_TEAM_ID } from '../seed/demo-patients.ts';
@@ -257,5 +259,356 @@ describe('installing the test-only note types', () => {
     await db.owner`alter table sineobex.environment disable trigger environment_write_once`;
     await db.owner`update sineobex.environment set kind = 'preview'`;
     await expect(installTestNoteTypes(db.owner, testTypes)).rejects.toThrow(/marked "preview"/);
+  });
+});
+
+// Phase 5 (design 4.3, 5.2; card P4-install), written ahead of its code (card P4-tests): the
+// installer decides each key by platformUpdateEffect and writes the team's next version, so a
+// team's own version is never overtaken by a platform one, and only a platform row whose
+// definition is not the platform's raises PresetDiffers. It upserts the head (0023) of every key it
+// installs or updates, gives one to a key the team holds without one, and stamps each with the
+// run's one revision, taken under the team lock only when it writes; each install and update has
+// its team_preset_events row, with no reason and no author, and an offer has none. The plan itself
+// is packages/forms/test/install-update.test.ts's. The cases above, phase 4's, run unchanged.
+describe('installing the note types, key by key (phase 5)', () => {
+  let db: ScratchDatabase;
+  let app: Sql;
+  let user: string;
+  let presets: Preset[];
+
+  type Head = {
+    key: string;
+    title: string;
+    state: string;
+    currentVersion: number;
+    platformLatest: number | null;
+    customized: boolean;
+    revision: number;
+    updatedBy: string | null;
+  };
+  type Version = {
+    key: string;
+    version: number;
+    origin: string;
+    presetVersion: number | null;
+    hash: string;
+    definition: ResolvedNoteType;
+  };
+  type Event = {
+    noteTypeKey: string | null;
+    presetId: string | null;
+    act: string;
+    version: number;
+    reason: string | null;
+    createdBy: string | null;
+  };
+
+  // Keys in code-point order, as the lists the tests build: CI's databases sort text by en_US rules,
+  // which pass over '_'.
+  const headsOf = (teamId: string) =>
+    db.owner<Head[]>`
+      select key, title, state, current_version as "currentVersion", platform_latest as "platformLatest",
+             customized, revision::int as revision, updated_by as "updatedBy"
+      from sineobex.note_types where team_id = ${teamId} order by key collate "C"`;
+  const versionsOf = (teamId: string) =>
+    db.owner<Version[]>`
+      select key, version, origin, preset_version as "presetVersion", hash, definition
+      from sineobex.note_type_versions where team_id = ${teamId} order by key collate "C", version`;
+  const eventsOf = (teamId: string) =>
+    db.owner<Event[]>`
+      select note_type_key as "noteTypeKey", preset_id as "presetId", act, version, reason,
+             created_by as "createdBy"
+      from sineobex.team_preset_events where team_id = ${teamId}
+      order by note_type_key collate "C", version, act`;
+  const revisionOf = async (teamId: string) => {
+    const [row] = await db.owner<{ revision: string }[]>`
+      select revision from sineobex.team_preset_state where team_id = ${teamId}`;
+    return row ? Number(row.revision) : null;
+  };
+  const asPlatform = <T>(fn: (tx: InstallSql) => Promise<T>) =>
+    asApp(db.appUrl, { userId: user, platform: true }, (tx) => fn(tx));
+  const asTeam = <T>(teamId: string, fn: (tx: InstallSql) => Promise<T>) =>
+    asApp(db.appUrl, { teamId, userId: user }, (tx) => fn(tx));
+
+  /** The platform's next version of a preset, its title changed. */
+  async function nextOf(preset: Preset, title?: string): Promise<Preset> {
+    const definition = {
+      ...preset.definition,
+      version: preset.version + 1,
+      title: title ?? `${preset.definition.title} (version ${preset.version + 1})`,
+    };
+    return {
+      ...preset,
+      version: definition.version,
+      definition,
+      hash: await sha256Hex(canonicalJson(definition)),
+    };
+  }
+
+  /**
+   * A team's own next version of a key, as a publish writes it (design 5.4): in one transaction,
+   * its revision first, then the version, `origin = 'team'`, and the head customized at it.
+   */
+  async function publishOwn(teamId: string, key: string, title: string): Promise<ResolvedNoteType> {
+    return db.owner.begin(async (tx) => {
+      const revision = await takeRevision(tx as unknown as InstallSql, teamId);
+      const [newest] = await tx<{ definition: ResolvedNoteType }[]>`
+        select definition from sineobex.note_type_versions
+        where team_id = ${teamId} and key = ${key} order by version desc limit 1`;
+      const definition = { ...newest!.definition, version: newest!.definition.version + 1, title };
+      await tx`
+        insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
+        values (${teamId}, ${key}, ${definition.version}, ${JSON.stringify(definition)}::text::jsonb,
+                ${await sha256Hex(canonicalJson(definition))}, 'team')`;
+      await tx`
+        insert into sineobex.note_types (team_id, key, title, current_version, customized, revision, updated_by)
+        values (${teamId}, ${key}, ${title}, ${definition.version}, true, ${revision}, ${user})
+        on conflict (team_id, key) do update
+          set title = excluded.title, current_version = excluded.current_version, customized = true,
+              revision = excluded.revision, updated_by = excluded.updated_by`;
+      return definition;
+    }) as Promise<ResolvedNoteType>;
+  }
+
+  /** Each stored version names its own key and version and hashes to its hash: what definitionFor checks (D79). */
+  async function expectEveryRowNamesItself(teamId: string) {
+    for (const row of await versionsOf(teamId)) {
+      expect([row.definition.key, row.definition.version], `${row.key} v${row.version}`).toEqual([
+        row.key,
+        row.version,
+      ]);
+      expect(await sha256Hex(canonicalJson(row.definition)), `${row.key} v${row.version}`).toBe(row.hash);
+    }
+  }
+
+  beforeAll(async () => {
+    db = await createScratchDatabase();
+    app = postgres(db.appUrl, { max: 4, onnotice: () => {} });
+    user = await makeUser(db.owner, 'note-type-installer@example.com');
+    presets = await fixturePresets();
+    expect(presets.length).toBeGreaterThanOrEqual(2);
+  });
+  afterAll(async () => {
+    await app.end({ timeout: 5 });
+    await db.drop();
+  });
+
+  it('a team’s version 2, then platform versions 2 and 3, installed twice: nothing thrown, no row added, platform_latest 3', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Own Version');
+    await asPlatform((tx) => installPresets(tx, team, { presets }));
+    const [checks] = presets;
+    await publishOwn(team, checks!.key, 'Demo: Checks, the team’s own');
+    const v2 = await nextOf(checks!);
+    const v3 = await nextOf(v2);
+    const platform = [...presets, v2, v3];
+    const rowsBefore = await versionsOf(team);
+
+    for (const run of [1, 2]) {
+      const revision = await revisionOf(team);
+      const result = await asPlatform((tx) => installPresets(tx, team, { presets: platform }));
+      expect(result, `run ${run}`).toEqual({ installed: [], differing: [] });
+      expect(await versionsOf(team), `run ${run}: no row added`).toEqual(rowsBefore);
+      const head = (await headsOf(team)).find((h) => h.key === checks!.key)!;
+      expect(head, `run ${run}`).toMatchObject({
+        title: 'Demo: Checks, the team’s own',
+        currentVersion: 2,
+        customized: true,
+        state: 'active',
+        platformLatest: 3,
+      });
+      // The first run moves platform_latest, one write; the second has nothing to write.
+      expect(await revisionOf(team), `run ${run}`).toBe(run === 1 ? revision! + 1 : revision);
+    }
+    // The offer wrote no event: platform_latest shows it.
+    expect((await eventsOf(team)).filter((e) => e.noteTypeKey === checks!.key)).toEqual([
+      {
+        noteTypeKey: checks!.key,
+        presetId: null,
+        act: 'installed',
+        version: 1,
+        reason: null,
+        createdBy: null,
+      },
+    ]);
+  });
+
+  it('gives a team holding versions and no head its heads at the next run, at a revision above the team’s, and a second run takes none', async () => {
+    // A team made after 0023 and before this installer: phase 4's installer wrote its versions and
+    // no head. Its revision moved since, for its presets.
+    const team = await makeTeam(db.owner, 'Install Team No Heads');
+    for (const p of presets)
+      await db.owner`
+        insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin, preset_version)
+        values (${team}, ${p.key}, ${p.version}, ${JSON.stringify(p.definition)}::text::jsonb, ${p.hash},
+                'preset', ${p.version})`;
+    const own = {
+      ...presets[0]!.definition,
+      key: 't_000000000007',
+      version: 1,
+      title: 'Demo: The team’s own',
+    };
+    await db.owner`
+      insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
+      values (${team}, ${own.key}, 1, ${JSON.stringify(own)}::text::jsonb, ${await sha256Hex(canonicalJson(own))}, 'team')`;
+    for (let i = 0; i < 2; i++) await db.owner.begin((tx) => takeRevision(tx as unknown as InstallSql, team));
+    expect(await revisionOf(team)).toBe(2);
+    expect(await headsOf(team)).toEqual([]);
+    const rows = await versionsOf(team);
+
+    const result = await asPlatform((tx) => installPresets(tx, team, { presets }));
+    expect(result).toEqual({ installed: [], differing: [] });
+    expect(await revisionOf(team)).toBe(3);
+    expect(await headsOf(team)).toEqual(
+      [
+        ...presets.map((p) => ({
+          key: p.key,
+          title: p.definition.title,
+          state: 'active',
+          currentVersion: p.version,
+          platformLatest: p.version,
+          customized: false,
+          revision: 3,
+          updatedBy: null,
+        })),
+        {
+          key: own.key,
+          title: own.title,
+          state: 'active',
+          currentVersion: 1,
+          platformLatest: null,
+          customized: true,
+          revision: 3,
+          updatedBy: null,
+        },
+      ].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+    );
+    // Only the heads were written, and no event: neither installs nor updates.
+    expect(await versionsOf(team)).toEqual(rows);
+    expect(await eventsOf(team)).toEqual([]);
+
+    const heads = await headsOf(team);
+    expect(await asPlatform((tx) => installPresets(tx, team, { presets }))).toEqual({
+      installed: [],
+      differing: [],
+    });
+    expect(await revisionOf(team)).toBe(3);
+    expect(await headsOf(team)).toEqual(heads);
+  });
+
+  it('gives each install and update its event, with no reason and no author, and an offer none', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Events');
+    await asPlatform((tx) => installPresets(tx, team, { presets }));
+    expect(await eventsOf(team)).toEqual(
+      presets.map((p) => ({
+        noteTypeKey: p.key,
+        presetId: null,
+        act: 'installed',
+        version: 1,
+        reason: null,
+        createdBy: null,
+      })),
+    );
+    const [checks, full] = presets;
+    await publishOwn(team, checks!.key, 'Demo: Checks, edited');
+    const fullV2 = await nextOf(full!);
+    const checksV2 = await nextOf(checks!);
+    const result = await asPlatform((tx) =>
+      installPresets(tx, team, { presets: [...presets, checksV2, fullV2] }),
+    );
+    // The update writes the team's version 2 of the full type; the edited one is only offered.
+    expect(result).toEqual({ installed: [{ key: full!.key, version: 2 }], differing: [] });
+    const events = await eventsOf(team);
+    expect(events.filter((e) => e.act !== 'installed')).toEqual([
+      {
+        noteTypeKey: full!.key,
+        presetId: null,
+        act: 'platform_updated',
+        version: 2,
+        reason: null,
+        createdBy: null,
+      },
+    ]);
+    const heads = await headsOf(team);
+    expect(heads.find((h) => h.key === full!.key)).toMatchObject({
+      currentVersion: 2,
+      platformLatest: 2,
+      title: fullV2.definition.title,
+      customized: false,
+    });
+    expect(heads.find((h) => h.key === checks!.key)).toMatchObject({ currentVersion: 2, platformLatest: 2 });
+    // One revision for the run, on every head it wrote.
+    const revision = await revisionOf(team);
+    for (const key of [full!.key, checks!.key])
+      expect(heads.find((h) => h.key === key)!.revision, key).toBe(revision);
+    await expectEveryRowNamesItself(team);
+  });
+
+  it('names every version it writes as its own row: a team made after version 2 holds it as its version 1', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Late');
+    const [checks] = presets;
+    const v2 = await nextOf(checks!, 'Demo: Checks, second');
+    const result = await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, v2] }));
+    expect(result.differing).toEqual([]);
+    expect(result.installed).toContainEqual({ key: checks!.key, version: 1 });
+    const rows = (await versionsOf(team)).filter((r) => r.key === checks!.key);
+    expect(rows.map((r) => [r.version, r.origin, r.presetVersion])).toEqual([[1, 'preset', 2]]);
+    expect(rows[0]!.definition).toEqual({ ...v2.definition, version: 1 });
+    expect(rows[0]!.hash).not.toBe(v2.hash);
+    await expectEveryRowNamesItself(team);
+    // Installed again, it is the platform's still: nothing differs, nothing is added.
+    expect(await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, v2] }))).toEqual({
+      installed: [],
+      differing: [],
+    });
+  });
+
+  it('takes one revision for a run that writes, stamped on every head, and none for a run that does not', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Revision');
+    expect(await revisionOf(team)).toBeNull();
+    await asTeam(team, (tx) => installPresets(tx, team, { presets }));
+    expect(await revisionOf(team)).toBe(1);
+    expect((await headsOf(team)).map((h) => [h.key, h.revision])).toEqual(presets.map((p) => [p.key, 1]));
+    await asTeam(team, (tx) => installPresets(tx, team, { presets }));
+    expect(await revisionOf(team)).toBe(1);
+  });
+
+  it('plans again once it holds the team lock: a second installer at the same moment writes nothing twice', async () => {
+    const team = await makeTeam(db.owner, 'Install Team At Once');
+    const writer = async () => {
+      const conn: ReservedSql = await app.reserve();
+      await conn`begin`;
+      await conn`set local lock_timeout = '10s'`;
+      await conn`select set_config('app.team_id', ${team}, true), set_config('app.user_id', ${user}, true),
+                        set_config('app.scope', '', true)`;
+      return conn;
+    };
+    const first = await writer();
+    const second = await writer();
+    try {
+      expect(
+        (await installPresets(first as unknown as InstallSql, team, { presets })).installed,
+      ).toHaveLength(presets.length);
+      // The second reads before the first commits, so it sees nothing yet, then waits on the lock.
+      const late = installPresets(second as unknown as InstallSql, team, { presets });
+      for (let i = 0; i < 500; i++) {
+        const [row] = await db.owner<{ n: number }[]>`
+          select count(*)::int as n from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock' and wait_event = 'advisory'`;
+        if (row!.n > 0) break;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      await first`commit`;
+      expect(await late).toEqual({ installed: [], differing: [] });
+      await second`commit`;
+    } finally {
+      await first`rollback`.catch(() => {});
+      await second`rollback`.catch(() => {});
+      first.release();
+      second.release();
+    }
+    expect(await versionsOf(team)).toHaveLength(presets.length);
+    expect(await headsOf(team)).toHaveLength(presets.length);
+    expect(await eventsOf(team)).toHaveLength(presets.length);
+    expect(await revisionOf(team)).toBe(1);
   });
 });

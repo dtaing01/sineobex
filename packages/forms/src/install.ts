@@ -111,6 +111,91 @@ export async function installPresets(
 
 const keyVersion = ({ key, version }: KeyVersion): KeyVersion => ({ key, version });
 
+// ------------------------------------------------------------------------------------------------
+// Phase 5: each key by platformUpdateEffect (design 4.3, 5.2). Written ahead of its code (card
+// P4-tests): planNoteTypes throws until card P4-install builds it, and installPresets above is
+// changed to work from it, as packages/forms/test/install-update.test.ts and
+// db/test/install-presets.test.ts hold.
+// ------------------------------------------------------------------------------------------------
+
+/** A note type's head (0023) as the installer reads it and writes it. */
+export type NoteTypeHead = {
+  key: string;
+  title: string;
+  state: 'active' | 'archived';
+  currentVersion: number;
+  /** The newest platform version the installer has seen; above the version last taken, one is on offer. */
+  platformLatest: number | null;
+  /** The team edited, archived or restored it: a platform version is then only offered. */
+  customized: boolean;
+};
+
+/** One row of note_type_versions as the installer reads it: never its definition. */
+export type HeldNoteTypeVersion = {
+  key: string;
+  version: number;
+  origin: 'preset' | 'team';
+  /** The platform version a preset row was installed or taken from; null for the team's own. */
+  presetVersion: number | null;
+  hash: string;
+  /** Its definition's title, null where it has none: a missing head takes the newest one's. */
+  title: string | null;
+};
+
+/** What one run writes for one key. */
+export type NoteTypeStep = {
+  key: string;
+  /**
+   * What platformUpdateEffect answered for the key's newest platform version; null for a key whose
+   * missing head is all the run writes (a skip, a key the platform does not ship, or one that differs).
+   */
+  effect: 'install' | 'update' | 'offer' | null;
+  /** The key's newest platform version; null for a key the platform does not ship. */
+  platformVersion: number | null;
+  /** The head as the run leaves it, stamped with the run's revision when it is written. */
+  head: NoteTypeHead;
+  /** The key had no head (a team made after 0023 and before this installer): it is inserted. */
+  headMissing: boolean;
+  /**
+   * The version an install or an update writes, `origin = 'preset'`: the team's next (1 for a new
+   * key, else one more than its newest row), its definition's `version` rewritten to it (4.3), and
+   * the hash of that definition. Null for an offer and a missing head alone.
+   */
+  write: { version: number; presetVersion: number; definition: ResolvedNoteType; hash: string } | null;
+};
+
+export type NoteTypePlan = {
+  /** One step for each key the run writes anything for, in code-point order of the keys. */
+  steps: NoteTypeStep[];
+  /**
+   * Preset rows whose definition, with its version set back to the row's `preset_version`, is not
+   * the platform's: by the team's key and version. Nothing but a missing head is written for their keys.
+   */
+  differing: KeyVersion[];
+};
+
+/**
+ * What one run of the note type installer writes (design 5.2), from what the team holds: for each
+ * key the presets name, its newest platform version, decided by platformUpdateEffect with `exists`
+ * whether the team holds any version of the key, `originVersion` the newest preset row's
+ * `presetVersion`, `state` and `customized` the head's (a key whose newest row is the team's own is
+ * customized whatever its head says: forms 3.2's rule), and `changesFixed` whether the platform's
+ * kinds, group, sensitivity, quick or auto differ from those of the platform version last taken
+ * (treated as changed when that version is not among the presets). An offer is a step only while
+ * the head's `platformLatest` is below the platform version. A key the team holds without a head
+ * gets one, as 0023 fills it: the newest version's title (the key where it has none), that version
+ * current, `platformLatest` the newest preset row's, customized when any version is the team's own,
+ * active. Pure, as planTeamPresets is: no database, and what it is given is not changed.
+ */
+export async function planNoteTypes(input: {
+  heads: readonly NoteTypeHead[];
+  versions: readonly HeldNoteTypeVersion[];
+  presets: readonly Preset[];
+}): Promise<NoteTypePlan> {
+  void input;
+  throw new Error('P4-install');
+}
+
 async function hashesOf(sql: InstallSql, teamId: string): Promise<Map<string, string>> {
   const rows = await sql<{ key: string; version: number; hash: string }[]>`
     select key, version, hash from sineobex.note_type_versions where team_id = ${teamId}::uuid`;
