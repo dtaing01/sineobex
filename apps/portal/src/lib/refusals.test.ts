@@ -3,6 +3,7 @@ import {
   errorCode,
   PRESET_SENTENCES,
   presetRefusalState,
+  NAME_PROBLEM,
   REASON_PROBLEM,
   referencedSentence,
   refusalRedirect,
@@ -248,12 +249,26 @@ describe('a preset form the API refused', () => {
       },
     );
     expect(r.fieldErrors).toEqual({
-      // A field with no sentence of the form's own says the code's.
-      name: 'Name: This is too short or too small.',
+      // A name says what every form's name asks.
+      name: 'Name: Enter a name of 1 to 80 characters.',
       behaviour: 'Choose what it holds.',
       sort: 'Place in the list: Enter a whole number.',
       'lines.1.qty': 'Quantity on line 2: Enter 1 to 99.',
     });
+  });
+
+  it('says what a name asks, empty or too long, on every form, and keeps a rule’s own sentence', () => {
+    const r = (code: string, sentences?: Record<string, string>) =>
+      refused(
+        'invalid',
+        { kind: 'item', act: 'save', labels: { name: 'Name' }, ...(sentences ? { sentences } : {}) },
+        { problems: [{ path: 'name', code }] },
+      ).fieldErrors?.name;
+    expect(NAME_PROBLEM).toBe('Enter a name of 1 to 80 characters.');
+    for (const code of ['too_small', 'too_big', 'invalid_type'])
+      expect(r(code)).toBe('Name: Enter a name of 1 to 80 characters.');
+    expect(r('untrimmed')).toBe('Name: Take out the spaces at the start or end.');
+    expect(r('too_small', { name: 'Demo: a form’s own words.' })).toBe('Name: Demo: a form’s own words.');
   });
 
   it('keeps a rule’s own sentence at a field that has a sentence of the form’s own', () => {

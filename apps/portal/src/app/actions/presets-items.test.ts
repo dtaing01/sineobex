@@ -164,7 +164,7 @@ describe('adding an item', () => {
     });
     const r = await run(addItemAction, { ...fields, name: '' });
     expect(r.state?.fieldErrors).toEqual({
-      name: 'Name: This is too short or too small.',
+      name: 'Name: Enter a name of 1 to 80 characters.',
       unit: 'Counted in: Enter 1 to 20 characters, such as tablet or packet.',
       'result.options': 'Options: Give 2 to 12 options.',
       'result.options.1': 'Option 2: This option is on the list twice.',

@@ -109,6 +109,12 @@ export const REASON_PROBLEM = 'Give a reason of 3 to 300 characters.';
 /** The summary's title over the fields a refusal names, each in a line of its own below it. */
 export const FIELDS_TITLE = 'Some fields need changing. Check each one below.';
 
+/**
+ * What a preset's name left empty or too long says, on every form: each kind's name is 1 to 80
+ * characters (packages/presets/src/schemas.ts), so its schema's bounds ask one thing of it.
+ */
+export const NAME_PROBLEM = 'Enter a name of 1 to 80 characters.';
+
 /** What names a preset, by the kind of each preset that does, in the order the pages list kinds. */
 const USED_BY: Readonly<Record<string, readonly [string, string]>> = {
   order_category: ['category', 'categories'],
@@ -246,10 +252,17 @@ function labelOf(path: string, labels: Readonly<Record<string, string>>): string
   return labels[path.split('.')[0]!];
 }
 
-/** The form's own sentence for a path, a list entry's by its pattern (`lines.*.qty`). */
+/**
+ * The form's own sentence for a path, a list entry's by its pattern (`lines.*.qty`); a preset's name
+ * has the one every form shares.
+ */
 function sentenceOf(path: string, sentences: Readonly<Record<string, string>>): string | undefined {
   const entry = listEntry(path);
-  return sentences[path] ?? (entry ? sentences[entry.pattern] : undefined);
+  return (
+    sentences[path] ??
+    (entry ? sentences[entry.pattern] : undefined) ??
+    (path === 'name' ? NAME_PROBLEM : undefined)
+  );
 }
 
 type Problem = { path: string; code: string };
