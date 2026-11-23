@@ -34,6 +34,12 @@ function expectOnlyIds(addresses: string[]) {
     );
 }
 
+/**
+ * The summary's title over the fields a refusal names, each in a line of its own that names its
+ * field (lib/refusals.ts), so one sentence is never said twice.
+ */
+const FIELDS_TITLE = 'Some fields need changing. Check each one below.';
+
 /** The hub's areas (8.1), each with the kinds its page shows; the first is the one it counts. */
 const AREAS = [
   {
@@ -343,10 +349,15 @@ test.describe('categories, /team/presets/categories', () => {
     const add = form.getByRole('button', { name: 'Add category' });
     const alert = form.getByRole('alert');
 
-    // Nothing typed: the reason is asked first, as the API reads the request before the body.
+    // Nothing typed: the reason is asked first, as the API reads the request before the body. Its
+    // line names the Reason box, under a title of its own, so the alert says it once.
     await add.click();
     await expect(alert).toBeFocused();
-    await expect(alert).toContainText('Give a reason of 3 to 300 characters.');
+    await expect(alert.locator('.px-alert__title')).toHaveText(FIELDS_TITLE);
+    await expect(alert.getByRole('link')).toHaveText(['Reason: Give a reason of 3 to 300 characters.']);
+    await expect(
+      form.getByText('Reason: Give a reason of 3 to 300 characters.', { exact: true }),
+    ).toHaveCount(2);
 
     // A reason, and still no name and no choice: each said beside its field, the reason kept.
     await reason.fill('Demo: kits we hand out');
@@ -367,7 +378,8 @@ test.describe('categories, /team/presets/categories', () => {
     await name.fill('otc');
     await form.getByRole('radio', { name: 'Medications' }).check();
     await add.click();
-    await expect(alert.locator('.px-alert__title')).toHaveText('Another category already has this name.');
+    await expect(alert.locator('.px-alert__title')).toHaveText(FIELDS_TITLE);
+    await expect(alert.getByRole('link')).toHaveText(['Name: Another category already has this name.']);
     await expect(name).toHaveValue('otc');
     await expect(form.getByRole('radio', { name: 'Medications' })).toBeChecked();
 
@@ -921,7 +933,8 @@ test.describe('items, /team/presets/items', () => {
     await name.fill('gauze');
     await options.getByLabel('Option 2', { exact: true }).fill('Negative');
     await add.click();
-    await expect(title).toHaveText('Another item already has this name.');
+    await expect(title).toHaveText(FIELDS_TITLE);
+    await expect(alert.getByRole('link')).toHaveText(['Name: Another item already has this name.']);
     await expect(name).toHaveValue('gauze');
 
     // A number in its unit: added, under Labs.
@@ -2101,7 +2114,8 @@ test.describe('flags, /team/presets/flags', () => {
     await radio('Conditions').check();
     await name.fill('frost risk');
     await add.click();
-    await expect(alert.locator('.px-alert__title')).toHaveText('Another flag already has this name.');
+    await expect(alert.locator('.px-alert__title')).toHaveText(FIELDS_TITLE);
+    await expect(alert.getByRole('link')).toHaveText(['Name: Another flag already has this name.']);
     await expect(name).toHaveValue('frost risk');
     await expect(radio('Conditions')).toBeChecked();
 
@@ -2443,7 +2457,8 @@ test.describe('a flag, /team/presets/flags/[id]', () => {
     // A name another flag holds, in other letters: said beside the name, kept as typed.
     await name.fill('high');
     await save.click();
-    await expect(alert.locator('.px-alert__title')).toHaveText('Another flag already has this name.');
+    await expect(alert.locator('.px-alert__title')).toHaveText(FIELDS_TITLE);
+    await expect(alert.getByRole('link')).toHaveText(['Name: Another flag already has this name.']);
     await expect(name).toHaveValue('high');
 
     // Criteria too long: said beside them, kept as typed.
@@ -2804,7 +2819,10 @@ test.describe('condition supplies, /team/presets/condition-supplies', () => {
     await line(1).getByLabel('Quantity per patient').fill('1');
     await name.fill('rash or dermatitis');
     await add.click();
-    await expect(title).toHaveText('Another condition mapping already has this name.');
+    await expect(title).toHaveText(FIELDS_TITLE);
+    await expect(alert.getByRole('link')).toHaveText([
+      'Name: Another condition mapping already has this name.',
+    ]);
     await expect(name).toHaveValue('rash or dermatitis');
     await expect(code(2)).toHaveValue('L55');
 
@@ -3463,7 +3481,8 @@ test.describe('bag minimums, /team/presets/bag-minimums', () => {
       // A name another bag holds, in any case: said beside the name, the lines kept.
       await name.fill('demo: outreach backpack');
       await add.click();
-      await expect(alert.locator('.px-alert__title')).toHaveText('Another bag already has this name.');
+      await expect(alert.locator('.px-alert__title')).toHaveText(FIELDS_TITLE);
+      await expect(alert.getByRole('link')).toHaveText(['Name: Another bag already has this name.']);
       await expect(copyFrom).toHaveValue(backpack.id);
       await expect(lines).toHaveCount(backpack.body.minimums.length - 1);
       await expect(line(2).getByLabel('Minimum')).toHaveValue('12');

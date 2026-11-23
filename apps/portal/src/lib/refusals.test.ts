@@ -305,8 +305,17 @@ describe('a preset form the API refused', () => {
     const r = refused('validation_failed', save('item'), {
       fields: [{ path: 'reason', problem: 'too_small' }],
     });
-    expect(r.error).toBe(REASON_PROBLEM);
-    expect(r.fieldErrors).toEqual({ reason: 'Give a reason of 3 to 300 characters.' });
+    // Named in its line, under a title of its own: the summary never says one sentence twice.
+    expect(r.error).toBe('Some fields need changing. Check each one below.');
+    expect(r.fieldErrors).toEqual({ reason: `Reason: ${REASON_PROBLEM}` });
+    // A form whose Reason box has its own words is named by them.
+    expect(
+      presetRefusalState(
+        { code: 'validation_failed', message: '', details: { fields: [{ path: 'reason' }] } },
+        values,
+        { kind: 'flag', act: 'move', labels: { reason: 'Reason for moving' } },
+      ).fieldErrors,
+    ).toEqual({ reason: 'Reason for moving: Give a reason of 3 to 300 characters.' });
     // Anything else malformed is the page's to write, never the person's to fix.
     expect(
       refused('validation_failed', save('item'), { fields: [{ path: 'baseVersion', problem: 'x' }] }).error,
@@ -315,8 +324,9 @@ describe('a preset form the API refused', () => {
 
   it('names a name in use, by kind, and by what can be done about it', () => {
     const saved = refused('name_taken', save('item'));
-    expect(saved.error).toBe('Another item already has this name.');
-    expect(saved.fieldErrors).toEqual({ name: 'Another item already has this name.' });
+    expect(saved.error).toBe('Some fields need changing. Check each one below.');
+    expect(saved.fieldErrors).toEqual({ name: 'Name: Another item already has this name.' });
+    expect(Object.values(saved.fieldErrors ?? {})).not.toContain(saved.error);
     expect(refused('name_taken', { kind: 'condition_supply_map', act: 'restore' }).error).toBe(
       'Another condition mapping has this name now. Rename that one first.',
     );

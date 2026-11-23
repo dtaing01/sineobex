@@ -196,16 +196,16 @@ describe('adding a flag', () => {
     answer = refusal(409, 'name_taken');
     const r = await run(addFlagAction, { ...fields, name: 'frost risk' });
     expect(r.state).toMatchObject({
-      error: 'Another flag already has this name.',
-      fieldErrors: { name: 'Another flag already has this name.' },
+      error: 'Some fields need changing. Check each one below.',
+      fieldErrors: { name: 'Name: Another flag already has this name.' },
     });
   });
 
   it('says a refused reason beside the Reason box', async () => {
     answer = refusal(422, 'validation_failed', { fields: [{ path: 'reason', problem: 'too_small' }] });
     const r = await run(addFlagAction, { ...fields, reason: 'no' });
-    expect(r.state?.error).toBe('Give a reason of 3 to 300 characters.');
-    expect(r.state?.fieldErrors).toEqual({ reason: 'Give a reason of 3 to 300 characters.' });
+    expect(r.state?.error).toBe('Some fields need changing. Check each one below.');
+    expect(r.state?.fieldErrors).toEqual({ reason: 'Reason: Give a reason of 3 to 300 characters.' });
   });
 
   it('goes through /reauth and back to the page when the sign-in is too old', async () => {
@@ -286,7 +286,7 @@ describe('editing a flag', () => {
     expect((await run(saveFlagAction, fields)).state?.error).toBe('You haven’t changed anything.');
     answer = refusal(409, 'name_taken');
     expect((await run(saveFlagAction, { ...fields, name: 'high' })).state?.fieldErrors).toEqual({
-      name: 'Another flag already has this name.',
+      name: 'Name: Another flag already has this name.',
     });
   });
 
@@ -424,8 +424,8 @@ describe('moving a flag up or down its list', () => {
     answer = refusal(422, 'validation_failed', { fields: [{ path: 'reason', problem: 'too_small' }] });
     const r = await run(moveFlagAction, { ...primary, reason: '', move: `down:${HIGH}` });
     expect(r.state).toMatchObject({
-      error: 'Give a reason of 3 to 300 characters.',
-      fieldErrors: { reason: 'Give a reason of 3 to 300 characters.' },
+      error: 'Some fields need changing. Check each one below.',
+      fieldErrors: { reason: 'Reason for moving: Give a reason of 3 to 300 characters.' },
     });
     expect(revalidated).toEqual([]);
   });

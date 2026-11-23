@@ -106,6 +106,9 @@ function takeStale(details: Record<string, unknown> | undefined, values: Record<
 
 export const REASON_PROBLEM = 'Give a reason of 3 to 300 characters.';
 
+/** The summary's title over the fields a refusal names, each in a line of its own below it. */
+export const FIELDS_TITLE = 'Some fields need changing. Check each one below.';
+
 /** What names a preset, by the kind of each preset that does, in the order the pages list kinds. */
 const USED_BY: Readonly<Record<string, readonly [string, string]>> = {
   order_category: ['category', 'categories'],
@@ -282,6 +285,10 @@ export function presetRefusalState(
     ...(Object.keys(fieldErrors).length > 0 ? { fieldErrors } : {}),
     values,
   });
+  // One field to fix, named in its line as every field's problem is, under a title of its own, so
+  // the summary never says one sentence twice.
+  const oneField = (path: string, fallback: string, said: string) =>
+    state(FIELDS_TITLE, { [path]: `${labelOf(path, labels) ?? fallback}: ${said}` });
 
   switch (code) {
     case 'stale':
@@ -307,10 +314,7 @@ export function presetRefusalState(
     case 'no_change':
       return state('You haven’t changed anything.');
     case 'name_taken':
-      if (act === 'save')
-        return state(`Another ${noun} already has this name.`, {
-          name: `Another ${noun} already has this name.`,
-        });
+      if (act === 'save') return oneField('name', 'Name', `Another ${noun} already has this name.`);
       return state(
         act === 'take'
           ? `Another ${noun} has the name this update gives it. Rename that one first.`
@@ -340,7 +344,7 @@ export function presetRefusalState(
       // only the reason can be wrong (the page writes every other field it sends).
       const fields = Array.isArray(details?.fields) ? (details.fields as { path?: unknown }[]) : [];
       return fields.some((f) => f?.path === 'reason')
-        ? state(REASON_PROBLEM, { reason: REASON_PROBLEM })
+        ? oneField('reason', 'Reason', REASON_PROBLEM)
         : state('Something in this form isn’t right. Reload the page and try again.');
     }
     case 'invalid': {
@@ -363,7 +367,7 @@ export function presetRefusalState(
             ? PRESET_SENTENCES.sensitivePath
             : whole
               ? problemSentence(whole.code, '')
-              : 'Some fields need changing. Check each one below.',
+              : FIELDS_TITLE,
         at(problems),
       );
     }

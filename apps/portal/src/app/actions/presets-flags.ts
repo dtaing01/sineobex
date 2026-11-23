@@ -166,7 +166,12 @@ export async function moveFlagAction(_: ActionState, form: FormData): Promise<Ac
   try {
     await reorderFlags({ tier, flags, reason });
   } catch (err) {
-    const refused = presetFailure(err, values, { kind: KIND, act: 'move' });
+    // The list's Reason box is "Reason for moving" (FlagOrder), and a refused reason is named so.
+    const refused = presetFailure(err, values, {
+      kind: KIND,
+      act: 'move',
+      labels: { reason: 'Reason for moving' },
+    });
     if (err instanceof PortalApiError && (err.code === 'stale' || err.code === 'ids_mismatch'))
       revalidatePath(PAGE);
     return refused;
