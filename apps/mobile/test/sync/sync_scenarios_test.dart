@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/sync/clock.dart';
+import 'package:sineobex_field/sync/entities.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -802,6 +803,74 @@ void main() {
       expect(p.store.outbox(), hasLength(1));
       expect(p.store.needsAttention(), isEmpty);
       expect(server.records, isEmpty);
+    });
+  });
+
+  // Phase 5 (design 5.3, 6.2, 10.2; D135): a patient's flags are changes, each created once at its own
+  // time, so two phones offline never overwrite each other, and a clear takes off only its own flag.
+  // Written ahead of P5-phone-entity, P5-fake and P5-fake-reads: it fails until they land.
+  group('two phones flag the same patient offline', () {
+    test('both changes are kept, and a clear of a level the other phone replaced takes nothing off', () async {
+      Map<String, Object?> flag(String name, int rank) => {
+        'name': name,
+        'tier': 'primary',
+        'criteria': '',
+        'color': 'red',
+        'rank': rank,
+        'sensitive': false,
+      };
+      final high = server.addPreset(team, 'flag', flag('High', 10), originKey: 'flag.high');
+      final medium = server.addPreset(team, 'flag', flag('Medium', 20), originKey: 'flag.medium');
+      final patient = server.seedPatient(preferredName: 'Demo Wren');
+      // Both phones saw Medium set this morning.
+      server.seed(entityFlagChange, {
+        'patientId': patient,
+        'flagId': medium,
+        'action': 'set',
+        'reason': 'Demo: missed a visit',
+      }, at: start.subtract(const Duration(hours: 7)));
+
+      final a = phone(alex);
+      final b = phone(blair);
+      server.offline = true;
+      // Alex raises the risk level; five minutes later Blair, who never saw it, clears Medium.
+      final raised = a.store.createRecord(entityFlagChange, {
+        'patientId': patient,
+        'flagId': high,
+        'action': 'set',
+        'reason': 'Demo: back from hospital today',
+      });
+      b.advance(const Duration(minutes: 5));
+      final cleared = b.store.createRecord(entityFlagChange, {
+        'patientId': patient,
+        'flagId': medium,
+        'action': 'clear',
+        'reason': 'Demo: came to every visit this month',
+      });
+      expect(await a.engine.syncAll(), isA<SyncOffline>());
+      expect(a.store.unsynced().counts, {'patients': 1});
+
+      // Both come back online later; Blair's phone syncs first.
+      server.offline = false;
+      a.advance(const Duration(minutes: 20));
+      b.advance(const Duration(minutes: 15));
+      serverTime = start.add(const Duration(minutes: 20));
+      expect(await b.engine.syncAll(), isA<SyncDone>());
+      expect(await a.engine.syncAll(), isA<SyncDone>());
+      for (final p in [a, b]) {
+        expect(p.store.outbox(), isEmpty);
+      }
+      // Both kept, each at its own time.
+      expect(server.records[raised]!.attributes['effectiveAt'], start.toIso8601String());
+      expect(
+        server.records[cleared]!.attributes['effectiveAt'],
+        start.add(const Duration(minutes: 5)).toIso8601String(),
+      );
+      // When Blair's clear came, High was the risk level: it took nothing off.
+      final chart = (await server.handle(alex, team, 'GET', '/v1/patients/$patient', null))! as Map<String, Object?>;
+      final flags = chart['flags']! as Map<String, Object?>;
+      expect((flags['primary']! as Map<String, Object?>)['flagId'], high);
+      expect((flags['history']! as List<Object?>).length, 3);
     });
   });
 }
