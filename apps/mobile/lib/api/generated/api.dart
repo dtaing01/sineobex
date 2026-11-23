@@ -4867,12 +4867,15 @@ class PatientRedirect {
 class PatientSearch {
   const PatientSearch({
     this.birth,
+    this.flagIds,
     this.limit,
     this.name,
     required this.surface,
   });
 
   final BirthQuery? birth;
+  /// Only patients carrying every flag named among their current flags, either tier. A flag the role may not see, or one that is not the team’s, is refused 403
+  final List<String>? flagIds;
   final int? limit;
   /// Name, street name or description
   final String? name;
@@ -4880,6 +4883,7 @@ class PatientSearch {
 
   factory PatientSearch.fromJson(Map<String, dynamic> json) => PatientSearch(
         birth: json['birth'] == null ? null : BirthQuery.fromJson(json['birth'] as Map<String, dynamic>),
+        flagIds: json['flagIds'] == null ? null : (json['flagIds'] as List<dynamic>).map((e) => e as String).toList(),
         limit: json['limit'] == null ? null : (json['limit'] as num).toInt(),
         name: json['name'] == null ? null : json['name'] as String,
         surface: Surface.fromJson(json['surface'] as String),
@@ -4887,6 +4891,7 @@ class PatientSearch {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         if (birth != null) 'birth': birth!.toJson(),
+        if (flagIds != null) 'flagIds': flagIds!.map((e) => e).toList(),
         if (limit != null) 'limit': limit!,
         if (name != null) 'name': name!,
         'surface': surface.toJson(),

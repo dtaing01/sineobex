@@ -58,8 +58,9 @@ const searchRoute = createRoute({
   tags: ['patients'],
   summary: 'Find patients by name, street name, description or birth date. Logged with the patients shown.',
   description:
-    'A name, or a full birth date; a year needs a name with it. Not paged: past 50 the screen asks for more ' +
-    'letters or a birth year. The search text is never logged.',
+    'A name, or a full birth date; a year needs a name with it, and flags narrow either. Not paged: past 50 the ' +
+    'screen asks for more letters or a birth year. The search text is never logged, nor a flag searched by: ' +
+    'only how many.',
   security: [{ bearer: [] }],
   request: { body: { required: true, ...json(PatientSearch) } },
   responses: { 200: { description: 'Results', ...json(PatientSearchResult) }, ...errors(401, 403, 422) },
@@ -243,7 +244,7 @@ export function registerPatientRoutes(app: App, deps: Deps) {
 
   app.openapi(searchRoute, async (c) => {
     const scope = await teamScope(c, deps, { permissions: ['patients.view'] });
-    return c.json(await searchPatients(scope, c.req.valid('json')), 200);
+    return c.json(await searchPatients(scope, c.req.valid('json'), c.req.routePath), 200);
   });
 
   app.openapi(matchRoute, async (c) => {
