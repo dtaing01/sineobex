@@ -517,7 +517,7 @@ test.describe('categories, /team/presets/categories', () => {
     await removeOtc.getByLabel('Reason').fill('Demo: trying to remove it');
     await removeOtc.getByRole('button', { name: 'Remove', exact: true }).click();
     await expect(removeOtc.getByRole('alert')).toHaveText(
-      `Still used by ${usedBy(otc)}. Take it out of those first.`,
+      `Still used by ${usedBy(otc)}. Take it out of ${otc.referencedBy.item === 1 ? 'that' : 'those'} first.`,
     );
     await expect(removeOtc.getByLabel('Reason')).toHaveValue('Demo: trying to remove it');
     await expectAccessible(page, 'Remove OTC, refused', { inPlace: true });
@@ -1285,9 +1285,7 @@ test.describe('an item, /team/presets/items/[id]', () => {
     const refused = page.getByRole('form', { name: 'Remove Demo: Ice packs' });
     await refused.getByLabel('Reason').fill('Demo: trying to remove it');
     await refused.getByRole('button', { name: 'Remove', exact: true }).click();
-    await expect(refused.getByRole('alert')).toHaveText(
-      'Still used by 1 bundle. Take it out of those first.',
-    );
+    await expect(refused.getByRole('alert')).toHaveText('Still used by 1 bundle. Take it out of that first.');
     await expectAccessible(page, 'Remove an item, refused', { inPlace: true });
     expect((await listed('item')).find((i) => i.id === held)).toMatchObject({ state: 'active' });
 
@@ -4239,7 +4237,7 @@ test.describe('an item the template for new bags holds', () => {
       await remove.getByLabel('Reason').fill('Demo: nobody asks for it');
       await remove.getByRole('button', { name: 'Remove', exact: true }).click();
       await expect(remove.getByRole('alert')).toHaveText(
-        'Still used by the template for new bags. Take it out of those first.',
+        'Still used by the template for new bags. Take it out of that first.',
       );
       await expectAccessible(page, 'Remove refused, the template holds it', { inPlace: true });
       expect((await listed('item')).find((i) => i.id === powder)).toMatchObject({ state: 'active' });
