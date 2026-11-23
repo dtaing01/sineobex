@@ -92,7 +92,15 @@ describe('the update offer', () => {
 
   it('reviews the update’s body against the copy’s, rank included, each change marked', () => {
     const html = offer(flag());
-    expect(html).toContain('<caption>What taking the update changes in Frost risk</caption>');
+    expect(html).toContain(
+      `<caption id="review-${FLAG}">What taking the update changes in Frost risk</caption>`,
+    );
+    // Its words stay whole: wider than the page, it scrolls in a group of its own, by keyboard too.
+    expect(html).toMatch(
+      new RegExp(
+        `<div role="group" aria-labelledby="review-${FLAG}" tabindex="0" class="[^"]*scroll[^"]*"><table`,
+      ),
+    );
     expect(html).toContain(
       '<th scope="row">Place in its list (lowest first) <span class="sx-pill sx-pill--info">Changes</span></th><td>30</td><td>10</td>',
     );
@@ -204,6 +212,18 @@ describe('the history', () => {
     const flat = renderToStaticMarkup(createElement(HistoryTable, { events, id: FLAG, flat: true }));
     expect(flat).not.toContain('px-panel');
     expect(flat).toMatch(new RegExp(`<section aria-labelledby="history-${FLAG}" class="[^"]*flat[^"]*">`));
+  });
+
+  it('keeps its words whole, scrolling sideways in a group of its own that takes focus, named by the table', () => {
+    const html = renderToStaticMarkup(createElement(HistoryTable, { events, id: FLAG }));
+    expect(html).toMatch(
+      new RegExp(
+        `<div role="group" aria-labelledby="history-${FLAG}-caption" tabindex="0" class="[^"]*scroll[^"]*"><table`,
+      ),
+    );
+    expect(html).toContain(
+      `<caption id="history-${FLAG}-caption" class="sr-only">Every change to it, oldest first</caption>`,
+    );
   });
 
   it('takes a heading of the page’s level and words', () => {

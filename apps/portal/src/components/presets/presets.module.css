@@ -73,10 +73,13 @@
   /* 24px of text and 24px of padding: the 48px tap target. */
   padding: var(--space-3) 0;
 }
-.review {
-  overflow-wrap: anywhere;
+/* A table's words stay whole: one too wide for a phone held upright scrolls sideways in its own
+   group (.scroll), which WCAG 1.4.10 allows a data table, and the page itself never does. */
+.scroll {
+  overflow-x: auto;
+  /* Sized by where it sits, never by its table, so the table can't widen the page around it. */
+  contain: inline-size;
 }
-/* Three columns side by side still fit a phone held upright, nested in a panel. */
 .review th,
 .review td {
   padding: var(--space-2);

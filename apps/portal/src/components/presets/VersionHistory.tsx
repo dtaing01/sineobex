@@ -1,6 +1,7 @@
 import { formatDateTime } from '@/lib/labels';
 import { presetHistory, type PresetEvent, type PresetKind } from '@/lib/presets';
 import styles from './presets.module.css';
+import { ScrollTable } from './ScrollTable';
 
 /** Each act the history keeps (0023), as a person reads it. */
 const ACTS: Readonly<Record<PresetEvent['act'], string>> = {
@@ -22,7 +23,7 @@ const ACTS: Readonly<Record<PresetEvent['act'], string>> = {
  *
  * `flat` draws it without a panel of its own, for a page that places it in the preset's own panel
  * (a list page, such as Categories, where each preset is a panel): a panel in a panel leaves the
- * table too little width at 320 px.
+ * table too little width at 320 px. Its words stay whole, in a ScrollTable.
  */
 export function HistoryTable({
   events,
@@ -43,31 +44,35 @@ export function HistoryTable({
       <Heading id={`history-${id}`} className={headingLevel === 2 ? 'px-h2' : 'px-h3'}>
         {heading}
       </Heading>
-      <table className={`px-table ${styles.review}`}>
-        <caption className="sr-only">Every change to it, oldest first</caption>
-        <thead>
-          <tr>
-            <th scope="col">When</th>
-            <th scope="col">What</th>
-            <th scope="col">Who</th>
-            <th scope="col">Whose version</th>
-            <th scope="col">Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((e, i) => (
-            <tr key={`${e.version}:${e.at}:${i}`}>
-              <td>{formatDateTime(e.at)}</td>
-              <td>
-                {ACTS[e.act] ?? e.act}, version {e.version}
-              </td>
-              <td>{e.by?.displayName ?? 'Sineobex'}</td>
-              <td>{e.source === 'platform' ? 'Sineobex’s' : 'Your team’s'}</td>
-              <td>{e.reason ?? '—'}</td>
+      <ScrollTable caption={`history-${id}-caption`}>
+        <table className={`px-table ${styles.review}`}>
+          <caption id={`history-${id}-caption`} className="sr-only">
+            Every change to it, oldest first
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">When</th>
+              <th scope="col">What</th>
+              <th scope="col">Who</th>
+              <th scope="col">Whose version</th>
+              <th scope="col">Reason</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {events.map((e, i) => (
+              <tr key={`${e.version}:${e.at}:${i}`}>
+                <td>{formatDateTime(e.at)}</td>
+                <td>
+                  {ACTS[e.act] ?? e.act}, version {e.version}
+                </td>
+                <td>{e.by?.displayName ?? 'Sineobex'}</td>
+                <td>{e.source === 'platform' ? 'Sineobex’s' : 'Your team’s'}</td>
+                <td>{e.reason ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ScrollTable>
     </section>
   );
 }

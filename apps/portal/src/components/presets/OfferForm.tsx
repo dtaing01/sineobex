@@ -102,8 +102,10 @@ export function OfferForm({
   };
   const Heading = headingLevel === 2 ? 'h2' : 'h3';
   const headingClass = headingLevel === 2 ? 'px-h2' : 'px-h3';
+  // At level 3 the offer sits in its preset's own panel (a list page, a Removed list's entry): a
+  // panel in a panel leaves the review too little width at 320 px, so it is drawn unboxed there.
   return (
-    <section aria-labelledby={`offer-${id}`} className="px-panel">
+    <section aria-labelledby={`offer-${id}`} className={headingLevel === 2 ? 'px-panel' : styles.flat}>
       <Heading id={`offer-${id}`} className={headingClass}>
         {/* Drawn with no offer only to say why a take was refused: the offer went meanwhile. */}
         {offer ? 'Update available' : 'Sineobex’s update'}

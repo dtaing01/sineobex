@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   apiCall,
   customRole,
@@ -4388,6 +4388,76 @@ test.describe('Sineobex’s update, to two categories nobody edited', () => {
     await expectReflow(page, 'Categories, two offered an update');
     await expectNothingStored(page, 'Categories, two offered an update');
     expectOnlyIds(traffic.addresses);
+  });
+});
+
+/**
+ * At 320 px no word in a table's cells (a history, a review) is broken across lines: a table wider
+ * than the page scrolls sideways in a group of its own instead (review B, R-B2). Each word's
+ * rectangles, from a range over it, must share one line; a break after a hyphen or a slash is a line
+ * break, not a split word. Then axe in the three themes, in place, at that width.
+ */
+async function expectWholeWordsAt320(page: Page, label: string) {
+  const before = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: before?.height ?? 800 });
+  const split = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const cell of document.querySelectorAll('main table th, main table td')) {
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.parentElement?.closest('.sr-only')) continue;
+        for (const m of (node.textContent ?? '').matchAll(/[^\s\-\u2010-\u2014/]+/g)) {
+          const range = document.createRange();
+          range.setStart(node, m.index);
+          range.setEnd(node, m.index + m[0].length);
+          const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+          if (new Set(rects.map((r) => Math.round(r.top))).size > 1) out.push(m[0]);
+        }
+      }
+    }
+    return out;
+  });
+  expect(split, `${label}: words split across lines at 320 px`).toEqual([]);
+  const tables = await page.locator('main table').count();
+  expect(tables, `${label}: tables at 320 px`).toBeGreaterThan(0);
+  // Every table sits in a group that takes focus, so a keyboard can scroll it.
+  await expect(page.locator('main [role="group"][tabindex="0"] > table')).toHaveCount(tables);
+  await expectAccessible(page, `${label} at 320 px`, { inPlace: true });
+  if (before) await page.setViewportSize(before);
+  await expectReflow(page, label);
+}
+
+test.describe('a preset’s history and the review of its update, at 320 px', () => {
+  test.afterEach(noOfferLeft);
+  test('keep every word whole, each table scrolling sideways in a group of its own that takes focus, on a list page and on a preset’s page', async ({
+    page,
+  }) => {
+    test.slow();
+    const otc = await named<CategoryBody>('order_category', 'OTC');
+    const gauze = await named<ItemBody>('item', 'Xeroform');
+    offerPlatformVersion('order_category', otc.id);
+    offerPlatformVersion('item', gauze.id);
+    await signIn(page, 'admin@example.com');
+
+    // A list page: each category's history, and OTC's review, in its own panel, unboxed.
+    await page.goto('/team/presets/categories');
+    const offer = page.getByRole('region', { name: 'Update available for OTC' });
+    await offer.locator('summary').click();
+    await expect(page.getByRole('group', { name: 'What taking the update changes in OTC' })).toBeVisible();
+    await expect(offer).not.toHaveClass(/px-panel/);
+    await expectWholeWordsAt320(page, 'Categories, a history and a review');
+
+    // A preset's page: its history, and its review, each in a panel of its own.
+    await page.goto(`/team/presets/items/${gauze.id}`);
+    await page.getByRole('region', { name: 'Update available for Xeroform' }).locator('summary').click();
+    await expect(
+      page.getByRole('group', { name: 'What taking the update changes in Xeroform' }),
+    ).toBeVisible();
+    await expect(page.getByRole('region', { name: 'History' }).getByRole('group')).toHaveAccessibleName(
+      'Every change to it, oldest first',
+    );
+    await expectWholeWordsAt320(page, 'An item’s page, its history and its review');
+    await expectNothingStored(page, 'Tables at 320 px');
   });
 });
 
