@@ -1,4 +1,4 @@
-import type { ResolvedNoteType } from '@sineobex/forms';
+import { takeRevision, type InstallSql, type ResolvedNoteType } from '@sineobex/forms';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { definitionFor } from '../src/forms/definitions.ts';
 import { correct, noteRow, visitAt } from './encounters-fixtures.ts';
@@ -15,7 +15,8 @@ import { call, clinician, finishNote, noteOn, type Clinician } from './sync-fixt
 // serves every stored version; the new version is read back by definitionFor and a note made on it
 // is accepted. A removed note type leaves the list the phones read (P4-offered), and its drafts
 // finish. The admin routes are note-types-admin.test.ts's; until they land they answer 404, and so
-// does every case here. The phone's half is apps/mobile/test/forms/note_type_version_test.dart.
+// does every case here but the one that archives a head by hand, which holds the list's rule alone.
+// The phone's half is apps/mobile/test/forms/note_type_version_test.dart.
 
 let h: Harness;
 let team: PresetsTeam;
@@ -174,6 +175,29 @@ describe('a removed note type', () => {
     const restored = await admin('POST', `/v1/admin/note-types/${key}/restore`, { reason: REASON });
     expect(restored.status, JSON.stringify(restored.body)).toBe(200);
     expect((await listedTo(jo)).get(key)).toBe(1);
+  });
+
+  it('is left out by the list from its head alone, whatever archived it, and every version still serves', async () => {
+    // The list's own rule (card P4-offered), apart from the archive route: the head is archived
+    // and made active again by hand, as a write makes it, its revision taken first.
+    const headState = (state: 'active' | 'archived') =>
+      h.scratch.owner.begin(async (tx) => {
+        const revision = await takeRevision(tx as unknown as InstallSql, team.teamId);
+        await tx`
+          update sineobex.note_types set state = ${state}, customized = true, revision = ${revision}
+          where team_id = ${team.teamId} and key = 'outreach'`;
+      });
+    const before = await listedTo(jo);
+    const version = before.get('outreach')!;
+    expect(version).toBeGreaterThanOrEqual(1);
+    await headState('archived');
+    const after = await listedTo(ari);
+    expect(after.has('outreach')).toBe(false);
+    expect([...after.keys()].sort()).toEqual([...before.keys()].filter((k) => k !== 'outreach').sort());
+    expect((await opened(ari, 'outreach', version)).key).toBe('outreach');
+    expect(await stored('outreach', version)).toMatchObject({ key: 'outreach', version });
+    await headState('active');
+    expect((await listedTo(jo)).get('outreach')).toBe(version);
   });
 
   it('leaves out of the list a platform note type the team removed, while the others stay', async () => {
