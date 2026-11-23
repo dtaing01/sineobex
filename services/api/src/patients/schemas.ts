@@ -305,11 +305,23 @@ export const PatientSearch = z
     birth: BirthQuery.optional(),
     limit: z.number().int().min(1).max(50).default(20),
     surface: Surface,
+    flagIds: z
+      .array(Uuid)
+      .max(20)
+      .optional()
+      .openapi({
+        description:
+          'Only patients carrying every flag named among their current flags, either tier. A flag the role may ' +
+          'not see, or one that is not the team’s, is refused 403',
+      }),
   })
   .superRefine((v, ctx) => {
     const fullDate = v.birth?.month !== undefined && v.birth.day !== undefined;
+    // PLAN-OPEN (PL-26): may a portal search list patients by flag alone? No: a flag narrows a name or
+    // birth search and is refused alone, as a year is; listing by flag is the phone's patient list,
+    // offline from the team index.
     if (v.name === undefined && !fullDate) {
-      // A name, or a full birth date: a year or a month alone never browses the list.
+      // A name, or a full birth date: a year, a month or a flag alone never browses the list.
       ctx.addIssue({
         code: 'custom',
         path: [v.birth ? 'birth' : 'name'],

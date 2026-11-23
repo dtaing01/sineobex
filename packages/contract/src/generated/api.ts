@@ -711,7 +711,7 @@ export interface paths {
         put?: never;
         /**
          * Find patients by name, street name, description or birth date. Logged with the patients shown.
-         * @description A name, or a full birth date; a year needs a name with it. Not paged: past 50 the screen asks for more letters or a birth year. The search text is never logged.
+         * @description A name, or a full birth date; a year needs a name with it, and flags narrow either. Not paged: past 50 the screen asks for more letters or a birth year. The search text is never logged, nor a flag searched by: only how many.
          */
         post: operations["searchPatients"];
         delete?: never;
@@ -2446,6 +2446,8 @@ export interface components {
         };
         PatientSearch: {
             birth?: components["schemas"]["BirthQuery"];
+            /** @description Only patients carrying every flag named among their current flags, either tier. A flag the role may not see, or one that is not the team’s, is refused 403 */
+            flagIds?: string[];
             /** @default 20 */
             limit: number;
             /** @description Name, street name or description */

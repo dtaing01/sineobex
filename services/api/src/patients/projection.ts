@@ -98,12 +98,13 @@ export function flagsReader(
 /**
  * The current flags of each of these groups as the caller may see them (flagsReader), by canonical
  * ID, every group asked for included: the team index's entries and search's filter read them. Flag
- * IDs only: nothing of a change's reason is read.
+ * IDs only: nothing of a change's reason is read. [flags] are the team's, read here when not given.
  */
 export async function currentFlagsOf(
   tx: Tx,
   scope: TeamScope,
   canonicalIds: readonly string[],
+  flags?: ReadonlyMap<string, TeamFlag>,
 ): Promise<Map<string, CurrentFlags>> {
   const out = new Map<string, CurrentFlags>();
   if (canonicalIds.length === 0) return out;
@@ -115,7 +116,7 @@ export async function currentFlagsOf(
     where f.team_id = sineobex.current_team_id() and p.canonical_id = any (${[...canonicalIds]}::uuid[])`;
   const changes = new Map<string, FlagChangeRef[]>();
   for (const { groupId, ...change } of rows) changes.set(groupId, [...(changes.get(groupId) ?? []), change]);
-  const fold = flagsReader(scope.team.permissions, await teamFlags(tx, scope.team.teamId));
+  const fold = flagsReader(scope.team.permissions, flags ?? (await teamFlags(tx, scope.team.teamId)));
   for (const id of canonicalIds) out.set(id, fold(changes.get(id) ?? []));
   return out;
 }
