@@ -1,6 +1,7 @@
+import { canonicalJson, PRESETS, sha256Hex, type Preset } from '@sineobex/forms';
 import { reorderRanks } from '@sineobex/presets';
 import postgres from 'postgres';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHarness, type Harness } from './harness.ts';
 import { createTeam } from './patient-fixtures.ts';
 import {
@@ -15,8 +16,10 @@ import {
   memberOf,
   presetsApi,
   presetsTeam,
+  REASON,
   revisionOf,
   stateOf,
+  tokenOf,
   versionsOf,
   whileLocked,
   type Answer,
@@ -25,6 +28,7 @@ import {
   type PresetsApi,
   type PresetsTeam,
 } from './presets-fixtures.ts';
+import { call } from './sync-fixtures.ts';
 
 // The team revision and the team lock under the admin routes and the pull (phase 5 design 4.2, 6.1;
 // D129, D130), written before them (cards P1-store to P1-order). takeRevision is the one way to
@@ -40,6 +44,13 @@ import {
 //     two of the pull's reads is never skipped: what the pull did not hold, the next pull since its
 //     revision answers.
 // The request and answer shapes are presets-routes.test.ts's and presets-pull.test.ts's.
+
+// This file's released note types are its own copy, so a platform version of one can be released
+// into it (the note type installer and a publish, below).
+vi.mock('../../../packages/forms/generated/presets.json', async (importOriginal) => {
+  const real = (await importOriginal()) as { default: unknown[] };
+  return { default: [...real.default] };
+});
 
 let h: Harness;
 let team: PresetsTeam;
@@ -478,5 +489,74 @@ describe('a pull and the writers that commit while it reads (design 6.1; D130)',
     const seen = new Set([...first.presets, ...(next.body.presets as { id: string }[])].map((p) => p.id));
     for (const id of written)
       expect(seen.has(id), `the head written mid-pull (${id}) reaches the phone`).toBe(true);
+  });
+});
+
+describe('the note type installer and a publish of one key at once (design 4.3, 5.2; card P4-tests)', () => {
+  // Written ahead of the note type routes and the installer's lock (cards P4-publish, P4-install).
+  // A phone's list runs the note type installer, which may write a key's next version, and an
+  // admin's publish writes the next version of the same key: both take the team lock first, and
+  // the installer works its plan out again under it, so the two never collide on 0017's primary
+  // key. Whichever goes first, the other sees it: the installer only offers the platform version
+  // over the team's own, or the publish is refused stale, never answered 500.
+  it('never collide: one writes the key’s next version, the other is offered it or refused stale', async () => {
+    const t = await presetsTeam(h, 'Revision Note Types');
+    const newest = [...PRESETS].filter((p) => p.key === 'outreach').sort((a, b) => b.version - a.version)[0]!;
+    const definition = {
+      ...structuredClone(newest.definition),
+      version: newest.version + 1,
+      title: 'Outreach, again',
+    };
+    const next: Preset = {
+      key: 'outreach',
+      version: definition.version,
+      hash: await sha256Hex(canonicalJson(definition)),
+      definition,
+    };
+    const presets = PRESETS as Preset[];
+    presets.push(next);
+    try {
+      const r0 = await revisionOf(h, t.teamId);
+      const [listed, published] = await togetherAtTheLock(t.teamId, [
+        async () => call(h, '/v1/forms/note-types', { token: await tokenOf(h, t.staff), teamId: t.teamId }),
+        async () =>
+          call(h, '/v1/admin/note-types/outreach', {
+            method: 'PUT',
+            token: await tokenOf(h, t.admin),
+            teamId: t.teamId,
+            json: {
+              baseVersion: newest.version,
+              ops: [{ op: 'rename_type', title: 'Demo: Outreach, the team’s' }],
+              reason: REASON,
+            },
+          }),
+      ]);
+      expect(listed!.status, JSON.stringify(listed!.body)).toBe(200);
+      expect([200, 409], JSON.stringify(published!.body)).toContain(published!.status);
+      const rows = await h.scratch.owner<{ version: number; origin: string; presetVersion: number | null }[]>`
+        select version, origin, preset_version as "presetVersion" from sineobex.note_type_versions
+        where team_id = ${t.teamId} and key = 'outreach' order by version`;
+      expect(rows.map((r) => r.version)).toEqual([1, 2]);
+      const [head] = await h.scratch.owner<
+        { currentVersion: number; platformLatest: number; customized: boolean }[]
+      >`
+        select current_version as "currentVersion", platform_latest as "platformLatest", customized
+        from sineobex.note_types where team_id = ${t.teamId} and key = 'outreach'`;
+      if (published!.status === 200) {
+        // The publish went first: version 2 is the team's, and the installer, planning again under
+        // the lock, only offered the platform's over it.
+        expect(rows[1]).toEqual({ version: 2, origin: 'team', presetVersion: null });
+        expect(head).toEqual({ currentVersion: 2, platformLatest: next.version, customized: true });
+        expect(await revisionOf(h, t.teamId)).toBe(r0 + 2);
+      } else {
+        // The installer went first: version 2 is the platform's, and the publish from version 1 is stale.
+        expect(errorOf(published!)).toMatchObject({ code: 'stale', details: { currentVersion: 2 } });
+        expect(rows[1]).toEqual({ version: 2, origin: 'preset', presetVersion: next.version });
+        expect(head).toEqual({ currentVersion: 2, platformLatest: next.version, customized: false });
+        expect(await revisionOf(h, t.teamId)).toBe(r0 + 1);
+      }
+    } finally {
+      presets.splice(presets.indexOf(next), 1);
+    }
   });
 });
