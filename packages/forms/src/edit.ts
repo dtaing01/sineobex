@@ -399,9 +399,9 @@ function namedFromOutside(
     if (!within(section) && names(section.section.showWhen, section, null)) return true;
   for (const node of model.nodes) {
     if (within(node)) continue;
-    // In a grid's cell a condition is read in each row (validate.ts reads it so).
-    const rows: (string | null)[] = node.grid ? node.grid.rows : [null];
-    if (rows.some((row) => names(node.field.showWhen, node, row))) return true;
+    // Read once, with no row: in a grid's cell `./` names the row, inside the grid with the cell, and
+    // a field outside the grid is named by its whole path, the same from every row.
+    if (names(node.field.showWhen, node, null)) return true;
     if (node.picked && within(node.picked.node)) return true;
     if (node.field.kind === 'flag')
       for (const id of node.field.clears ?? []) {
