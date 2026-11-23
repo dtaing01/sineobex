@@ -28,7 +28,15 @@ import {
 import { RULES, takesTeamLock } from './entities/index.ts';
 import { actingAuthor, answersOf, noteRules, noteTypeOf } from './entities/note.ts';
 import { lockTeamWrites } from './locks.ts';
-import { readsEntity, readsRecord, sensitiveHidden } from './read-rules.ts';
+import {
+  flagChangeShown,
+  flagHead,
+  flagHidden,
+  readsEntity,
+  readsRecord,
+  sensitiveHidden,
+  type FlagHead,
+} from './read-rules.ts';
 import { isSensitiveCode } from './entities/problem.ts';
 import {
   answerHidden,
@@ -161,7 +169,9 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
  * encounters.chart, and a Medical visit's summary and its own addenda what reads its notes (RD-7);
  * a note's change needs a note they may read, with every answer it sends or would replace one they
  * may see; a sign-off goes without its hash to a reader who does not see every answer of any note. A problem and its notes need the problem list's keys, and a sensitive one,
- * or one whose create is still held, patients.view_sensitive. Everything else needs patients.view. Values were never schema-checked,
+ * or one whose create is still held, patients.view_sensitive. A flag change needs a flag the flag rule
+ * shows them (phase 5 design 6.2, D87): a create's, or for a mark the change's, stored or its create
+ * held here. Everything else needs patients.view. Values were never schema-checked,
  * so anything that cannot be read as a change of its kind is hidden.
  */
 async function shownChange(
@@ -193,9 +203,40 @@ async function shownChange(
       const problem = problemId ? await RULES.problem.load(tx, problemId, false) : null;
       return problem && !sensitiveHidden(scope.team.permissions, problem) ? shown : null;
     }
+    case 'patient_flag_change':
+      return flagHidden(scope.team.permissions, await heldFlag(tx, scope.team.teamId, r, v, uuid))
+        ? null
+        : shown;
     default:
       return shown;
   }
+}
+
+/**
+ * The flag a held flag change names: a create's own, read only when it is a UUID; for a set (an
+ * Entered in error mark), the change's as stored, or as its create held here names it, the latest,
+ * as the queue names its patient (0024, patient_of_change). Null when none is one of the team's flags.
+ */
+async function heldFlag(
+  tx: Tx,
+  teamId: string,
+  r: Pick<QuarantineRow, 'op' | 'recordId'>,
+  v: Record<string, unknown>,
+  uuid: (x: unknown) => string | null,
+): Promise<FlagHead | null> {
+  if (r.op === 'create') {
+    const flagId = uuid(v.flagId);
+    return flagId ? flagHead(tx, teamId, flagId) : null;
+  }
+  const [named] = await tx<{ flagId: string | null }[]>`
+    select coalesce(
+      (select f.flag_id from sineobex.patient_flag_changes f
+       where f.team_id = ${teamId} and f.id = ${r.recordId}),
+      (select sineobex.as_uuid(c.value ->> 'flagId') from sineobex.quarantine_items c
+       where c.team_id = ${teamId} and c.entity = 'patient_flag_change' and c.op = 'create'
+         and c.record_id = ${r.recordId}
+       order by c.received_at desc limit 1)) as flag_id`;
+  return named?.flagId ? flagHead(tx, teamId, named.flagId) : null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -377,6 +418,37 @@ async function correctionNotApplied(
   return note.id;
 }
 
+/**
+ * A held flag change that will not reach the chart: rejected, or its accept refused (phase 5 design
+ * 6.2). Its phone let go of it when it was held, so its sender gets `flag_change_not_applied` naming
+ * the flag change, its create's record or the one its mark was for, and its patient, as the queue
+ * names it (patient_of_change: the change's row, else what its value or its held create names), so a
+ * phone that never held it opens the chart by it. Once per flag change, as signoffNotApplied tells of
+ * a sign-off; the notice holds no text of it. Only for a patient on the chart, selected first: a
+ * patient whose create was itself held and rejected tells nobody, since the notice's key would abort
+ * the reject (intake's risk level). The patient's ID, or null.
+ */
+async function flagChangeNotApplied(
+  tx: Tx,
+  teamId: string,
+  item: Pick<QuarantineRow, 'id' | 'entity' | 'userId' | 'recordId'>,
+): Promise<string | null> {
+  if (item.entity !== 'patient_flag_change') return null;
+  const named = await patientOfItem(tx, item.id);
+  if (!named) return null;
+  const [patient] = await tx<{ id: string }[]>`
+    select id from sineobex.patients where id = ${named} and team_id = ${teamId}`;
+  if (!patient) return null;
+  await tx`
+    insert into sineobex.user_notices (team_id, user_id, kind, entity, record_id, patient_id)
+    select ${teamId}, ${item.userId}, 'flag_change_not_applied', 'patient_flag_change', ${item.recordId}, ${patient.id}
+    where not exists (
+      select 1 from sineobex.user_notices
+      where team_id = ${teamId} and user_id = ${item.userId} and kind = 'flag_change_not_applied'
+        and entity = 'patient_flag_change' and record_id = ${item.recordId})`;
+  return patient.id;
+}
+
 /** The patient a queue item is about, as the queue names it (migration 0020, patient_of_change). */
 async function patientOfItem(tx: Tx, itemId: string): Promise<string | null> {
   const [row] = await tx<{ patientId: string | null }[]>`
@@ -503,8 +575,8 @@ export async function decideQuarantine(
         });
       if (result.status !== 'accepted') {
         // PLAN-OPEN (TM-9): is an admin's refused accept of a held change logged? Only for a held
-        // correction, or a held sign-off its note no longer matches, whose sender is told to act
-        // again; any other refusal rolls back and writes nothing.
+        // correction, a held flag change, or a held sign-off its note no longer matches, whose
+        // sender is told to act again; any other refusal rolls back and writes nothing.
         if (result.reason === 'stale_reference' && (await heldCreate(tx, actor, change)))
           throw waitingOnRecord();
         const problem = typeof result.details?.problem === 'string' ? result.details.problem : null;
@@ -537,6 +609,22 @@ export async function decideQuarantine(
           });
           return refused;
         }
+        // A held flag change refused now (its reason, or a flag the team no longer holds as one): its
+        // phone let go of it when it was held, so its sender is told, naming its patient, and the
+        // refusal is logged on the patient (phase 5 design 6.2). The item stays pending, for the
+        // reviewer to reject.
+        if (item.entity === 'patient_flag_change') {
+          const patientId = await flagChangeNotApplied(tx, scope.team.teamId, item);
+          if (!patientId) throw refused;
+          await audit({
+            action: 'quarantine.accept_refused',
+            entity: 'patient_flag_change',
+            entityId: item.recordId,
+            patientId,
+            details: { itemId, changeId: item.changeId, problem },
+          });
+          return refused;
+        }
         if (item.entity !== 'note_signoff' || problem !== 'content_changed') throw refused;
         // A held sign-off the note no longer matches (review finding NOT-12): its phone let go of
         // it when it was held, so its sender is told the note needs completing again, and the
@@ -552,11 +640,13 @@ export async function decideQuarantine(
         return refused;
       }
     }
-    // A held sign-off rejected tells its sender the note needs completing again (NOT-12), and a held
-    // correction that it needs correcting again (VS-6).
+    // A held sign-off rejected tells its sender the note needs completing again (NOT-12), a held
+    // correction that it needs correcting again (VS-6), and a held flag change that it was not made
+    // (design 6.2).
     if (decision === 'reject') {
       await signoffNotApplied(tx, scope.team.teamId, item);
       await correctionNotApplied(tx, scope.team.teamId, item);
+      await flagChangeNotApplied(tx, scope.team.teamId, item);
     }
 
     await tx`
@@ -630,7 +720,9 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
      * whoever acts as the author, its signer, and a reader who sees every answer of any note, and
      * never over a visit's summary withheld from the reader (signoffHashShown). A visit's summary
      * goes with its notes (medicalHidden), and its status, and whether it holds a finished note, are
-     * worked out from the notes the reader may read (statusShown).
+     * worked out from the notes the reader may read (statusShown). A flag change is read by the flag
+     * rule, and once entered in error without its reasons for whoever neither made it nor is a
+     * Program Admin (read-rules.ts flagChangeShown, phase 5 design 6.2).
      */
     async function asRead(record: StoredRecord): Promise<StoredRecord | null> {
       switch (record.entity) {
@@ -681,6 +773,13 @@ export async function fetchRecords(scope: TeamScope, refs: { entity: AnyRecordEn
             order by created_at, id`;
           return hiddenCorrections(read, all).has(record.id) ? null : record;
         }
+        case 'patient_flag_change':
+          return flagChangeShown(
+            scope.team.permissions,
+            scope.principal.userId,
+            record,
+            await flagHead(tx, record.teamId, record.attributes.flagId as string),
+          );
         default:
           return record;
       }
