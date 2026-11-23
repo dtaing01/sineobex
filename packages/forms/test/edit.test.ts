@@ -8,6 +8,7 @@ import {
   editNoteTypes,
   fieldAt,
   holdsProtected,
+  isNoteTypeTitle,
   isProtected,
   NOTE_TYPE_EDIT_OPS,
   OPTION_EDIT_OPS,
@@ -577,6 +578,78 @@ function expectPublished(
   return outcome;
 }
 
+/**
+ * A made-up note type with grids: one whose cell is a group holding a required field, and one in
+ * a group whose cell is itself a consent (noNormal).
+ */
+function rounds(): ResolvedNoteType {
+  const yesNo = [
+    { code: 'yes', label: 'Demo: Yes' },
+    { code: 'no', label: 'Demo: No' },
+  ];
+  return {
+    key: 'demo_rounds',
+    version: 1,
+    title: 'Demo: Rounds',
+    kinds: ['non_medical'],
+    group: 'outreach',
+    sensitivity: 'none',
+    sections: [
+      {
+        id: 'rounds',
+        title: 'Demo: Rounds',
+        fields: [
+          {
+            id: 'checks',
+            kind: 'grid',
+            label: 'Demo: Checks',
+            rows: [{ code: 'first', label: 'Demo: First' }],
+            cell: {
+              id: 'cell',
+              kind: 'group',
+              layout: 'stack',
+              label: 'Demo: Cell',
+              fields: [
+                {
+                  id: 'done',
+                  kind: 'choice',
+                  many: false,
+                  label: 'Demo: Done?',
+                  required: true,
+                  options: yesNo,
+                },
+              ],
+            },
+          },
+          {
+            id: 'asked',
+            kind: 'group',
+            layout: 'row',
+            label: 'Demo: Asked',
+            fields: [
+              {
+                id: 'agreed',
+                kind: 'grid',
+                label: 'Demo: Agreed',
+                rows: [{ code: 'first', label: 'Demo: First' }],
+                cell: {
+                  id: 'cell',
+                  kind: 'choice',
+                  many: false,
+                  label: 'Demo: Agreed?',
+                  noNormal: true,
+                  options: yesNo,
+                },
+              },
+            ],
+          },
+          { id: 'note', kind: 'text', lines: 'one', maxLength: 200, label: 'Demo: Note' },
+        ],
+      },
+    ],
+  };
+}
+
 describe('what an edit may not touch (edit-protected.ts)', () => {
   it('reads the protected parts of every definition the vectors name straight from the marks', () => {
     for (const [ref, definition] of Object.entries(vectors.definitions)) {
@@ -614,71 +687,7 @@ describe('what an edit may not touch (edit-protected.ts)', () => {
   });
 
   it('counts what a grid’s cell holds as held by the grid, its section and a group around it', () => {
-    const yesNo = [
-      { code: 'yes', label: 'Demo: Yes' },
-      { code: 'no', label: 'Demo: No' },
-    ];
-    const definition: ResolvedNoteType = {
-      key: 'demo_rounds',
-      version: 1,
-      title: 'Demo: Rounds',
-      kinds: ['non_medical'],
-      group: 'outreach',
-      sensitivity: 'none',
-      sections: [
-        {
-          id: 'rounds',
-          title: 'Demo: Rounds',
-          fields: [
-            {
-              id: 'checks',
-              kind: 'grid',
-              label: 'Demo: Checks',
-              rows: [{ code: 'first', label: 'Demo: First' }],
-              cell: {
-                id: 'cell',
-                kind: 'group',
-                layout: 'stack',
-                label: 'Demo: Cell',
-                fields: [
-                  {
-                    id: 'done',
-                    kind: 'choice',
-                    many: false,
-                    label: 'Demo: Done?',
-                    required: true,
-                    options: yesNo,
-                  },
-                ],
-              },
-            },
-            {
-              id: 'asked',
-              kind: 'group',
-              layout: 'row',
-              label: 'Demo: Asked',
-              fields: [
-                {
-                  id: 'agreed',
-                  kind: 'grid',
-                  label: 'Demo: Agreed',
-                  rows: [{ code: 'first', label: 'Demo: First' }],
-                  cell: {
-                    id: 'cell',
-                    kind: 'choice',
-                    many: false,
-                    label: 'Demo: Agreed?',
-                    noNormal: true,
-                    options: yesNo,
-                  },
-                },
-              ],
-            },
-            { id: 'note', kind: 'text', lines: 'one', maxLength: 200, label: 'Demo: Note' },
-          ],
-        },
-      ],
-    };
+    const definition = rounds();
     // A cell has no path: the grid is named for it, protected when the cell is by its own marks.
     expect(isProtected(definition, { path: 'rounds.checks' })).toBe(false);
     expect(isProtected(definition, { path: 'rounds.asked.agreed' })).toBe(true);
@@ -691,6 +700,175 @@ describe('what an edit may not touch (edit-protected.ts)', () => {
       fields: ['rounds.asked.agreed'],
       options: [],
     });
+  });
+});
+
+describe('hiding, showing and rewording (edit.ts)', () => {
+  const contextOn = (versions: ResolvedNoteType[]): NoteTypeEditContext => ({
+    versions,
+    team: {},
+    platform: {},
+  });
+  /** The version after `from`, as `change` makes it: what a platform version or an earlier edit left. */
+  const nextOf = (from: ResolvedNoteType, change: (d: ResolvedNoteType) => void): ResolvedNoteType => {
+    const next = structuredClone(from);
+    next.version = from.version + 1;
+    change(next);
+    return next;
+  };
+  const refusedWith = (edits: NoteTypeEdit[], versions: ResolvedNoteType[]) => {
+    const outcome = applyNoteTypeEdits(edits, contextOn(versions));
+    return outcome.ok ? 'published' : outcome.refusal.code;
+  };
+
+  it('leaves a part the version already has as it is when it is shown', () => {
+    const visit = named('demo_visit@1');
+    const outcome = applyNoteTypeEdits(
+      [
+        { op: 'set_hidden', path: 'visit.kits', hidden: false },
+        { op: 'set_hidden', path: 'stops', hidden: false },
+      ],
+      contextOn([visit]),
+    );
+    expect(outcome).toEqual({ ok: true, definition: { ...visit, version: 2 }, renames: [] });
+  });
+
+  it('shows a field back only into a group the version still has, and a group back whole', () => {
+    const v1 = named('demo_visit@1');
+    const v2 = nextOf(v1, (d) => {
+      d.sections[1]!.fields = d.sections[1]!.fields.filter((f) => f.id !== 'pack');
+    });
+    expect(refusedWith([{ op: 'set_hidden', path: 'supplies.pack.bags', hidden: false }], [v1, v2])).toBe(
+      'not_found',
+    );
+    const outcome = applyNoteTypeEdits(
+      [{ op: 'set_hidden', path: 'supplies.pack', hidden: false }],
+      contextOn([v1, v2]),
+    );
+    expect(outcome.ok && outcome.definition).toEqual({ ...v1, version: 3 });
+  });
+
+  it('shows nothing back that holds a protected field, nor into a protected section', () => {
+    // As a platform version that dropped them would leave them: a team's edit never adds them back.
+    const exam = named('demo_exam@1');
+    const dropped = nextOf(exam, (d) => {
+      d.sections = d.sections.filter((s) => s.id !== 'meds');
+      d.sections[2]!.fields = d.sections[2]!.fields.filter((f) => f.id !== 'consent');
+    });
+    expect(refusedWith([{ op: 'set_hidden', path: 'meds', hidden: false }], [exam, dropped])).toBe(
+      'protected',
+    );
+    expect(refusedWith([{ op: 'set_hidden', path: 'exam.consent', hidden: false }], [exam, dropped])).toBe(
+      'protected',
+    );
+    // A field that was in no protected section then, shown back into one that is now.
+    const open = nextOf(exam, (d) => {
+      d.version = 1;
+      delete d.sections[4]!.needs;
+    });
+    const closed = nextOf(open, (d) => {
+      d.sections[4]!.needs = 'orderMedications';
+      d.sections[4]!.fields = [
+        { id: 'route', kind: 'text', lines: 'one', maxLength: 200, label: 'Demo: Route' },
+      ];
+    });
+    expect(refusedWith([{ op: 'set_hidden', path: 'meds.ordered', hidden: false }], [open, closed])).toBe(
+      'protected',
+    );
+  });
+
+  it('refuses a hide that is neither true nor false, so a "false" sent as text hides nothing', () => {
+    const edit = { op: 'set_hidden', path: 'visit.kits', hidden: 'false' } as unknown as NoteTypeEdit;
+    expect(refusedWith([edit], [named('demo_visit@1')])).toBe('invalid');
+  });
+
+  it('refuses to hide a grid whose cell holds a protected field, or a group around such a grid', () => {
+    for (const path of ['rounds.checks', 'rounds.asked', 'rounds'])
+      expect(refusedWith([{ op: 'set_hidden', path, hidden: true }], [rounds()]), path).toBe('protected');
+    expect(refusedWith([{ op: 'set_hidden', path: 'rounds.note', hidden: true }], [rounds()])).toBe(
+      'published',
+    );
+  });
+
+  it('writes only the words an operation names: a mark or a fixed field sent with it is never written (rules 1 and 2)', () => {
+    const visit = named('demo_visit@1');
+    const smuggled = [
+      {
+        op: 'rename_type',
+        title: 'Demo: Evening outreach',
+        kinds: ['medical'],
+        group: 'clinical',
+        sensitivity: 'sensitive',
+        quick: true,
+        auto: 'medical',
+      },
+      {
+        op: 'rename_label',
+        path: 'visit.kits',
+        label: 'Demo: Kits out',
+        required: true,
+        noNormal: true,
+        handoff: true,
+      },
+      {
+        op: 'rename_label',
+        path: 'stops',
+        label: 'Demo: Places',
+        sensitiveExam: true,
+        treatmentRecord: true,
+        needs: 'orderMedications',
+      },
+      {
+        op: 'set_hidden',
+        path: 'supplies.remark',
+        hidden: false,
+        showWhen: { field: 'visit.reason', is: 'other' },
+      },
+    ] as unknown as NoteTypeEdit[];
+    const expected = structuredClone(visit);
+    expected.version = 2;
+    expected.title = 'Demo: Evening outreach';
+    (expected.sections[0]!.fields[3] as { label: string }).label = 'Demo: Kits out';
+    expected.sections[2]!.title = 'Demo: Places';
+    expect(applyNoteTypeEdits(smuggled, contextOn([visit]))).toEqual({
+      ok: true,
+      definition: expected,
+      renames: [{ path: 'visit.kits', from: 'Demo: Kits given', to: 'Demo: Kits out' }],
+    });
+  });
+
+  it('declares a rename of a part shown back from the label it last had, and none when it is only shown back', () => {
+    const v1 = named('demo_visit@1');
+    const v2 = named('demo_visit@2');
+    const reworded = applyNoteTypeEdits(
+      [
+        { op: 'set_hidden', path: 'visit.kits', hidden: false },
+        { op: 'rename_label', path: 'visit.kits', label: 'Demo: Kits out' },
+      ],
+      contextOn([v1, v2]),
+    );
+    expect(reworded.ok && reworded.renames).toEqual([
+      { path: 'visit.kits', from: 'Demo: Kits given', to: 'Demo: Kits out' },
+    ]);
+    const back = applyNoteTypeEdits(
+      [
+        { op: 'rename_label', path: 'visit.kits', label: 'Demo: Kits out' },
+        { op: 'set_hidden', path: 'visit.kits', hidden: true },
+        { op: 'set_hidden', path: 'visit.kits', hidden: false },
+      ],
+      contextOn([v1]),
+    );
+    expect(back).toEqual({ ok: true, definition: { ...v1, version: 2 }, renames: [] });
+    if (reworded.ok)
+      expectStorable(reworded.definition, [v1, v2], reworded.renames, () => undefined, 'reworded');
+  });
+
+  it('takes a title of 1 to 80 characters, counted as code points, that the schema takes', () => {
+    expect(isNoteTypeTitle('Demo: 🩹'.padEnd(6 + 2 * 74, '🩹'))).toBe(true);
+    expect(isNoteTypeTitle('Demo: '.padEnd(80, 'x'))).toBe(true);
+    expect(isNoteTypeTitle('Demo: '.padEnd(81, 'x'))).toBe(false);
+    for (const title of ['', '   ', 'Demo: a\ttab', 'Demo: a\u007fdelete', 'Demo: half \ud83e', 42])
+      expect(isNoteTypeTitle(title), JSON.stringify(title)).toBe(false);
   });
 });
 
