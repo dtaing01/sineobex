@@ -339,6 +339,26 @@ describe('POST /v1/patients/search by flags (phase 5)', () => {
     ).toEqual([both, frostOnly].sort());
   });
 
+  it('narrows before the cut, so a search by flags fills its limit and says when more matched', async () => {
+    const one = await searchAs(team.staff, { limit: 1, flagIds: [flag('flag.frost_risk')] });
+    expect(one.status).toBe(200);
+    const cut = (await one.json()) as PatientSearchResultValue;
+    expect(cut.hits).toHaveLength(1);
+    expect([both, frostOnly]).toContain(cut.hits[0]!.patientId);
+    expect(cut.truncated).toBe(true);
+    const two = (await (
+      await searchAs(team.staff, { limit: 2, flagIds: [flag('flag.frost_risk')] })
+    ).json()) as PatientSearchResultValue;
+    expect([two.hits.map((x) => x.patientId).sort(), two.truncated]).toEqual([
+      [both, frostOnly].sort(),
+      false,
+    ]);
+    // A flag's ID in capitals names the same flag.
+    expect(
+      await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.frost_risk').toUpperCase()] })),
+    ).toEqual([both, frostOnly].sort());
+  });
+
   it('reads current flags only: a cleared flag and one entered in error match nothing', async () => {
     const hits = await hitsOf(await searchAs(team.staff, { flagIds: [flag('flag.high')] }));
     expect(hits).not.toContain(cleared);

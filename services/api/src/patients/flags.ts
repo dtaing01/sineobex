@@ -44,8 +44,10 @@ export async function setPatientFlag(
   input: SetPatientFlagInput,
   route: string,
 ): Promise<SetPatientFlagResultValue> {
+  // IDs as the database writes them, so a capital never makes another flag, nor names one in the log.
   const id = input.id.toLowerCase();
   const patient = patientId.toLowerCase();
+  const flagId = input.flagId.toLowerCase();
   const outcome = await scope.tx(async (tx, audit): Promise<Outcome<SetPatientFlagResultValue>> => {
     await lockTeamWrites(tx, scope.team.teamId);
     const [held] = await tx`
@@ -59,7 +61,7 @@ export async function setPatientFlag(
     if (made) {
       const same =
         made.patientId === patient &&
-        made.flagId === input.flagId.toLowerCase() &&
+        made.flagId === flagId &&
         made.action === input.action &&
         made.reason === input.reason &&
         made.authorUserId === scope.principal.userId;
@@ -73,7 +75,7 @@ export async function setPatientFlag(
         id,
         teamId: scope.team.teamId,
         patientId: patient,
-        flagId: input.flagId,
+        flagId,
         action: input.action,
         reason: input.reason,
         authorUserId: scope.principal.userId,
