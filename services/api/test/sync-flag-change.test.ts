@@ -719,24 +719,34 @@ describe('phase 5 sync: flag changes', () => {
     });
     await expectAuditClean(h, [MARK_REASON, REASON], before);
 
-    // Set once: a second mark, the Program Admin's, is kept in history, and the first stands. The
-    // field it is answered with is logged as the read it is.
+    // Set once: a second mark, the Program Admin's, is kept in history, and the first stands. Its
+    // answer carries the field as the server holds it: the first answer's event names the patient,
+    // as every value kept in history does, and a retry of it is logged as the read it is (lifecycle
+    // 10.1, review finding PA-1).
     const viewed = await auditMark(h);
     const second = await markOf(admin, kims.recordId, 'Demo: second thoughts');
-    expect(await admin.send(second)).toEqual([
-      {
-        ...taken(second),
-        server: {
-          value: { reason: MARK_REASON },
-          version: 1,
-          changedBy: kim.id,
-          changedAt: byAuthor.deviceTime,
-        },
-        details: { outcome: 'history_only' },
+    const keptAnswer = {
+      ...taken(second),
+      server: {
+        value: { reason: MARK_REASON },
+        version: 1,
+        changedBy: kim.id,
+        changedAt: byAuthor.deviceTime,
       },
-    ]);
+      details: { outcome: 'history_only' },
+    };
+    expect(await admin.send(second)).toEqual([keptAnswer]);
     expect(await row(kims.recordId)).toMatchObject({ errorReason: MARK_REASON, errorBy: kim.id, version: 2 });
-    const [read] = await expectAudit(h, 'patient.viewed', { after: viewed, count: 1, patientId: patientB });
+    const [kept] = await expectAudit(h, 'patient_flag.kept_in_history', {
+      after: viewed,
+      count: 1,
+      patientId: patientB,
+    });
+    expect(kept!.details).toEqual({ changeId: second.changeId, field: 'enteredInError', version: 1 });
+    await expectAudit(h, 'patient.viewed', { after: viewed, count: 0 });
+    const retried = await auditMark(h);
+    expect(await admin.send(second)).toEqual([keptAnswer]);
+    const [read] = await expectAudit(h, 'patient.viewed', { after: retried, count: 1, patientId: patientB });
     expect(read!.details).toEqual({ source: 'sync', changeId: second.changeId, field: 'enteredInError' });
 
     // The Program Admin takes back someone else's change.

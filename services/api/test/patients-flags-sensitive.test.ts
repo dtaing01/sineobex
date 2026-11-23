@@ -230,7 +230,9 @@ describe('the sync read', () => {
       expect(viewed.map((e) => e.entityId).sort(), who).toEqual(
         reader.sees ? [frost, pregnancy].sort() : [frost],
       );
-      if (!reader.sees) expectNothingOfIt(read);
+      // `missing` names back the id the reader asked for, as for a record the team does not have; the
+      // records hold nothing of it.
+      if (!reader.sees) expectNothingOfIt(read.records);
     }
   });
 
