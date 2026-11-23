@@ -3165,10 +3165,11 @@ test.describe('bag minimums, /team/presets/bag-minimums', () => {
    * A bag with a long name, made once: Copy from offers it, so a reflow check at 320 px also checks
    * the choice never widens the page, whichever cases ran before.
    */
+  /** A bag with a long name and no minimums, made once. */
+  const LONG_BAG = 'Demo: Winter outreach van bag for the shelter and the river camp';
   async function longBag(): Promise<void> {
-    const name = 'Demo: Winter outreach van bag for the shelter and the river camp';
-    if ((await listed('bag')).some((b) => b.name === name)) return;
-    await made('bag', { name, minimums: [] });
+    if ((await listed('bag')).some((b) => b.name === LONG_BAG)) return;
+    await made('bag', { name: LONG_BAG, minimums: [] });
   }
 
   test('@responsive a Program Admin opens Bag minimums from the hub and finds the team’s switch and template, and each bag with its minimums, accessible in all three themes', async ({
@@ -3472,9 +3473,14 @@ test.describe('bag minimums, /team/presets/bag-minimums', () => {
         await expect(line(i + 1).getByLabel('Item')).toHaveValue(m.itemId);
         await expect(line(i + 1).getByLabel('Minimum')).toHaveValue(String(m.min));
       }
-      // Chosen again, the template fills them again; then the bag, changed before it is added.
+      // Chosen again, the template fills them again, said in running text; a bag that holds none
+      // empties them, said plainly; then the bag, changed before it is added.
       await copyFrom.selectOption({ label: 'The template for new bags' });
+      await expect(said).toHaveText('Minimums filled from the template for new bags: 1 item.');
       await expect(lines).toHaveCount(1);
+      await copyFrom.selectOption({ label: LONG_BAG });
+      await expect(said).toHaveText(`${LONG_BAG} holds no minimums, so none are filled.`);
+      await expect(lines).toHaveCount(0);
       await copyFrom.selectOption({ label: 'Demo: Outreach backpack' });
       await expect(lines).toHaveCount(backpack.body.minimums.length);
       await line(2).getByLabel('Minimum').fill('12');

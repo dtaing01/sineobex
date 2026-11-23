@@ -11,8 +11,22 @@ import type { ActionState } from '@/lib/forms';
 export interface MinimumsSource {
   /** `template`, or the bag's ID. */
   id: string;
+  /** What Copy from offers it as, and what starts a sentence about it. */
   label: string;
+  /** What it is called in running text: "the template for new bags", or the bag's name. */
+  name: string;
   minimums: readonly { itemId: string; min: number }[];
+}
+
+/**
+ * What a screen reader is told when Copy from fills the lines: the list they came from and how many
+ * it filled, or, from a list that holds none, that the lines are empty now.
+ */
+export function filledSentence(source: MinimumsSource): string {
+  const n = source.minimums.length;
+  return n === 0
+    ? `${source.label} holds no minimums, so none are filled.`
+    : `Minimums filled from ${source.name}: ${n} ${n === 1 ? 'item' : 'items'}.`;
 }
 
 /** The Copy from choice that fills the minimums from the template for new bags. */
@@ -73,9 +87,7 @@ export function NewBagMinimums({
       </div>
       {/* On the page before anything is said in it, so a screen reader reads each fill. */}
       <p role="status" className="sr-only">
-        {picked !== undefined && source
-          ? `Minimums filled from ${source.label}: ${minimums.length} ${minimums.length === 1 ? 'item' : 'items'}.`
-          : ''}
+        {picked !== undefined && source ? filledSentence(source) : ''}
       </p>
       <ItemLines
         name="minimums"
