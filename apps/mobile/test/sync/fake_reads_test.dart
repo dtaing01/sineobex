@@ -1330,10 +1330,11 @@ void main() {
       'title': 'Demo: cough',
       'status': status,
     }, at: days(daysAgo));
-    // A status set online at that time, as the API's tests write one.
-    void resolve(String problemId, int daysAgo) {
+    // A status set online at that time, as the API's tests write one: a confirmation of the same status
+    // moves only when it was last checked.
+    void setStatus(String problemId, String status, int daysAgo) {
       server.now = () => days(daysAgo);
-      server.serverEdit(problemId, 'status', const {'status': 'resolved', 'encounterId': null}, by: alex);
+      server.serverEdit(problemId, 'status', {'status': status, 'encounterId': null}, by: alex);
       server.now = () => now;
     }
 
@@ -1449,6 +1450,27 @@ void main() {
       },
     );
 
+    // No API read case holds this yet: every one writes a change's time and its phone's time alike.
+    test('folds and lists a change at the time the server took for it, so a phone clock ahead wins nothing', () async {
+      final patient = server.seedPatient(preferredName: 'Demo Lark');
+      // High and Frost risk from phones whose clocks ran ahead, an hour and half an hour: both taken at
+      // the receipt, now, so the two are ordered by ID.
+      final ahead = flagChange(patient, flags['flag.high']!, -60);
+      final alsoAhead = flagChange(patient, flags['flag.frost_risk']!, -30);
+      // Medium ten minutes later from a phone whose clock was right.
+      server.now = () => now.add(const Duration(minutes: 10));
+      final later = flagChange(patient, flags['flag.medium']!, -5);
+      final chart = await chartOf(alex, patient);
+      expect(flagsOf(chart)['primary'], view('flag.medium'));
+      expect(
+        [for (final r in listOf(flagsOf(chart)['history'])) (r['changeId'], r['effectiveAt'])],
+        [
+          for (final id in [ahead, alsoAhead]..sort()) (id, now.toIso8601String()),
+          (later, now.add(const Duration(minutes: 5)).toIso8601String()),
+        ],
+      );
+    });
+
     test('shows a flag as it is now: an edit renames it everywhere on the chart', () async {
       server.editPreset(team, winter, flagBody('Demo: Winter list', 'secondary', 'purple', 5));
       final chart = await chartOf(alex, survivor);
@@ -1473,11 +1495,13 @@ void main() {
     test('drops a change entered in error out of the flags, and its history row says who marked it and when', () async {
       final patient = server.seedPatient(preferredName: 'Demo Lark');
       flagChange(patient, flags['flag.medium']!, 30);
-      final wrong = flagChange(patient, flags['flag.high']!, 20);
+      // Dana's, marked by a Program Admin: the row names each of them.
+      final wrong = flagChange(patient, flags['flag.high']!, 20, by: dana);
+      server.names[admin] = 'Ari (demo)';
       server.now = () => ago(15);
-      server.serverEdit(wrong, 'enteredInError', const {'reason': 'Demo: set on the wrong patient'}, by: alex);
+      server.serverEdit(wrong, 'enteredInError', const {'reason': 'Demo: set on the wrong patient'}, by: admin);
       server.now = () => now;
-      final chart = await chartOf(alex, patient);
+      final chart = await chartOf(admin, patient);
       expect(flagsOf(chart)['primary'], view('flag.medium'));
       expect(listOf(flagsOf(chart)['history']).firstWhere((r) => r['changeId'] == wrong), {
         'changeId': wrong,
@@ -1486,10 +1510,10 @@ void main() {
         'tier': 'primary',
         'action': 'set',
         'effectiveAt': ago(20).toIso8601String(),
-        'authorName': 'Alex (demo)',
+        'authorName': 'Dana (demo)',
         'reason': 'Demo: seen at the van',
         'enteredInError': {
-          'byName': 'Alex (demo)',
+          'byName': 'Ari (demo)',
           'at': ago(15).toIso8601String(),
           'reason': 'Demo: set on the wrong patient',
         },
@@ -1606,8 +1630,10 @@ void main() {
         'ongoingOld': problem(patient, 'ongoing', 91),
         'newRecent': problem(patient, 'new', 10),
         'resolvedOld': problem(patient, 'new', 200),
+        'confirmedRecently': problem(patient, 'new', 200),
       };
-      resolve(problems['resolvedOld']!, 199);
+      setStatus(problems['resolvedOld']!, 'resolved', 199);
+      setStatus(problems['confirmedRecently']!, 'new', 5);
       Future<Map<String, Object?>> due() async {
         final chart = await chartOf(alex, patient);
         return {
@@ -1619,10 +1645,22 @@ void main() {
       }
 
       // The platform's window: 90 days.
-      expect(await due(), {'newOld': true, 'ongoingOld': true, 'newRecent': false, 'resolvedOld': false});
+      expect(await due(), {
+        'newOld': true,
+        'ongoingOld': true,
+        'newRecent': false,
+        'resolvedOld': false,
+        'confirmedRecently': false,
+      });
       // The team's own window: 7 days.
       server.addPreset(team, 'settings', settings(7), originKey: 'settings.team');
-      expect(await due(), {'newOld': true, 'ongoingOld': true, 'newRecent': true, 'resolvedOld': false});
+      expect(await due(), {
+        'newOld': true,
+        'ongoingOld': true,
+        'newRecent': true,
+        'resolvedOld': false,
+        'confirmedRecently': false,
+      });
       final bundle = await json(alex, 'POST', '/v1/patients/charts', {
         'patientIds': [patient],
         'reason': 'refresh',
@@ -1645,7 +1683,7 @@ void main() {
           'enteredInError': problem(patient, 'new', 40),
           'resolved': problem(patient, 'new', 40),
         };
-        resolve(problems['resolved']!, 39);
+        setStatus(problems['resolved']!, 'resolved', 39);
         server.serverEdit(problems['enteredInError']!, 'enteredInError', const {
           'reason': 'Demo: on the wrong chart',
         }, by: alex);
