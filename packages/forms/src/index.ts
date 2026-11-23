@@ -16,6 +16,13 @@ export * from './install.ts';
 export * from './revision.ts';
 // What a platform update does to a team's copy, for both installers (phase 5 design 5.2).
 export * from './platform-effect.ts';
+// A team's edit of one of its note types: what it may not touch, the operations, and their reach
+// along mapsTo (phase 5 design 5.4).
+export * from './edit-protected.ts';
+export * from './edit.ts';
+export * from './edit-options.ts';
+export * from './edit-add.ts';
+export * from './edit-fanout.ts';
 // The interpreter (7.1): pure functions of a definition and a note's answers.
 export * from './interp/field-at.ts';
 export * from './interp/check-answer.ts';
