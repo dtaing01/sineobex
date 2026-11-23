@@ -18,7 +18,16 @@ export interface Offer {
    * copy nobody edited is offered an update only when it changes a field fixed at creation (5.2).
    */
   customized: boolean;
+  /**
+   * The copy is removed: its update can be taken only as a new preset, which leaves it removed
+   * (5.1), so it can be taken even when the copy can't be restored.
+   */
+  removed: boolean;
 }
+
+/** What the offer to a removed copy says of taking it, after "Sineobex updated this preset." */
+export const REMOVED_OFFER =
+  'This one is removed, so add the update as a new one: this one stays removed, and kept in the history.';
 
 /**
  * Review: the update's body beside the copy's. A take refused stale reloads the page, and the review
@@ -105,11 +114,15 @@ export function OfferForm({
           <>
             {/* 8.1's words, of a copy the team edited; a copy nobody edited has no edit to keep. */}
             <p>
-              {offer.customized
+              {offer.customized && !offer.removed
                 ? 'Sineobex updated this preset. Your edited copy hasn’t changed.'
                 : 'Sineobex updated this preset.'}
             </p>
-            {offer.asNew && <p>{PRESET_SENTENCES.updateChangesFixed}</p>}
+            {offer.removed ? (
+              <p>{REMOVED_OFFER}</p>
+            ) : (
+              offer.asNew && <p>{PRESET_SENTENCES.updateChangesFixed}</p>
+            )}
             <Review name={name}>{review}</Review>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={id} />

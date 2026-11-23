@@ -125,9 +125,27 @@ describe('the update offer', () => {
     expect(hidden(html, 'back')).toContain('value="/team/presets/flags"');
   });
 
-  it('draws nothing while nothing is on offer, and offers a removed preset nothing', () => {
+  it('draws nothing while nothing is on offer, a removed preset’s neither', () => {
     expect(offer(flag({ update: null, updateOnOffer: false }))).toBe('');
-    expect(offer(flag({ state: 'archived' }))).toBe('');
+    expect(offer(flag({ state: 'archived', update: null, updateOnOffer: false }))).toBe('');
+  });
+
+  it('offers a removed copy its update only as a new one, which the API takes from a removed copy', () => {
+    const html = offer(flag({ state: 'archived' }));
+    expect(html).toContain('Update available<span class="sr-only"> for Frost risk</span>');
+    expect(html).toContain('<p>Sineobex updated this preset.</p>');
+    expect(html).not.toContain('Your edited copy');
+    expect(html).toContain(
+      '<p>This one is removed, so add the update as a new one: this one stays removed, and kept in the history.</p>',
+    );
+    expect(html).not.toContain('This update changes something that can’t be changed here.');
+    expect(html).toContain(
+      'Add as new<span class="sr-only"> from Sineobex’s update to Frost risk</span></button>',
+    );
+    expect(html).not.toContain('Replace with the new version');
+    expect(hidden(html, 'asNew')).toContain('value="true"');
+    expect(hidden(html, 'platformVersion')).toContain('value="2"');
+    expect(hidden(html, 'baseVersion')).toContain('value="3"');
   });
 });
 

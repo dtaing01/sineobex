@@ -116,13 +116,17 @@ export function ItemView({
           </section>
         </>
       ) : (
-        <section aria-labelledby="removed-item" className="px-panel">
-          <h2 id="removed-item" className="px-h2">
-            Removed
-          </h2>
-          <p>This item isn’t offered for new work. Restore it to offer it again.</p>
-          <RestorePresetForm kind={KIND} preset={item} />
-        </section>
+        <>
+          {/* A removed copy takes Sineobex's update only as a new item, whether or not it can be restored. */}
+          <UpdateOffer kind={KIND} preset={item} names={names} back={LIST} />
+          <section aria-labelledby="removed-item" className="px-panel">
+            <h2 id="removed-item" className="px-h2">
+              Removed
+            </h2>
+            <p>This item isn’t offered for new work. Restore it to offer it again.</p>
+            <RestorePresetForm kind={KIND} preset={item} />
+          </section>
+        </>
       )}
       <HistoryTable events={history} id={item.id} />
     </Fragment>

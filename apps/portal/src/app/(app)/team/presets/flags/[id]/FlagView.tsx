@@ -122,16 +122,20 @@ export function FlagView({
           </section>
         </>
       ) : (
-        <section aria-labelledby="removed-flag" className="px-panel">
-          <h2 id="removed-flag" className="px-h2">
-            Removed
-          </h2>
-          <p>
-            This flag isn’t offered when staff flag a patient, and patients who have it keep it until someone
-            clears it. Restore it to offer it again.
-          </p>
-          <RestorePresetForm kind={KIND} preset={flag} />
-        </section>
+        <>
+          {/* A removed copy takes Sineobex's update only as a new flag, whether or not it can be restored. */}
+          <UpdateOffer kind={KIND} preset={flag} names={{}} back={LIST} />
+          <section aria-labelledby="removed-flag" className="px-panel">
+            <h2 id="removed-flag" className="px-h2">
+              Removed
+            </h2>
+            <p>
+              This flag isn’t offered when staff flag a patient, and patients who have it keep it until
+              someone clears it. Restore it to offer it again.
+            </p>
+            <RestorePresetForm kind={KIND} preset={flag} />
+          </section>
+        </>
       )}
       <HistoryTable events={history} id={flag.id} />
     </Fragment>
