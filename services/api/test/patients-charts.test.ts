@@ -723,6 +723,62 @@ describe('the chart’s flags and status checks (phase 5)', () => {
     const [bundled] = (r.body as unknown as ChartBundleValue).charts;
     expect(bundled!.problems!.find((p) => p.id === problems.newRecent)!.attributes.statusCheckDue).toBe(true);
   });
+
+  it('marks a problem the same way read through sync, so the phone holds one record whichever way it came', async () => {
+    const patient = (await createPatient(h, team.teamId, team.admin.userId, { preferredName: 'Demo Plover' }))
+      .id;
+    const days = (n: number) => new Date(h.clock.now.getTime() - n * 86_400_000);
+    await editDirect(
+      h,
+      team.teamId,
+      idOf(team, 'settings.team'),
+      { name: 'Team settings', bagMinimumsOn: false, newBagMinimums: [], problemCheckDays: 30 },
+      team.admin.userId,
+    );
+    const problems = {
+      due: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['new'],
+        at: days(40),
+      }),
+      notDue: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['ongoing'],
+        at: days(20),
+      }),
+      enteredInError: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['new'],
+        at: days(40),
+      }),
+      resolved: await createProblem(h, team.teamId, patient, team.admin.userId, {
+        statuses: ['new', 'resolved'],
+        at: days(40),
+      }),
+    };
+    await h.scratch.owner`
+      update sineobex.problems
+      set error_reason = 'Demo: on the wrong chart', error_by = ${team.admin.userId}, error_at = ${days(1)}
+      where id = ${problems.enteredInError}`;
+    const c = await chartOf(team.staff, patient);
+    const read = await call(h, '/v1/sync/records', {
+      method: 'POST',
+      token: await tokenOf(h, team.staff),
+      teamId: team.teamId,
+      json: { records: Object.values(problems).map((id) => ({ entity: 'problem', id })) },
+    });
+    expect(read.status).toBe(200);
+    const records = read.body.records as { id: string; attributes: Record<string, unknown> }[];
+    const dueBy = (snapshots: { id: string; attributes: Record<string, unknown> }[]) =>
+      Object.fromEntries(
+        Object.entries(problems).map(([k, id]) => [
+          k,
+          snapshots.find((p) => p.id === id)!.attributes.statusCheckDue,
+        ]),
+      );
+    // The team's window, 30 days, on both reads; never for one entered in error or Resolved.
+    const expected = { due: true, notDue: false, enteredInError: false, resolved: false };
+    expect(dueBy(c.problems!)).toEqual(expected);
+    expect(dueBy(records)).toEqual(expected);
+    expect(records).toEqual(Object.values(problems).map((id) => c.problems!.find((p) => p.id === id)));
+  });
 });
 
 describe('CHART_TABLES (design 13.3, risk 14.2-7)', () => {
