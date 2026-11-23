@@ -609,8 +609,8 @@ export async function decideQuarantine(
           });
           return refused;
         }
-        // A held flag change refused now (its reason, or a flag the team no longer holds as one): its
-        // phone let go of it when it was held, so its sender is told, naming its patient, and the
+        // A held flag change refused now (a reason the rule refuses, never read while it was held):
+        // its phone let go of it when it was held, so its sender is told, naming its patient, and the
         // refusal is logged on the patient (phase 5 design 6.2). The item stays pending, for the
         // reviewer to reject.
         if (item.entity === 'patient_flag_change') {
