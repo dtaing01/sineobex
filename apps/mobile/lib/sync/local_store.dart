@@ -427,8 +427,9 @@ const noticeCorrectionNotApplied = 'correction_not_applied';
 /// The server's notice that a flag change it held for review will not reach the chart (phase 5
 /// design 6.2): a Program Admin rejected it, or couldn't apply it. It names the change (entity
 /// `patient_flag_change`) and its patient, and holds no text of it: "A flag you set wasn’t applied.
-/// Open the patient to set it again." Written ahead of P5-phone-entity, which gives it its kind.
-String get noticeFlagChangeNotApplied => throw UnimplementedError('P5-phone-entity');
+/// Open the patient to set it again." The phone let go of the change when it was held, so the
+/// notice is kept under the patient the server names.
+const noticeFlagChangeNotApplied = 'flag_change_not_applied';
 
 /// A sign-off that found its note already finished by a signature over other content (lifecycle
 /// 3.4): the person opens the note and reads what was signed.
@@ -542,9 +543,9 @@ class LocalStore {
     }
   }
 
-  /// The clock pause covers what device time decides (D35): problems, their notes and ID links, as
-  /// encounters and notes before them. Registering someone, their demographics, street names,
-  /// allergies and consents never wait for it; their changes are stamped unverified meanwhile.
+  /// The clock pause covers what device time decides (D35): problems, their notes, ID links and flag
+  /// changes, as encounters and notes before them. Registering someone, their demographics, street
+  /// names, allergies and consents never wait for it; their changes are stamped unverified meanwhile.
   void _guardFor(String entity) {
     if (rulesFor(entity)?.pausesWithClock ?? true) _guardCharting();
   }
