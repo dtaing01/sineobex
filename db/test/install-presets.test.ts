@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import {
   canonicalJson,
   installPresets,
+  lockTeam,
   PresetDiffers,
   sha256Hex,
   takeRevision,
@@ -610,5 +611,109 @@ describe('installing the note types, key by key (phase 5)', () => {
     expect(await headsOf(team)).toHaveLength(presets.length);
     expect(await eventsOf(team)).toHaveLength(presets.length);
     expect(await revisionOf(team)).toBe(1);
+  });
+
+  // The cases below pin rules the bite checks of card P4-install found no case holding.
+  it('takes no lock for a team that is up to date, so a phone’s list waits on nobody', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Up To Date');
+    await asPlatform((tx) => installPresets(tx, team, { presets }));
+    const holder: ReservedSql = await app.reserve();
+    try {
+      await holder`begin`;
+      await lockTeam(holder as unknown as InstallSql, team);
+      // A writer holds the team lock: a run with nothing to write answers without waiting for it.
+      const answer = await asTeam(team, async (tx) => {
+        await tx`set local lock_timeout = '2s'`;
+        return installPresets(tx, team, { presets });
+      });
+      expect(answer).toEqual({ installed: [], differing: [] });
+    } finally {
+      await holder`rollback`.catch(() => {});
+      holder.release();
+    }
+  });
+
+  it('gives an updated head back to nobody, leaves an offered one as its writer left it, and names the team’s version in each event', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Authors');
+    const [checks, full] = presets;
+    // Made once the platform's version 2 of the full type was out, so it holds it as its version 1.
+    const fullV2 = await nextOf(full!);
+    await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, fullV2] }));
+    await publishOwn(team, checks!.key, 'Demo: Checks, the team’s own');
+    // A person's write left the full type's head the platform's, naming them, as taking an update in
+    // place does (design 5.1).
+    await db.owner.begin(async (tx) => {
+      const revision = await takeRevision(tx as unknown as InstallSql, team);
+      await tx`
+        update sineobex.note_types set updated_by = ${user}, revision = ${revision}
+        where team_id = ${team} and key = ${full!.key}`;
+    });
+    const fullV3 = await nextOf(fullV2);
+    const checksV2 = await nextOf(checks!);
+    expect(
+      await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, fullV2, fullV3, checksV2] })),
+    ).toEqual({ installed: [{ key: full!.key, version: 2 }], differing: [] });
+
+    const heads = await headsOf(team);
+    expect(heads.find((h) => h.key === full!.key)).toMatchObject({
+      currentVersion: 2,
+      platformLatest: 3,
+      updatedBy: null,
+    });
+    expect(heads.find((h) => h.key === checks!.key)).toMatchObject({
+      currentVersion: 2,
+      platformLatest: 2,
+      updatedBy: user,
+    });
+    expect(
+      (await versionsOf(team)).filter((r) => r.key === full!.key).map((r) => [r.version, r.presetVersion]),
+    ).toEqual([
+      [1, 2],
+      [2, 3],
+    ]);
+    expect(
+      (await eventsOf(team)).filter((e) => e.noteTypeKey === full!.key).map((e) => [e.act, e.version]),
+    ).toEqual([
+      ['installed', 1],
+      ['platform_updated', 2],
+    ]);
+    await expectEveryRowNamesItself(team);
+  });
+
+  it('reports a version another writer put first with another definition, and writes nothing more for its key', async () => {
+    const team = await makeTeam(db.owner, 'Install Team Late Writer');
+    const [checks, ...rest] = presets;
+    const theirs = { ...checks!.definition, title: 'Demo: Checks, written past the lock' };
+    const theirsHash = await sha256Hex(canonicalJson(theirs));
+    // Commits the other writer's row once, just before the installer's first insert: after its plan
+    // under the team lock, which that writer never took.
+    let raced = false;
+    const racing = (tx: InstallSql): InstallSql =>
+      (async (template: TemplateStringsArray, ...values: readonly (string | number)[]) => {
+        if (!raced && /insert into/.test(template.join('?'))) {
+          raced = true;
+          await db.owner`
+            insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin, preset_version)
+            values (${team}, ${checks!.key}, 1, ${JSON.stringify(theirs)}::text::jsonb, ${theirsHash}, 'preset', 1)`;
+        }
+        return tx(template, ...values);
+      }) as InstallSql;
+
+    expect(await asPlatform((tx) => installPresets(racing(tx), team, { presets, onDiffer: 'skip' }))).toEqual(
+      {
+        installed: rest.map((p) => ({ key: p.key, version: 1 })),
+        differing: [{ key: checks!.key, version: 1 }],
+      },
+    );
+    // The other keys are written whole; the raced key keeps that writer's row, with no head or event.
+    expect((await headsOf(team)).map((h) => h.key)).toEqual(rest.map((p) => p.key));
+    expect((await eventsOf(team)).map((e) => e.noteTypeKey)).toEqual(rest.map((p) => p.key));
+    expect((await versionsOf(team)).find((r) => r.key === checks!.key)!.hash).toBe(theirsHash);
+    // The next run gives it its head and nothing more, as for any key whose row differs.
+    expect(await asPlatform((tx) => installPresets(tx, team, { presets, onDiffer: 'skip' }))).toEqual({
+      installed: [],
+      differing: [{ key: checks!.key, version: 1 }],
+    });
+    expect((await headsOf(team)).map((h) => h.key)).toEqual(presets.map((p) => p.key));
   });
 });
