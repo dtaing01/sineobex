@@ -346,6 +346,41 @@ describe('the note type installer’s plan, key by key', () => {
     }
   });
 
+  it('only offers a version that makes the type one added by itself, though it stays Medical', async () => {
+    const v1 = await presetOf(typeOf('demo_outreach', 1, { kinds: ['medical'], group: 'clinical' }));
+    const v2 = await presetOf(
+      typeOf('demo_outreach', 2, { kinds: ['medical'], group: 'clinical', auto: 'medical' }),
+    );
+    const plan = await planNoteTypes({
+      heads: [headOf('demo_outreach')],
+      versions: [await heldPreset(v1)],
+      presets: [v1, v2],
+    });
+    expect(effects(plan)).toEqual(['demo_outreach offer']);
+  });
+
+  it('takes in place a version that lists the same kinds in another order: kinds are a set', async () => {
+    const v1 = await presetOf(typeOf('demo_outreach', 1, { kinds: ['medical', 'non_medical'] }));
+    const v2 = await presetOf(typeOf('demo_outreach', 2, { kinds: ['non_medical', 'medical'] }));
+    const plan = await planNoteTypes({
+      heads: [headOf('demo_outreach')],
+      versions: [await heldPreset(v1)],
+      presets: [v1, v2],
+    });
+    expect(effects(plan)).toEqual(['demo_outreach update']);
+  });
+
+  it('reads the version last taken from the newest platform row: one taken in place is not taken again', async () => {
+    const v1 = await presetOf(typeOf('demo_outreach', 1));
+    const v2 = await presetOf(typeOf('demo_outreach', 2));
+    const plan = await planNoteTypes({
+      heads: [headOf('demo_outreach', { currentVersion: 2, platformLatest: 2 })],
+      versions: [await heldPreset(v1), await heldPreset(v2)],
+      presets: [v1, v2],
+    });
+    expect(plan).toEqual({ steps: [], differing: [] });
+  });
+
   it('offers, never updates, when the platform version the team last took is no longer among the presets', async () => {
     const v2 = await presetOf(typeOf('demo_outreach', 2));
     const v1 = await presetOf(typeOf('demo_outreach', 1));
