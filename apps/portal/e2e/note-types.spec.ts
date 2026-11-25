@@ -1283,9 +1283,13 @@ test.describe('field supplies, /team/presets/field-supplies', () => {
     const removeRound = round.getByRole('form', { name: 'Remove Demo: Mapped round' });
     await removeRound.getByLabel('Reason').fill('Demo: not run any more');
     await removeRound.getByRole('button', { name: 'Remove', exact: true }).click();
+    // A mapping's note type can't be changed: the way through is to remove it, on its own page (B-8).
     await expect(removeRound.getByRole('alert')).toHaveText(
-      'Still used by 1 mapping. Take it out of that first.',
+      'Still used by 1 field supply mapping. Remove it on Field supplies first.',
     );
+    await expect(
+      removeRound.getByRole('link', { name: 'Go to Field supplies', exact: true }),
+    ).toHaveAttribute('href', SUPPLIES);
     await expectAccessible(page, 'Remove a note type a mapping names, refused', { inPlace: true });
 
     // The mapping: removed, and listed under Removed.

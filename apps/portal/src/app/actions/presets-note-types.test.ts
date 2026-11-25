@@ -228,7 +228,7 @@ describe('removing and restoring a note type', () => {
     answer = refusal(409, 'referenced', { referencedBy: { field_supply_map: 2 } });
     const r = await run(removeNoteTypeAction, remove);
     expect(r.state).toEqual({
-      error: 'Still used by 2 mappings. Take it out of those first.',
+      error: 'Still used by 2 field supply mappings. Remove them on Field supplies first.',
       values: remove,
     });
   });
@@ -358,7 +358,10 @@ describe('taking Sineobex’s update to a note type', () => {
     );
     expect(await said(409, 'no_update')).toBe('There’s no update to take now.');
     expect(await said(409, 'referenced', 'true', { referencedBy: { field_supply_map: 1 } })).toBe(
-      'Still used by 1 mapping. Take it out of that first.',
+      'Still used by 1 field supply mapping. Remove it on Field supplies first.',
+    );
+    expect(await said(409, 'sensitive_path', 'false', { referencedBy: { field_supply_map: 2 } })).toBe(
+      'With this update, only some people may read the answers 2 field supply mappings use. Remove them on Field supplies first.',
     );
     expect(await said(422, 'invalid', 'false', { problems: [] })).toBe(
       'This update doesn’t fit your team’s other note types, so it can’t be taken as it is.',
