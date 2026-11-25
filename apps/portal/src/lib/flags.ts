@@ -135,6 +135,9 @@ export function markableChanges(
   me: { userId: string; permissions: readonly string[] },
 ): string[] {
   if (!me.permissions.includes('patients.edit')) return [];
+  // PLAN-OPEN (PL-19): who counts as a Program Admin, to mark someone else's flag change entered in
+  // error, with no new keys? A holder of team.manage_users, as phase 4's assign reads it; the API
+  // decides the same (services/api/src/patients/flags.ts), and this only offers the button.
   const anyone = me.permissions.includes('team.manage_users');
   return (chart.flagChanges ?? [])
     .filter((c) => c.status !== 'entered_in_error' && (anyone || c.authorUserId === me.userId))

@@ -182,7 +182,9 @@ export function FlagsPanel({
     const choice = choices.find((c) => c.flagId === flagId);
     const problems: Partial<Record<Field, string>> = {};
     if (!choice) problems.flagId = 'Choose a flag.';
-    // 5.1: a flag no longer on the team's list stays on the patient until cleared, and is never set again.
+    // PLAN-OPEN (BM-78): what happens to the patients who carry a flag when it is archived? It stays
+    // on them until cleared, and is never set again, so the panel refuses a Set of it before anything
+    // is sent, in the words the API would answer.
     else if (choice.clearOnly && action === 'set')
       problems.flagId = flagRefusalSentence('change', 409, 'archived');
     if (action !== 'set' && action !== 'clear') problems.action = 'Choose Set or Clear.';

@@ -354,6 +354,9 @@ class PatientFlags {
   /// **Entered in error** is offered on [change]: one standing, made by the person or marked by a
   /// holder of `team.manage_users`, with `patients.edit` (6.2; section 11, rows 23 and 24). Not on a
   /// change the server holds for review, which isn't on the chart to mark.
+  // PLAN-OPEN (PL-19): who counts as a Program Admin, to mark someone else's flag change entered in
+  // error, with no new keys? A holder of team.manage_users, as phase 4's assign reads it; the server
+  // decides the same (services/api/src/sync/entities/patient-flag-change.ts), and this only offers it.
   bool mayEnterInError(FlagChangeView change) =>
       mayEdit &&
       change.enteredInError == null &&
