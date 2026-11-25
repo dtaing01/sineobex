@@ -78,7 +78,7 @@ _Schema _string({int min = 0, int? max, RegExp? pattern, List<bool Function(Stri
 
 /// Strings are validated, never trimmed (review finding 21): an untrimmed one is refused. Trimmed as
 /// Dart trims, U+0085 (next line) included, which the server's check takes as whitespace too
-/// (values.ts untrimmed).
+/// (records.ts untrimmed).
 _Schema _trimmed(int min, int max) => _string(min: min, max: max, refine: [(s) => s == s.trim()]);
 
 _Schema _oneOf(Set<Object> values) => (v, path, issues) {
