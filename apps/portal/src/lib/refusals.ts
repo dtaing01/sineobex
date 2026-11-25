@@ -408,6 +408,8 @@ export const NOTE_TYPE_SENTENCES = {
   kindsFixed: 'A note type can’t change between Medical and Non-Medical: Add a new note type instead.',
   notCopyable:
     'This section comes from a note type for other visits or other readers, so it can’t be copied here.',
+  /** 8.1's protected rows, said once of a note type every part of which is protected. */
+  wholeProtected: 'Nothing in this note type can be changed.',
 } as const;
 
 /** What the editor says once a publish is live (8.1), with the version the API made. */

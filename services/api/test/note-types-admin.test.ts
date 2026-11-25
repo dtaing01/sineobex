@@ -61,7 +61,7 @@ import { call, clinician, noteOn, type Clinician } from './sync-fixtures.ts';
 // archived ones included, ordered by title (an English collator, base sensitivity, numeric), ties
 // by key: `version` is the head's current version and `definition` that version's resolved
 // definition; `protected` is protectedParts(definition) (packages/forms/src/edit-protected.ts), for
-// the editor; `referencedBy` counts the active field supply maps whose current body names the key
+// the editor, with `whole`, typeProtected(definition): nothing in it can be changed; `referencedBy` counts the active field supply maps whose current body names the key
 // ({field_supply_map: n}, {} when none); `updateOnOffer` is platform_latest above the platform
 // version last taken; `update` is that platform version for review, {platformVersion, definition,
 // changesFixed}, `definition` as taking it in place would write it (its `version` the head's next),
@@ -124,7 +124,12 @@ interface NoteTypeRow {
   update: { platformVersion: number; definition: ResolvedNoteType; changesFixed: string[] } | null;
   referencedBy: Record<string, number>;
   definition: ResolvedNoteType;
-  protected: { sections: string[]; fields: string[]; options: { path: string; code: string }[] };
+  protected: {
+    whole: boolean;
+    sections: string[];
+    fields: string[];
+    options: { path: string; code: string }[];
+  };
 }
 
 const spy = logSpy();
@@ -360,12 +365,17 @@ describe('GET /v1/admin/note-types', () => {
       expect(row.version, row.key).toBe(head.currentVersion);
       expect(row.state, row.key).toBe(head.state);
       expect(row.definition, row.key).toEqual((await storedAs(row.key, row.version)).definition);
-      expect(row.protected, row.key).toEqual(protectedParts(row.definition));
+      expect(row.protected, row.key).toEqual({
+        whole: row.key === 'red_flags_disposition',
+        ...protectedParts(row.definition),
+      });
       expect(row.update, row.key).toBeNull();
       expect([row.updateOnOffer, row.updateChangesFixed], row.key).toEqual([false, false]);
     }
-    // The auto note type is protected whole; Red flags, disposition and follow-up (PRD main 409).
+    // The auto note type is protected whole; Red flags, disposition and follow-up (PRD main 409), said
+    // once as `whole`, so the page offers it no edit the API would refuse.
     const red = rows.find((x) => x.key === 'red_flags_disposition')!;
+    expect(red.protected.whole).toBe(true);
     expect(red.protected.sections).toEqual(red.definition.sections.map((s) => s.id));
   });
 

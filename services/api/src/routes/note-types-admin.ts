@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { isNoteTypeTitle, protectedParts } from '@sineobex/forms';
+import { isNoteTypeTitle, protectedParts, typeProtected } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
 import {
   archiveNoteType,
@@ -41,6 +41,10 @@ const Definition = z
 
 const ProtectedParts = z
   .object({
+    whole: z.boolean().openapi({
+      description:
+        'Nothing in it can be changed, its title and what an edit would add included: the Red flags note',
+    }),
     sections: z.array(z.string()).openapi({ description: 'Section ids' }),
     fields: z
       .array(z.string())
@@ -485,7 +489,8 @@ function viewOf(team: TeamNoteTypes, held: HeldNoteType): z.infer<typeof NoteTyp
           },
     referencedBy: referencedBy(team, held.key),
     definition: held.definition as Record<string, unknown>,
-    protected: protectedParts(held.definition),
+    // The whole note type said once, so the page offers no edit the API would refuse (D114).
+    protected: { whole: typeProtected(held.definition), ...protectedParts(held.definition) },
   };
 }
 

@@ -3922,9 +3922,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "whole": {
+            "description": "Nothing in it can be changed, its title and what an edit would add included: the Red flags note",
+            "type": "boolean"
           }
         },
         "required": [
+          "whole",
           "sections",
           "fields",
           "options"

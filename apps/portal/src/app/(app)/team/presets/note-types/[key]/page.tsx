@@ -120,11 +120,28 @@ export default async function NoteTypePage({
       <Offer row={row} />
       {row.state === 'active' ? (
         <>
-          <p className="px-lede">
-            Change it here: rename it, rename or hide its sections and fields, and change a choice’s answers.
-            Each change is held until you publish them all, with a reason.
-          </p>
-          <NoteTypeEditor row={row} titles={titles} sources={sources} />
+          {row.protected.whole ? (
+            // Every part protected (the Red flags note): no change it would offer could be made (D114).
+            <section aria-labelledby="note-type-sections" className="px-panel">
+              <h2 id="note-type-sections" className="px-h2">
+                Sections
+              </h2>
+              <p>{NOTE_TYPE_SENTENCES.wholeProtected}</p>
+              <ul className="px-list">
+                {definition.sections.map((s) => (
+                  <li key={s.id}>{s.title}</li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <>
+              <p className="px-lede">
+                Change it here: rename it, rename or hide its sections and fields, and change a choice’s
+                answers. Each change is held until you publish them all, with a reason.
+              </p>
+              <NoteTypeEditor row={row} titles={titles} sources={sources} />
+            </>
+          )}
           <section aria-labelledby="remove-note-type" className="px-panel">
             <h2 id="remove-note-type" className="px-h2">
               Remove

@@ -35,7 +35,7 @@ const noteType = (key: string, title: string, over: Partial<NoteTypeRow> = {}): 
   update: null,
   referencedBy: {},
   definition: definition(key, title),
-  protected: { sections: [], fields: [], options: [] },
+  protected: { whole: false, sections: [], fields: [], options: [] },
   ...over,
 });
 
@@ -49,7 +49,7 @@ const ROWS: NoteTypeRow[] = [
   }),
   noteType('red_flags_disposition', 'Demo: Red flags', {
     definition: definition('red_flags_disposition', 'Demo: Red flags', { auto: 'medical' }),
-    protected: { sections: ['notes'], fields: ['notes.notes'], options: [] },
+    protected: { whole: true, sections: ['notes'], fields: ['notes.notes'], options: [] },
   }),
   noteType('psychological', 'Demo: Behavioral health', {
     version: 3,
