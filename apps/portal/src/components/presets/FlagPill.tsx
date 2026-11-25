@@ -43,3 +43,26 @@ export function FlagPill({
     </span>
   );
 }
+
+/**
+ * A patient's flags in a row of pills (phase 5 design 8.1): the risk level first, then each
+ * condition, in the order given, so a list read aloud names them one by one. A removed flag says so.
+ */
+export function FlagPills({
+  flags,
+  label,
+}: {
+  flags: readonly { flagId: string; color: string; colorName: string; name: string; archived: boolean }[];
+  /** The list's name, read before its pills. */
+  label: string;
+}) {
+  return (
+    <ul className={styles.pills} aria-label={label}>
+      {flags.map((f) => (
+        <li key={f.flagId}>
+          <FlagPill color={f.color} colorName={f.colorName} name={f.name} archived={f.archived} />
+        </li>
+      ))}
+    </ul>
+  );
+}

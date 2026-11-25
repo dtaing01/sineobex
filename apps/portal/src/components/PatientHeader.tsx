@@ -7,8 +7,20 @@ import {
   legalNameText,
 } from '@/app/(app)/patients/format';
 import styles from '@/app/(app)/patients/patients.module.css';
+import { FlagPills } from '@/components/presets/FlagPill';
 
 type Chart = Schemas['PatientChart'];
+
+/**
+ * The patient's flags as the API worked them out for this reader (phase 5 design 7, 8.1): the risk
+ * level, then the conditions in the API's order. A flag the reader may not see is not in the chart
+ * at all (D114), and a chart without `flags` holds none, so nothing here decides who sees what.
+ */
+export function chartFlags(chart: Chart): Schemas['ChartFlag'][] {
+  const flags = chart.flags;
+  if (!flags) return [];
+  return [...(flags.primary ? [flags.primary] : []), ...flags.secondary];
+}
 
 /** A field of the chart's patient record, as recorded. */
 export function chartValue(chart: Chart, field: string): unknown {
@@ -16,11 +28,14 @@ export function chartValue(chart: Chart, field: string): unknown {
 }
 
 /**
- * Who this chart is about, and what nobody should miss: the name they go by, a legal name and
- * birth date to confirm it's them, severe allergies, a possible duplicate, and when the record
- * asked for was merged into this one. The page title stays "Patient": names go in the page only.
+ * Who this chart is about, and what nobody should miss: the name they go by, their flags (the risk
+ * level first, each pill naming its colour and its flag, never colour alone, and a flag removed from
+ * the team's list saying so), a legal name and birth date to confirm it's them, severe allergies, a
+ * possible duplicate, and when the record asked for was merged into this one. The page title stays
+ * "Patient": names go in the page only.
  */
 export function PatientHeader({ chart, today }: { chart: Chart; today: string }) {
+  const flags = chartFlags(chart);
   const preferredName = chartValue(chart, 'preferredName') as string | null;
   const legalName = chartValue(chart, 'legalName') as { given: string | null; family: string | null } | null;
   const visualDescriptor = chartValue(chart, 'visualDescriptor') as string | null;
@@ -44,6 +59,7 @@ export function PatientHeader({ chart, today }: { chart: Chart; today: string })
         </p>
       )}
       <h1 className="px-h1">{name}</h1>
+      {flags.length > 0 && <FlagPills flags={flags} label="Flags" />}
       <p>
         {legal && legal !== name && <span className={styles.meta}>Legal name: {legal}</span>}
         <span className={styles.meta}>
