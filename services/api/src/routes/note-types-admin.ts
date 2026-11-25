@@ -1,12 +1,17 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { protectedParts } from '@sineobex/forms';
+import { isNoteTypeTitle, protectedParts } from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
 import {
+  archiveNoteType,
+  createNoteType,
   FIXED_NOTE_TYPE_FIELDS,
   loadTeamNoteTypes,
+  NOTE_TYPE_GROUPS,
   noteTypeUpdateOf,
   publishNoteType,
   referencedBy,
+  restoreNoteType,
+  takeNoteTypeUpdate,
   type HeldNoteType,
   type TeamNoteTypes,
 } from '../presets/note-types.ts';
@@ -121,6 +126,16 @@ export const MAX_PUBLISH_OPS = 200;
 // refusal naming its index (5.4); the request checks only their types, so a value the operation
 // refuses is never answered validation_failed. Each shape takes no key it does not name: a mark
 // sent with one is refused, never dropped in silence, since no operation writes a mark (rule 1).
+/**
+ * A note type's title as an operation sends it: one with words that starts or ends with white space is
+ * refused, never trimmed, as a preset's name is; any other value is the operation's to refuse
+ * (title_invalid), so an empty one or one of spaces only is answered with its index.
+ */
+const SentTitle = z
+  .string()
+  .refine((s) => s === s.trim() || s.trim() === '', { message: 'untrimmed' })
+  .openapi({ description: '1 to 80 characters, with no space before or after' });
+
 const Path = z.string().openapi({
   description: 'A field’s path, the entry part of a repeating section left out, or a section’s id',
 });
@@ -162,7 +177,7 @@ const NewField = z.discriminatedUnion('kind', [NewTextField, NewChoiceField, New
 const op = <T extends string>(name: T) => z.literal(name);
 const NoteTypeEditOp = z
   .discriminatedUnion('op', [
-    z.strictObject({ op: op('rename_type'), title: z.string() }),
+    z.strictObject({ op: op('rename_type'), title: SentTitle }),
     z.strictObject({
       op: op('set_hidden'),
       path: Path,
@@ -223,6 +238,98 @@ const PublishNoteTypeResult = z
   })
   .openapi('PublishNoteTypeResult');
 
+/** The revision a write took: a phone's next list gets the change. */
+const Revision = z.number().int().min(1).openapi({ description: 'The team’s revision this write took' });
+
+/** A new note type's title: 1 to 80 characters, sent as it is kept. */
+const NoteTypeTitle = z
+  .string()
+  .refine((s) => isNoteTypeTitle(s) && s === s.trim(), { message: 'title_invalid' })
+  .openapi({ description: '1 to 80 characters, with no space before or after' });
+
+const Kinds = z
+  .array(z.enum(['medical', 'non_medical']))
+  .min(1)
+  .max(2)
+  .refine((kinds) => new Set(kinds).size === kinds.length, { message: 'repeated' })
+  .openapi({
+    description:
+      'Medical, Non-Medical or both: which visits offer it. It is Medical exactly when it is medical alone',
+  });
+
+/**
+ * A new note type: a copy of one the team holds (`copyOf`), or a blank one with its kinds and timeline
+ * group, one or the other. One shape with both ways in it, so a request missing a field is refused
+ * naming it.
+ */
+const CreateNoteType = z
+  .strictObject({
+    title: NoteTypeTitle,
+    reason: PresetReason,
+    copyOf: NoteTypeKey.optional().openapi({
+      description:
+        'A note type the team holds, copied at its current version with its kinds, group, sensitivity and marks; else a blank one with kinds and group',
+    }),
+    kinds: Kinds.optional(),
+    group: z.enum(NOTE_TYPE_GROUPS).optional().openapi({ description: 'Where the timeline files its notes' }),
+  })
+  .superRefine((b, ctx) => {
+    const copy = b.copyOf !== undefined;
+    if (
+      copy ? b.kinds !== undefined || b.group !== undefined : b.kinds === undefined || b.group === undefined
+    )
+      ctx.addIssue({
+        code: 'custom',
+        path: [copy ? 'copyOf' : b.kinds === undefined ? 'kinds' : 'group'],
+        message: 'copy_or_blank',
+      });
+  })
+  .openapi('CreateNoteType', {
+    description:
+      'A copy ({title, copyOf, reason}) or a blank note type ({title, kinds, group, reason}): one section, Notes, holding one text field, Notes',
+  });
+
+const CreateNoteTypeResult = z
+  .object({
+    key: z.string().openapi({ description: 'The new note type’s key: t_ and 12 hex characters' }),
+    version: z.literal(1),
+  })
+  .openapi('CreateNoteTypeResult');
+
+const ArchiveNoteType = z
+  .object({ baseVersion: BaseVersion, reason: PresetReason })
+  .openapi('ArchiveNoteType');
+
+const RestoreNoteType = z.object({ reason: PresetReason }).openapi('RestoreNoteType');
+
+/** What a remove or a restore answers: it stays at the version it is at, so only the revision moves. */
+const NoteTypeRevision = z.object({ revision: Revision }).openapi('NoteTypeRevision');
+
+const TakeNoteTypeUpdate = z
+  .object({
+    baseVersion: BaseVersion,
+    platformVersion: z.number().int().min(1).max(MAX_VERSION).openapi({
+      description:
+        'The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale',
+    }),
+    reason: PresetReason,
+    asNew: z.boolean().openapi({
+      description:
+        'Take it as a new note type: this one is removed and kept in the history. The only way to take an update that changes what is fixed at creation',
+    }),
+  })
+  .openapi('TakeNoteTypeUpdate');
+
+const TakeNoteTypeUpdateResult = z
+  .object({
+    key: z
+      .string()
+      .openapi({ description: 'The note type that now holds the update: this one, or the new one' }),
+    version: z.number().int().min(1).openapi({ description: 'Its version now: 1 for a new note type' }),
+    revision: Revision,
+  })
+  .openapi('TakeNoteTypeUpdateResult');
+
 const listRoute = createRoute({
   method: 'get',
   path: '/v1/admin/note-types',
@@ -248,6 +355,66 @@ const publishRoute = createRoute({
   request: { params: keyParam, body: { required: true, ...json(PublishNoteType) } },
   responses: {
     200: { description: 'Its next version is live', ...json(PublishNoteTypeResult) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const addRoute = createRoute({
+  method: 'post',
+  path: '/v1/admin/note-types',
+  operationId: 'createNoteType',
+  tags: ['presets'],
+  summary: 'Add a note type of the team’s own, blank or a copy, with a reason (recent sign-in)',
+  security: [{ bearer: [] }],
+  request: { body: { required: true, ...json(CreateNoteType) } },
+  responses: {
+    201: { description: 'Added at version 1', ...json(CreateNoteTypeResult) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const archiveRoute = createRoute({
+  method: 'post',
+  path: '/v1/admin/note-types/{key}/archive',
+  operationId: 'archiveNoteType',
+  tags: ['presets'],
+  summary: 'Remove a note type from new notes, with a reason (recent sign-in); every version still reads',
+  security: [{ bearer: [] }],
+  request: { params: keyParam, body: { required: true, ...json(ArchiveNoteType) } },
+  responses: {
+    200: { description: 'Removed, at the version it is at', ...json(NoteTypeRevision) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const restoreRoute = createRoute({
+  method: 'post',
+  path: '/v1/admin/note-types/{key}/restore',
+  operationId: 'restoreNoteType',
+  tags: ['presets'],
+  summary: 'Restore a removed note type at the version it is at, with a reason (recent sign-in)',
+  security: [{ bearer: [] }],
+  request: { params: keyParam, body: { required: true, ...json(RestoreNoteType) } },
+  responses: {
+    200: { description: 'Restored, at the version it is at', ...json(NoteTypeRevision) },
+    ...errors(401, 403, 404, 409, 422),
+  },
+});
+
+const takeUpdateRoute = createRoute({
+  method: 'post',
+  path: '/v1/admin/note-types/{key}/take-update',
+  operationId: 'takeNoteTypeUpdate',
+  tags: ['presets'],
+  summary:
+    'Take the platform’s newer version of a note type, in place or as a new one, with a reason (recent sign-in)',
+  security: [{ bearer: [] }],
+  request: { params: keyParam, body: { required: true, ...json(TakeNoteTypeUpdate) } },
+  responses: {
+    200: {
+      description: 'The note type that holds the update, at its version now',
+      ...json(TakeNoteTypeUpdateResult),
+    },
     ...errors(401, 403, 404, 409, 422),
   },
 });
@@ -304,10 +471,47 @@ export function registerNoteTypeAdminRoutes(app: App, deps: Deps): void {
     return c.json(await listNoteTypesAdmin(scope), 200);
   });
 
+  app.openapi(addRoute, async (c) => {
+    const { title, reason, copyOf, kinds, group } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    const made =
+      copyOf === undefined
+        ? await createNoteType(scope, { title, reason, kinds: kinds!, group: group! })
+        : await createNoteType(scope, { title, reason, copyOf });
+    return c.json(made, 201);
+  });
+
   app.openapi(publishRoute, async (c) => {
     const { key } = c.req.valid('param');
     const { baseVersion, ops, reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
     return c.json(await publishNoteType(scope, { key, baseVersion, ops, reason }), 200);
+  });
+
+  // PLAN-OPEN (PL-12): is a preset nobody uses deleted, or archived like the rest? Archived, note
+  // types too: no route deletes one, so every note begun on it still reads and finishes, and a
+  // platform update can't bring it back.
+  app.openapi(archiveRoute, async (c) => {
+    const { key } = c.req.valid('param');
+    const { baseVersion, reason } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    return c.json(await archiveNoteType(scope, { key, baseVersion, reason }), 200);
+  });
+
+  app.openapi(restoreRoute, async (c) => {
+    const { key } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    return c.json(await restoreNoteType(scope, { key, reason }), 200);
+  });
+
+  // PLAN-OPEN (PL-20): may a platform update change a field fixed at creation? Only as a new note
+  // type (asNew), the old one removed, so what its notes were read as stays: in place, an update
+  // that changes kinds, group, sensitivity, quick or auto is refused fixed_field.
+  app.openapi(takeUpdateRoute, async (c) => {
+    const { key } = c.req.valid('param');
+    const { baseVersion, platformVersion, asNew, reason } = c.req.valid('json');
+    const scope = await presetWriteScope(c, deps);
+    return c.json(await takeNoteTypeUpdate(scope, { key, baseVersion, platformVersion, asNew, reason }), 200);
   });
 }

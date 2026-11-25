@@ -2,6 +2,7 @@ import {
   canonicalJson,
   copyPart,
   editNoteTypesApplied,
+  isNoteTypeTitle,
   mayReach,
   PRESETS,
   sha256Hex,
@@ -12,6 +13,7 @@ import {
   type NoteTypeEdit,
   type NoteTypeEditCode,
   type NoteTypeEditRefusal,
+  type NoteType,
   type Preset,
   type Rename,
   type ResolvedNoteType,
@@ -539,8 +541,6 @@ export function publishNoteType(
       problemsOf(w.team, stored, p.definition, team[p.key]!, p.renames),
     );
     if (problems.length > 0) throw refusedVersions(problems);
-    if (own.definition.title !== held.title && (await titleHeld(w, own.definition.title, [held.key])))
-      throw refusal('name_taken');
     return {
       changes: {
         versions: outcome.published.map((p) => ({
@@ -571,6 +571,240 @@ export function publishNoteType(
           ),
       },
       answer: () => ({ version: own.definition.version, alsoPublished: also.map((p) => p.key) }),
+    };
+  });
+}
+
+/** What a blank note type's timeline group may be (forms 2.2): where the timeline files its notes. */
+export const NOTE_TYPE_GROUPS = [
+  'clinical',
+  'psych',
+  'social',
+  'outreach',
+  'harm_reduction',
+  'wound',
+] as const;
+
+/** A key the team makes: `t_` and 12 hex characters, made by the server, which fits 0017's key (4.3). */
+function newKey(team: TeamNoteTypes): string {
+  for (;;) {
+    const bytes = crypto.getRandomValues(new Uint8Array(6));
+    const key = `t_${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+    // Read under the lock, so a key no head holds is free until this write commits.
+    if (!team.get(key)) return key;
+  }
+}
+
+// PLAN-OPEN (BM-82): what does a blank note type start with? One section, Notes, holding one text
+// field, Notes, since a definition has no empty lists (forms 2.2); the admin adds or copies sections.
+/** A blank note type's version 1: one section, Notes, holding one text field, Notes. */
+function blankNoteType(input: {
+  key: string;
+  title: string;
+  kinds: NoteType['kinds'];
+  group: NoteType['group'];
+}): ResolvedNoteType {
+  return {
+    key: input.key,
+    version: 1,
+    title: input.title,
+    // As a set, in one order: Medical exactly when it is ['medical'] (D56).
+    kinds: (['medical', 'non_medical'] as const).filter((k) => input.kinds.includes(k)),
+    group: input.group,
+    sensitivity: 'none',
+    sections: [
+      {
+        id: 'notes',
+        title: 'Notes',
+        fields: [{ id: 'notes', kind: 'text', label: 'Notes', lines: 'many', maxLength: 4000 }],
+      },
+    ],
+  };
+}
+
+/** What may never be copied into a new note type: the quick encounter, and the auto one (5.4). */
+const notCopyable = () =>
+  invalid(
+    'not_copyable',
+    'The Quick encounter and the Red flags note type can’t be copied. Add a blank note type instead.',
+  );
+
+/** A title is sent as it is kept: one that starts or ends with white space is refused, never trimmed. */
+function titleOf(raw: string): string {
+  if (isNoteTypeTitle(raw) && raw === raw.trim()) return raw;
+  throw new ApiError(422, 'validation_failed', 'Some fields are missing or invalid.', {
+    fields: [{ path: 'title', problem: 'invalid' }],
+  });
+}
+
+/**
+ * Adds a note type of the team's own (5.4): a copy of the current version of one it holds, with its
+ * kinds, group, sensitivity and marks, or a blank one with a title, kinds and a timeline group. Its
+ * key is a new `t_` key and its version 1, named as its own row (4.3), the team's own
+ * (`origin = 'team'`). The quick encounter and the auto note type cannot be copied.
+ */
+export function createNoteType(
+  scope: PresetWriteScope,
+  input: { title: string; reason: string } & (
+    { copyOf: string } | { kinds: NoteType['kinds']; group: NoteType['group'] }
+  ),
+): Promise<{ key: string; version: 1 }> {
+  const title = titleOf(input.title);
+  return noteTypeWrite(scope, input.reason, async (w) => {
+    const key = newKey(w.team);
+    let definition: ResolvedNoteType;
+    if ('copyOf' in input) {
+      const source = noteTypeOf(w.team, input.copyOf);
+      if (source.definition.quick === true || source.definition.auto !== undefined) throw notCopyable();
+      definition = { ...copyPart(source.definition), key, version: 1, title };
+    } else definition = blankNoteType({ key, title, kinds: input.kinds, group: input.group });
+    const problems = problemsOf(w.team, new Map([[key, definition]]), definition, [], []);
+    if (problems.length > 0) throw refusedVersions(problems);
+    if (await titleHeld(w, title, [])) throw refusal('name_taken');
+    return {
+      changes: {
+        versions: [{ key, definition, origin: 'team', presetVersion: null }],
+        made: [{ key, title, platformLatest: null, customized: true }],
+        changed: [],
+        events: [{ key, act: 'created', version: 1 }],
+        audits: () => [noteTypeAudit('note_type.created', key, { version: 1 })],
+      },
+      answer: () => ({ key, version: 1 as const }),
+    };
+  });
+}
+
+/**
+ * Removes a note type at the version it is at (5.1): no phone offers it for a new note once it has
+ * synced, and every version still reads, so a note begun on it finishes. Refused for the auto note
+ * type, which a Medical note is never finished without (lifecycle 3.3), and while an active field
+ * supply map names it.
+ */
+export function archiveNoteType(
+  scope: PresetWriteScope,
+  input: { key: string; baseVersion: number; reason: string },
+): Promise<{ revision: number }> {
+  return noteTypeWrite(scope, input.reason, async (w) => {
+    const held = noteTypeOf(w.team, input.key);
+    if (held.definition.auto !== undefined) throw refusal('not_removable');
+    if (held.state === 'archived') throw refusal('archived');
+    if (input.baseVersion !== held.currentVersion) throw refusal('stale', { held });
+    const referenced = referencedBy(w.team, held.key);
+    if (Object.keys(referenced).length > 0) throw refusal('referenced', { referencedBy: referenced });
+    return {
+      changes: stateChange(held, 'archived'),
+      answer: (revision) => ({ revision }),
+    };
+  });
+}
+
+/** Restores a removed note type at the version it is at, unless another active one took its title. */
+export function restoreNoteType(
+  scope: PresetWriteScope,
+  input: { key: string; reason: string },
+): Promise<{ revision: number }> {
+  return noteTypeWrite(scope, input.reason, async (w) => {
+    const held = noteTypeOf(w.team, input.key);
+    if (held.state !== 'archived') throw refusal('not_archived');
+    if (await titleHeld(w, held.title, [held.key])) throw refusal('name_taken');
+    return {
+      changes: stateChange(held, 'active'),
+      answer: (revision) => ({ revision }),
+    };
+  });
+}
+
+/** A remove or a restore: the head's state, made the team's own, with its event and audit at its version. */
+function stateChange(held: HeldNoteType, state: 'active' | 'archived'): Changes {
+  const act = state === 'archived' ? 'archived' : 'restored';
+  return {
+    versions: [],
+    made: [],
+    changed: [{ key: held.key, state, customized: true }],
+    events: [{ key: held.key, act, version: held.currentVersion }],
+    audits: () => [noteTypeAudit(`note_type.${act}`, held.key, { version: held.currentVersion })],
+  };
+}
+
+/**
+ * Takes the platform update on offer to a note type (5.1). In place, its next version is the
+ * platform's definition named as that version (4.3), the platform's again (`customized` false), its
+ * head named by the platform's title. As a new note type, the platform's definition becomes version
+ * 1 of a new `t_` key, and the old one is removed if it was active; a field fixed at creation (kinds,
+ * group, sensitivity, quick, auto) may change only that way, since the old one keeps its meaning.
+ * Either version is the platform's (`origin = 'preset'`, its platform version), while the event
+ * names the person and the reason. Only the platform version the person reviewed is taken: any
+ * phone's list runs the installer, which may offer a newer one meanwhile.
+ */
+export function takeNoteTypeUpdate(
+  scope: PresetWriteScope,
+  input: { key: string; baseVersion: number; platformVersion: number; asNew: boolean; reason: string },
+): Promise<{ key: string; version: number; revision: number }> {
+  return noteTypeWrite(scope, input.reason, async (w) => {
+    const held = noteTypeOf(w.team, input.key);
+    const update = noteTypeUpdateOf(held);
+    const offered = update?.preset.version ?? null;
+    // The person's page was loaded at this version and offered this platform version: a newer one
+    // on offer since is a change they have not seen, so the take is stale, as a newer copy makes it.
+    const stale =
+      input.baseVersion !== held.currentVersion || (offered !== null && offered !== input.platformVersion);
+    if (!input.asNew && held.state === 'archived') throw refusal('archived');
+    if (input.asNew && held.definition.auto !== undefined) throw refusal('not_removable');
+    if (stale) throw refusal('stale', { held, platformVersion: offered });
+    if (update === null) throw refusal('no_update');
+    if (!input.asNew && update.changesFixed.length > 0)
+      throw refusal('fixed_field', { fields: update.changesFixed });
+    if (input.asNew && held.state === 'active') {
+      const referenced = referencedBy(w.team, held.key);
+      if (Object.keys(referenced).length > 0) throw refusal('referenced', { referencedBy: referenced });
+    }
+    // As new, the old one is removed by the same act, so its title is not counted.
+    if (await titleHeld(w, update.preset.definition.title, [held.key])) throw refusal('name_taken');
+    const { preset } = update;
+    if (!input.asNew) {
+      const { definition } = update;
+      const versions = await versionsOf(w, held);
+      // The platform's labels are its own meaning for its paths, checked against its own earlier
+      // versions when it was released, as the team's rewordings were declared as renames: only a
+      // path given another kind or unit is refused, never a label the platform words its own way.
+      const problems = problemsOf(w.team, new Map([[held.key, definition]]), definition, versions, []).filter(
+        (p) => p.rule !== 'versions.label_changed',
+      );
+      if (problems.length > 0) throw refusedVersions(problems);
+      const { version } = definition;
+      return {
+        changes: {
+          versions: [{ key: held.key, definition, origin: 'preset', presetVersion: preset.version }],
+          made: [],
+          changed: [{ key: held.key, title: definition.title, version, customized: false }],
+          events: [{ key: held.key, act: 'update_taken', version }],
+          audits: () => [noteTypeAudit('note_type.platform_update_taken', held.key, { version })],
+        },
+        answer: (revision) => ({ key: held.key, version, revision }),
+      };
+    }
+    const key = newKey(w.team);
+    const definition: ResolvedNoteType = { ...copyPart(preset.definition), key, version: 1 };
+    const problems = problemsOf(w.team, new Map([[key, definition]]), definition, [], []);
+    if (problems.length > 0) throw refusedVersions(problems);
+    const wasActive = held.state === 'active';
+    return {
+      changes: {
+        versions: [{ key, definition, origin: 'preset', presetVersion: preset.version }],
+        made: [{ key, title: definition.title, platformLatest: preset.version, customized: false }],
+        changed: wasActive ? [{ key: held.key, state: 'archived', customized: true }] : [],
+        events: [
+          ...(wasActive ? [{ key: held.key, act: 'archived' as const, version: held.currentVersion }] : []),
+          { key, act: 'update_taken', version: 1 },
+        ],
+        audits: () => [
+          ...(wasActive
+            ? [noteTypeAudit('note_type.archived', held.key, { version: held.currentVersion })]
+            : []),
+          noteTypeAudit('note_type.platform_update_taken', key, { version: 1, replaces: held.key }),
+        ],
+      },
+      answer: (revision) => ({ key, version: 1, revision }),
     };
   });
 }

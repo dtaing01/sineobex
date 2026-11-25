@@ -805,22 +805,6 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
       await refusedUnwritten(() => api.publish('outreach', row.version, ops), 422, 'no_change');
   });
 
-  it('refuses a new title another active note type holds, whatever its case, and keeps its own', async () => {
-    const row = await rowOf('outreach');
-    const other = await rowOf('wound_care');
-    await refusedUnwritten(
-      () => api.publish('outreach', row.version, [{ op: 'rename_type', title: other.title.toUpperCase() }]),
-      409,
-      'name_taken',
-    );
-    // Its own title in another case is its own.
-    const r = await api.publish('outreach', row.version, [
-      { op: 'rename_type', title: row.title.toUpperCase() },
-    ]);
-    expect(r.status, JSON.stringify(r.body)).toBe(200);
-    await readBack('outreach', row.version + 1);
-  });
-
   it('refuses no operations, too many, and an operation carrying a mark, before anything is asked', async () => {
     const row = await rowOf('outreach');
     const rename: NoteTypeEdit = { op: 'rename_type', title: 'Demo: Outreach, many' };
@@ -1207,6 +1191,268 @@ describe('POST /v1/admin/note-types/{key}/take-update', () => {
     } finally {
       unrelease();
     }
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// What each act checks besides (card P4-lifecycle), each in a team of its own
+// ------------------------------------------------------------------------------------------------
+
+describe('adding, removing, restoring and taking an update: what each checks', () => {
+  /** A team of its own, and its note types offered a platform version of `key` the team edited first. */
+  async function teamWithOffer(
+    label: string,
+    key: string,
+    change: (d: ResolvedNoteType) => ResolvedNoteType = (d) => ({ ...d, title: `${d.title}, again` }),
+  ) {
+    const t = await presetsTeam(h, label);
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const row = await rowOf(key, theirs);
+    const edited = await theirs.publish(key, row.version, [
+      { op: 'rename_type', title: `Demo: ${row.title}, ours` },
+    ]);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    const next = await platformNext(key, change);
+    const unrelease = release(next);
+    // A phone's list runs the installer, which offers the platform version over the team's own.
+    const listed = await call(h, '/v1/forms/note-types', {
+      token: await tokenOf(h, t.admin),
+      teamId: t.teamId,
+    });
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    return { t, theirs, next, unrelease, row: await rowOf(key, theirs) };
+  }
+
+  it('each write waits for the team lock before it reads or writes any table', async () => {
+    const t = await presetsTeam(h, 'Note Types Lock');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const blank = { title: 'Demo: Under the lock', kinds: ['non_medical'], group: 'outreach' };
+    const made = await theirs.create({ ...blank, title: 'Demo: Made first' });
+    const key = made.body.key as string;
+    const gone = (await theirs.create({ ...blank, title: 'Demo: Gone first' })).body.key as string;
+    expect((await theirs.archive(gone, 1)).status).toBe(200);
+    for (const [name, write, status] of [
+      ['create', () => theirs.create(blank), 201],
+      ['archive', () => theirs.archive(key, 1), 200],
+      ['restore', () => theirs.restore(gone), 200],
+      // Refused once it holds the lock: what it refuses is worked out under it, too.
+      [
+        'take-update',
+        () => theirs.takeUpdate('outreach', { baseVersion: 1, platformVersion: 2, asNew: false }),
+        409,
+      ],
+    ] as [string, () => Promise<Answer>, number][]) {
+      const { waited, relations, answer } = await whileLocked(h, t.teamId, write);
+      expect(waited, `${name} waits for the team lock`).toBe(true);
+      expect(relations, `${name} touched no table before the team lock`).toEqual([]);
+      expect(answer.status, `${name}: ${JSON.stringify(answer.body)}`).toBe(status);
+    }
+  });
+
+  it('copies a removed note type too, keeps what its marks protect, and stores kinds in one order', async () => {
+    const t = await presetsTeam(h, 'Note Types Adds');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const source = await rowOf('harm_reduction', theirs);
+    expect((await theirs.archive('harm_reduction', source.version)).status).toBe(200);
+    const copy = await theirs.create({
+      title: 'Demo: Ours, from a removed one',
+      copyOf: 'harm_reduction',
+    });
+    expect(copy.status, JSON.stringify(copy.body)).toBe(201);
+    const row = await rowOf(copy.body.key as string, theirs);
+    // What its marks protect comes with it, and who may read it (rule 2).
+    expect(row.protected).toEqual(source.protected);
+    expect(row.protected.fields.length + row.protected.options.length).toBeGreaterThan(0);
+    expect(row.definition.sensitivity).toBe('sensitive');
+    expect(await headOf(t.teamId, row.key)).toMatchObject({
+      state: 'active',
+      customized: true,
+      platformLatest: null,
+    });
+    const both = await theirs.create({
+      title: 'Demo: Both, either way',
+      kinds: ['non_medical', 'medical'],
+      group: 'social',
+    });
+    expect(both.status, JSON.stringify(both.body)).toBe(201);
+    expect((await storedAs(both.body.key as string, 1, t.teamId)).definition.kinds).toEqual([
+      'medical',
+      'non_medical',
+    ]);
+  });
+
+  it('refuses a title sent with spaces around it, never trimming it, when adding and when renaming', async () => {
+    const t = await presetsTeam(h, 'Note Types Titles');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    for (const title of [' Demo: Padded', 'Demo: Padded ', 'x'.repeat(81), 'Demo:\u0007bell'])
+      await refusedUnwritten(
+        () => theirs.create({ title, kinds: ['medical'], group: 'clinical' }),
+        422,
+        'validation_failed',
+        t.teamId,
+      );
+    const row = await rowOf('outreach', theirs);
+    await refusedUnwritten(
+      () => theirs.publish('outreach', row.version, [{ op: 'rename_type', title: ' Demo: Padded' }]),
+      422,
+      'validation_failed',
+      t.teamId,
+    );
+  });
+
+  it('refuses a take when nothing is on offer and the version sent is not the current one: stale, with none on offer', async () => {
+    const t = await presetsTeam(h, 'Note Types No Offer');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const row = await rowOf('outreach', theirs);
+    const details = await refusedUnwritten(
+      () => theirs.takeUpdate('outreach', { baseVersion: row.version + 1, platformVersion: 2, asNew: true }),
+      409,
+      'stale',
+      t.teamId,
+    );
+    expect(details).toEqual({ currentVersion: row.version, platformVersion: null });
+  });
+
+  it('refuses to take an update whose title another active note type holds, in place and as new', async () => {
+    const { t, theirs, next, unrelease, row } = await teamWithOffer('Note Types Take Title', 'psychological');
+    try {
+      expect(
+        (
+          await theirs.create({
+            title: next.definition.title.toUpperCase(),
+            kinds: ['medical'],
+            group: 'psych',
+          })
+        ).status,
+      ).toBe(201);
+      for (const asNew of [false, true])
+        await refusedUnwritten(
+          () =>
+            theirs.takeUpdate('psychological', {
+              baseVersion: row.version,
+              platformVersion: next.version,
+              asNew,
+            }),
+          409,
+          'name_taken',
+          t.teamId,
+        );
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('refuses to take an update phase 4’s validator refuses against the team, writing nothing', async () => {
+    // The platform version names a note type this team does not hold.
+    const { t, theirs, next, unrelease, row } = await teamWithOffer(
+      'Note Types Take Invalid',
+      'psychological',
+      (d) => ({
+        ...d,
+        title: `${d.title}, again`,
+        sections: d.sections.map((s, i) =>
+          i === 0
+            ? {
+                ...s,
+                fields: [
+                  ...s.fields,
+                  {
+                    id: 'next_visit',
+                    kind: 'action',
+                    label: 'Demo: Open the next visit',
+                    action: 'open_note_type',
+                    noteType: 'demo_nowhere',
+                  },
+                ],
+              }
+            : s,
+        ) as ResolvedNoteType['sections'],
+      }),
+    );
+    try {
+      for (const asNew of [false, true]) {
+        const details = await refusedUnwritten(
+          () =>
+            theirs.takeUpdate('psychological', {
+              baseVersion: row.version,
+              platformVersion: next.version,
+              asNew,
+            }),
+          422,
+          'invalid',
+          t.teamId,
+        );
+        expect((details.problems as { rule: string }[]).map((p) => p.rule)).toContain(
+          'validate.unknown_note_type',
+        );
+      }
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('takes an update as a new note type from a removed one, which stays removed, and offers the new one nothing', async () => {
+    const { t, theirs, next, unrelease, row } = await teamWithOffer(
+      'Note Types Take Removed',
+      'social_needs',
+    );
+    try {
+      expect((await theirs.archive('social_needs', row.version)).status).toBe(200);
+      const events = await eventsOf(t.teamId, 'social_needs');
+      const mark = await auditMark(h);
+      const r = await theirs.takeUpdate('social_needs', {
+        baseVersion: row.version,
+        platformVersion: next.version,
+        asNew: true,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const key = r.body.key as string;
+      expect(await eventsOf(t.teamId, 'social_needs')).toEqual(events);
+      expect(await eventsOf(t.teamId, key)).toEqual([
+        { act: 'update_taken', version: 1, reason: REASON, createdBy: t.admin.userId },
+      ]);
+      expect((await auditAfter(h, mark)).map((e) => [e.action, e.entityId, e.details])).toEqual([
+        ['note_type.platform_update_taken', key, { version: 1, replaces: 'social_needs' }],
+      ]);
+      expect(await headOf(t.teamId, key)).toMatchObject({
+        title: next.definition.title,
+        state: 'active',
+        currentVersion: 1,
+        platformLatest: next.version,
+        customized: false,
+      });
+      const made = await rowOf(key, theirs);
+      expect([made.update, made.updateOnOffer]).toEqual([null, false]);
+      expect((await rowOf('social_needs', theirs)).state).toBe('archived');
+      await storedAs(key, 1, t.teamId);
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('asks a take for a reason and a recent sign-in, and team.manage_presets, before it reads anything', async () => {
+    const t = await presetsTeam(h, 'Note Types Take Asks');
+    const take = { baseVersion: 1, platformVersion: 2, asNew: false };
+    const path = '/v1/admin/note-types/outreach/take-update';
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    for (const reason of [undefined, '  ', 'ab', 'x'.repeat(301)]) {
+      const details = await refusedUnwritten(
+        () => theirs.send('POST', path, reason === undefined ? take : { ...take, reason }),
+        422,
+        'validation_failed',
+        t.teamId,
+      );
+      expect(JSON.stringify(details.fields)).toContain('reason');
+    }
+    const stale = noteTypesApi(t.teamId, t.admin, { token: await tokenOf(h, t.admin, STALE_MINUTES) });
+    const mark = await auditMark(h);
+    await refusedUnwritten(() => stale.takeUpdate('outreach', take), 403, 'reauth_required', t.teamId);
+    expect(await auditAfter(h, mark)).toEqual([]);
+    const staff = noteTypesApi(t.teamId, t.staff);
+    refused(await staff.takeUpdate('outreach', take), 403, 'forbidden');
+    expect((await auditAfter(h, mark)).map((e) => [e.action, e.details.permission])).toEqual([
+      ['access.denied', 'team.manage_presets'],
+    ]);
   });
 });
 

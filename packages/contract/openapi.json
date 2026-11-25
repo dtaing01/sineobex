@@ -132,6 +132,27 @@
         ],
         "type": "object"
       },
+      "ArchiveNoteType": {
+        "properties": {
+          "baseVersion": {
+            "description": "The version you opened: any other is refused as stale, with the current one",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "reason"
+        ],
+        "type": "object"
+      },
       "ArchivePreset": {
         "properties": {
           "baseVersion": {
@@ -735,6 +756,77 @@
           "credential",
           "correctedAt",
           "clockVerified"
+        ],
+        "type": "object"
+      },
+      "CreateNoteType": {
+        "additionalProperties": false,
+        "description": "A copy ({title, copyOf, reason}) or a blank note type ({title, kinds, group, reason}): one section, Notes, holding one text field, Notes",
+        "properties": {
+          "copyOf": {
+            "description": "A note type the team holds, copied at its current version with its kinds, group, sensitivity and marks; else a blank one with kinds and group",
+            "example": "wound_care",
+            "pattern": "^[a-z][a-z0-9_]{1,60}$",
+            "type": "string"
+          },
+          "group": {
+            "description": "Where the timeline files its notes",
+            "enum": [
+              "clinical",
+              "psych",
+              "social",
+              "outreach",
+              "harm_reduction",
+              "wound"
+            ],
+            "type": "string"
+          },
+          "kinds": {
+            "description": "Medical, Non-Medical or both: which visits offer it. It is Medical exactly when it is medical alone",
+            "items": {
+              "enum": [
+                "medical",
+                "non_medical"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": "array"
+          },
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          },
+          "title": {
+            "description": "1 to 80 characters, with no space before or after",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "CreateNoteTypeResult": {
+        "properties": {
+          "key": {
+            "description": "The new note type’s key: t_ and 12 hex characters",
+            "type": "string"
+          },
+          "version": {
+            "enum": [
+              1
+            ],
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "version"
         ],
         "type": "object"
       },
@@ -3254,6 +3346,7 @@
                 "type": "string"
               },
               "title": {
+                "description": "1 to 80 characters, with no space before or after",
                 "type": "string"
               }
             },
@@ -3774,6 +3867,19 @@
           "sections",
           "fields",
           "options"
+        ],
+        "type": "object"
+      },
+      "NoteTypeRevision": {
+        "properties": {
+          "revision": {
+            "description": "The team’s revision this write took",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
         ],
         "type": "object"
       },
@@ -5685,6 +5791,20 @@
         ],
         "type": "object"
       },
+      "RestoreNoteType": {
+        "properties": {
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
       "RestorePreset": {
         "properties": {
           "reason": {
@@ -6403,6 +6523,63 @@
         "required": [
           "changeId",
           "status"
+        ],
+        "type": "object"
+      },
+      "TakeNoteTypeUpdate": {
+        "properties": {
+          "asNew": {
+            "description": "Take it as a new note type: this one is removed and kept in the history. The only way to take an update that changes what is fixed at creation",
+            "type": "boolean"
+          },
+          "baseVersion": {
+            "description": "The version you opened: any other is refused as stale, with the current one",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "platformVersion": {
+            "description": "The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "platformVersion",
+          "reason",
+          "asNew"
+        ],
+        "type": "object"
+      },
+      "TakeNoteTypeUpdateResult": {
+        "properties": {
+          "key": {
+            "description": "The note type that now holds the update: this one, or the new one",
+            "type": "string"
+          },
+          "revision": {
+            "description": "The team’s revision this write took",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "version": {
+            "description": "Its version now: 1 for a new note type",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "revision"
         ],
         "type": "object"
       },
@@ -7269,6 +7446,90 @@
         "tags": [
           "presets"
         ]
+      },
+      "post": {
+        "operationId": "createNoteType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNoteType"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateNoteTypeResult"
+                }
+              }
+            },
+            "description": "Added at version 1"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Add a note type of the team’s own, blank or a copy, with a reason (recent sign-in)",
+        "tags": [
+          "presets"
+        ]
       }
     },
     "/v1/admin/note-types/{key}": {
@@ -7366,6 +7627,306 @@
           }
         ],
         "summary": "Publish an edit of a note type as its next version, through fixed operations, with a reason (recent sign-in)",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/admin/note-types/{key}/archive": {
+      "post": {
+        "operationId": "archiveNoteType",
+        "parameters": [
+          {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "A note type’s key, as migration 0017 allows it",
+              "example": "wound_care",
+              "pattern": "^[a-z][a-z0-9_]{1,60}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveNoteType"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTypeRevision"
+                }
+              }
+            },
+            "description": "Removed, at the version it is at"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a note type from new notes, with a reason (recent sign-in); every version still reads",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/admin/note-types/{key}/restore": {
+      "post": {
+        "operationId": "restoreNoteType",
+        "parameters": [
+          {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "A note type’s key, as migration 0017 allows it",
+              "example": "wound_care",
+              "pattern": "^[a-z][a-z0-9_]{1,60}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreNoteType"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTypeRevision"
+                }
+              }
+            },
+            "description": "Restored, at the version it is at"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Restore a removed note type at the version it is at, with a reason (recent sign-in)",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/admin/note-types/{key}/take-update": {
+      "post": {
+        "operationId": "takeNoteTypeUpdate",
+        "parameters": [
+          {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "A note type’s key, as migration 0017 allows it",
+              "example": "wound_care",
+              "pattern": "^[a-z][a-z0-9_]{1,60}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeNoteTypeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakeNoteTypeUpdateResult"
+                }
+              }
+            },
+            "description": "The note type that holds the update, at its version now"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Take the platform’s newer version of a note type, in place or as a new one, with a reason (recent sign-in)",
         "tags": [
           "presets"
         ]

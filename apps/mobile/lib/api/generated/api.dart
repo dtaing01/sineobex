@@ -224,6 +224,43 @@ enum CorrectionViewOutcome {
   String toJson() => wire;
 }
 
+/// Where the timeline files its notes
+enum CreateNoteTypeGroup {
+  clinical('clinical'),
+  psych('psych'),
+  social('social'),
+  outreach('outreach'),
+  harmReduction('harm_reduction'),
+  wound('wound'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const CreateNoteTypeGroup(this.wire);
+  final String wire;
+
+  static CreateNoteTypeGroup fromJson(String value) =>
+      CreateNoteTypeGroup.values.firstWhere((e) => e.wire == value, orElse: () => CreateNoteTypeGroup.unknown);
+
+  String toJson() => wire;
+}
+
+enum CreateNoteTypeKindsItem {
+  medical('medical'),
+  nonMedical('non_medical'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const CreateNoteTypeKindsItem(this.wire);
+  final String wire;
+
+  static CreateNoteTypeKindsItem fromJson(String value) =>
+      CreateNoteTypeKindsItem.values.firstWhere((e) => e.wire == value, orElse: () => CreateNoteTypeKindsItem.unknown);
+
+  String toJson() => wire;
+}
+
 enum Credential {
   attending('attending'),
   resident('resident'),
@@ -1560,6 +1597,28 @@ class AppointAdmin {
       };
 }
 
+class ArchiveNoteType {
+  const ArchiveNoteType({
+    required this.baseVersion,
+    required this.reason,
+  });
+
+  /// The version you opened: any other is refused as stale, with the current one
+  final int baseVersion;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory ArchiveNoteType.fromJson(Map<String, dynamic> json) => ArchiveNoteType(
+        baseVersion: (json['baseVersion'] as num).toInt(),
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'baseVersion': baseVersion,
+        'reason': reason,
+      };
+}
+
 class ArchivePreset {
   const ArchivePreset({
     required this.baseVersion,
@@ -2163,6 +2222,65 @@ class CorrectionView {
         'outcome': outcome.toJson(),
         'reason': reason,
         'requestedByPatient': requestedByPatient,
+      };
+}
+
+/// A copy ({title, copyOf, reason}) or a blank note type ({title, kinds, group, reason}): one section, Notes, holding one text field, Notes
+class CreateNoteType {
+  const CreateNoteType({
+    this.copyOf,
+    this.group,
+    this.kinds,
+    required this.reason,
+    required this.title,
+  });
+
+  /// A note type the team holds, copied at its current version with its kinds, group, sensitivity and marks; else a blank one with kinds and group
+  final String? copyOf;
+  /// Where the timeline files its notes
+  final CreateNoteTypeGroup? group;
+  /// Medical, Non-Medical or both: which visits offer it. It is Medical exactly when it is medical alone
+  final List<CreateNoteTypeKindsItem>? kinds;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+  /// 1 to 80 characters, with no space before or after
+  final String title;
+
+  factory CreateNoteType.fromJson(Map<String, dynamic> json) => CreateNoteType(
+        copyOf: json['copyOf'] == null ? null : json['copyOf'] as String,
+        group: json['group'] == null ? null : CreateNoteTypeGroup.fromJson(json['group'] as String),
+        kinds: json['kinds'] == null ? null : (json['kinds'] as List<dynamic>).map((e) => CreateNoteTypeKindsItem.fromJson(e as String)).toList(),
+        reason: json['reason'] as String,
+        title: json['title'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        if (copyOf != null) 'copyOf': copyOf!,
+        if (group != null) 'group': group!.toJson(),
+        if (kinds != null) 'kinds': kinds!.map((e) => e.toJson()).toList(),
+        'reason': reason,
+        'title': title,
+      };
+}
+
+class CreateNoteTypeResult {
+  const CreateNoteTypeResult({
+    required this.key,
+    required this.version,
+  });
+
+  /// The new note type’s key: t_ and 12 hex characters
+  final String key;
+  final int version;
+
+  factory CreateNoteTypeResult.fromJson(Map<String, dynamic> json) => CreateNoteTypeResult(
+        key: json['key'] as String,
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'key': key,
+        'version': version,
       };
 }
 
@@ -4624,6 +4742,23 @@ class NoteTypeProtectedPartsOptionsItem {
       };
 }
 
+class NoteTypeRevision {
+  const NoteTypeRevision({
+    required this.revision,
+  });
+
+  /// The team’s revision this write took
+  final int revision;
+
+  factory NoteTypeRevision.fromJson(Map<String, dynamic> json) => NoteTypeRevision(
+        revision: (json['revision'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'revision': revision,
+      };
+}
+
 class NoteTypeView {
   const NoteTypeView({
     required this.customized,
@@ -6303,6 +6438,23 @@ class ReorderedFlag {
       };
 }
 
+class RestoreNoteType {
+  const RestoreNoteType({
+    required this.reason,
+  });
+
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory RestoreNoteType.fromJson(Map<String, dynamic> json) => RestoreNoteType(
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'reason': reason,
+      };
+}
+
 class RestorePreset {
   const RestorePreset({
     required this.reason,
@@ -7051,6 +7203,65 @@ class SyncResult {
         if (server != null) 'server': server!.toJson(),
         if (serverVersion != null) 'serverVersion': serverVersion!,
         'status': status.toJson(),
+      };
+}
+
+class TakeNoteTypeUpdate {
+  const TakeNoteTypeUpdate({
+    required this.asNew,
+    required this.baseVersion,
+    required this.platformVersion,
+    required this.reason,
+  });
+
+  /// Take it as a new note type: this one is removed and kept in the history. The only way to take an update that changes what is fixed at creation
+  final bool asNew;
+  /// The version you opened: any other is refused as stale, with the current one
+  final int baseVersion;
+  /// The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale
+  final int platformVersion;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory TakeNoteTypeUpdate.fromJson(Map<String, dynamic> json) => TakeNoteTypeUpdate(
+        asNew: json['asNew'] as bool,
+        baseVersion: (json['baseVersion'] as num).toInt(),
+        platformVersion: (json['platformVersion'] as num).toInt(),
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'asNew': asNew,
+        'baseVersion': baseVersion,
+        'platformVersion': platformVersion,
+        'reason': reason,
+      };
+}
+
+class TakeNoteTypeUpdateResult {
+  const TakeNoteTypeUpdateResult({
+    required this.key,
+    required this.revision,
+    required this.version,
+  });
+
+  /// The note type that now holds the update: this one, or the new one
+  final String key;
+  /// The team’s revision this write took
+  final int revision;
+  /// Its version now: 1 for a new note type
+  final int version;
+
+  factory TakeNoteTypeUpdateResult.fromJson(Map<String, dynamic> json) => TakeNoteTypeUpdateResult(
+        key: json['key'] as String,
+        revision: (json['revision'] as num).toInt(),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'key': key,
+        'revision': revision,
+        'version': version,
       };
 }
 
@@ -7809,6 +8020,12 @@ class SineobexApi {
     return Ok.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Remove a note type from new notes, with a reason (recent sign-in); every version still reads
+  Future<NoteTypeRevision> archiveNoteType({required String key, required ArchiveNoteType body}) async {
+    final json = await _transport.send('POST', '/v1/admin/note-types/${Uri.encodeComponent(key)}/archive', body: body.toJson());
+    return NoteTypeRevision.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Archive a preset no active preset names, with a reason (recent sign-in); nothing is deleted
   Future<PresetRevision> archivePreset({required String kind, required String id, required ArchivePreset body}) async {
     final json = await _transport.send('POST', '/v1/admin/presets/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/archive', body: body.toJson());
@@ -7861,6 +8078,12 @@ class SineobexApi {
   Future<NoteActResult> cosignEncounter({required String encounterId, required NoteActInput body}) async {
     final json = await _transport.send('POST', '/v1/encounters/${Uri.encodeComponent(encounterId)}/cosign', body: body.toJson());
     return NoteActResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Add a note type of the team’s own, blank or a copy, with a reason (recent sign-in)
+  Future<CreateNoteTypeResult> createNoteType({required CreateNoteType body}) async {
+    final json = await _transport.send('POST', '/v1/admin/note-types', body: body.toJson());
+    return CreateNoteTypeResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Add a preset of the team’s own, with a reason (recent sign-in)
@@ -8229,6 +8452,12 @@ class SineobexApi {
     return ReorderFlagsResult.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Restore a removed note type at the version it is at, with a reason (recent sign-in)
+  Future<NoteTypeRevision> restoreNoteType({required String key, required RestoreNoteType body}) async {
+    final json = await _transport.send('POST', '/v1/admin/note-types/${Uri.encodeComponent(key)}/restore', body: body.toJson());
+    return NoteTypeRevision.fromJson(json as Map<String, dynamic>);
+  }
+
   /// Restore an archived preset at the version it is at, with a reason (recent sign-in)
   Future<PresetRevision> restorePreset({required String kind, required String id, required RestorePreset body}) async {
     final json = await _transport.send('POST', '/v1/admin/presets/${Uri.encodeComponent(kind)}/${Uri.encodeComponent(id)}/restore', body: body.toJson());
@@ -8263,6 +8492,12 @@ class SineobexApi {
   Future<SyncPushResult> syncPush({required SyncPush body}) async {
     final json = await _transport.send('POST', '/v1/sync/push', body: body.toJson());
     return SyncPushResult.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Take the platform’s newer version of a note type, in place or as a new one, with a reason (recent sign-in)
+  Future<TakeNoteTypeUpdateResult> takeNoteTypeUpdate({required String key, required TakeNoteTypeUpdate body}) async {
+    final json = await _transport.send('POST', '/v1/admin/note-types/${Uri.encodeComponent(key)}/take-update', body: body.toJson());
+    return TakeNoteTypeUpdateResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// Take the platform’s newer version of a preset, in place or as a new preset, with a reason (recent sign-in)

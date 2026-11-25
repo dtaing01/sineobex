@@ -101,7 +101,12 @@ describe('openapi.json, patient data in requests and refusals', () => {
   // A note type's key names a form, never a patient (phase 5 design 7). On the admin note type paths
   // it is let through with exactly 0017's pattern, which a team's own key (`t_` and 12 hex
   // characters) fits, and on no other path.
-  const NOTE_TYPE_KEY_PATHS = ['/v1/admin/note-types/{key}'];
+  const NOTE_TYPE_KEY_PATHS = [
+    '/v1/admin/note-types/{key}',
+    '/v1/admin/note-types/{key}/archive',
+    '/v1/admin/note-types/{key}/restore',
+    '/v1/admin/note-types/{key}/take-update',
+  ];
   const isNoteTypeKey = (path: string, name: string, s: Schema) =>
     name === 'key' && NOTE_TYPE_KEY_PATHS.includes(path) && s.pattern === '^[a-z][a-z0-9_]{1,60}$';
   // The reader's time zone names a place, never a patient: the handoff prints its times in it

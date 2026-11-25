@@ -10,7 +10,8 @@ export interface paths {
         /** Every note type of the team, removed ones too, with its current definition, what is protected in it and any update on offer */
         get: operations["listAdminNoteTypes"];
         put?: never;
-        post?: never;
+        /** Add a note type of the team’s own, blank or a copy, with a reason (recent sign-in) */
+        post: operations["createNoteType"];
         delete?: never;
         options?: never;
         head?: never;
@@ -28,6 +29,57 @@ export interface paths {
         /** Publish an edit of a note type as its next version, through fixed operations, with a reason (recent sign-in) */
         put: operations["publishNoteType"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/note-types/{key}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove a note type from new notes, with a reason (recent sign-in); every version still reads */
+        post: operations["archiveNoteType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/note-types/{key}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a removed note type at the version it is at, with a reason (recent sign-in) */
+        post: operations["restoreNoteType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/note-types/{key}/take-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take the platform’s newer version of a note type, in place or as a new one, with a reason (recent sign-in) */
+        post: operations["takeNoteTypeUpdate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1444,6 +1496,12 @@ export interface components {
             /** Format: email */
             email: string;
         };
+        ArchiveNoteType: {
+            /** @description The version you opened: any other is refused as stale, with the current one */
+            baseVersion: number;
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
         ArchivePreset: {
             /** @description The version you opened: any other is refused as stale, with the current one */
             baseVersion: number;
@@ -1613,6 +1671,31 @@ export interface components {
             outcome: "corrected" | "declined" | "no_change" | "draft_edit" | "not_author";
             reason: string;
             requestedByPatient: boolean;
+        };
+        /** @description A copy ({title, copyOf, reason}) or a blank note type ({title, kinds, group, reason}): one section, Notes, holding one text field, Notes */
+        CreateNoteType: {
+            /**
+             * @description A note type the team holds, copied at its current version with its kinds, group, sensitivity and marks; else a blank one with kinds and group
+             * @example wound_care
+             */
+            copyOf?: string;
+            /**
+             * @description Where the timeline files its notes
+             * @enum {string}
+             */
+            group?: "clinical" | "psych" | "social" | "outreach" | "harm_reduction" | "wound";
+            /** @description Medical, Non-Medical or both: which visits offer it. It is Medical exactly when it is medical alone */
+            kinds?: ("medical" | "non_medical")[];
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+            /** @description 1 to 80 characters, with no space before or after */
+            title: string;
+        };
+        CreateNoteTypeResult: {
+            /** @description The new note type’s key: t_ and 12 hex characters */
+            key: string;
+            /** @enum {number} */
+            version: 1;
         };
         CreatePreset: {
             /** @description The preset in its kind’s shape (@sineobex/presets), checked against that shape and the team’s other presets */
@@ -2352,6 +2435,7 @@ export interface components {
         NoteTypeEditOp: {
             /** @enum {string} */
             op: "rename_type";
+            /** @description 1 to 80 characters, with no space before or after */
             title: string;
         } | {
             /** @description Hidden leaves it out of the new version; shown copies it back from the last one that had it */
@@ -2486,6 +2570,10 @@ export interface components {
             }[];
             /** @description Section ids */
             sections: string[];
+        };
+        NoteTypeRevision: {
+            /** @description The team’s revision this write took */
+            revision: number;
         };
         NoteTypeView: {
             /** @description The team edited, removed or restored it: a platform version is then only offered */
@@ -3051,6 +3139,10 @@ export interface components {
             /** @description How many flags moved, each to its next version: 0 when none did, and nothing is written */
             changed: number;
         };
+        RestoreNoteType: {
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
         RestorePreset: {
             /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
             reason: string;
@@ -3289,6 +3381,24 @@ export interface components {
             serverVersion?: number;
             /** @enum {string} */
             status: "accepted" | "rejected" | "conflict";
+        };
+        TakeNoteTypeUpdate: {
+            /** @description Take it as a new note type: this one is removed and kept in the history. The only way to take an update that changes what is fixed at creation */
+            asNew: boolean;
+            /** @description The version you opened: any other is refused as stale, with the current one */
+            baseVersion: number;
+            /** @description The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale */
+            platformVersion: number;
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
+        TakeNoteTypeUpdateResult: {
+            /** @description The note type that now holds the update: this one, or the new one */
+            key: string;
+            /** @description The team’s revision this write took */
+            revision: number;
+            /** @description Its version now: 1 for a new note type */
+            version: number;
         };
         TakePresetUpdate: {
             /** @description Take it as a new preset: this one is archived and kept in the history. The only way to take an update that changes a field fixed at creation */
@@ -3597,6 +3707,75 @@ export interface operations {
             };
         };
     };
+    createNoteType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateNoteType"];
+            };
+        };
+        responses: {
+            /** @description Added at version 1 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateNoteTypeResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     publishNoteType: {
         parameters: {
             query?: never;
@@ -3620,6 +3799,222 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublishNoteTypeResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archiveNoteType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A note type’s key, as migration 0017 allows it */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveNoteType"];
+            };
+        };
+        responses: {
+            /** @description Removed, at the version it is at */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteTypeRevision"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restoreNoteType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A note type’s key, as migration 0017 allows it */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreNoteType"];
+            };
+        };
+        responses: {
+            /** @description Restored, at the version it is at */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteTypeRevision"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    takeNoteTypeUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A note type’s key, as migration 0017 allows it */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TakeNoteTypeUpdate"];
+            };
+        };
+        responses: {
+            /** @description The note type that holds the update, at its version now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TakeNoteTypeUpdateResult"];
                 };
             };
             /** @description Not signed in, or the session expired */
