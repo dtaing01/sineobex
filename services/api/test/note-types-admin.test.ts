@@ -856,6 +856,7 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
     expect(hidden.status, JSON.stringify(hidden.body)).toBe(200);
     const mark = await auditMark(h);
     const r = await theirs.publish('quick_encounter', await at('quick_encounter'), [
+      { op: 'rename_type', title: 'Demo: Quick, with foil' },
       { op: 'add_option', path: 'wound.dressing', label: 'Demo: Foil' },
     ]);
     expect(r.status, JSON.stringify(r.body)).toBe(200);
@@ -874,7 +875,12 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
       { code: 't_4', label: 'Demo: Foil' },
     ]);
     expect((await auditAfter(h, mark)).map((e) => [e.action, e.entityId, e.details])).toEqual([
-      ['note_type.published', 'quick_encounter', { version: 2, operations: ['add_option'], count: 1 }],
+      // Each names the operations applied to it: wound care only the one carried there.
+      [
+        'note_type.published',
+        'quick_encounter',
+        { version: 2, operations: ['rename_type', 'add_option'], count: 2 },
+      ],
       ['note_type.published', 'wound_care', { version: 4, operations: ['add_option'], count: 1 }],
     ]);
   });
