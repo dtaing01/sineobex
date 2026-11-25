@@ -25,6 +25,7 @@ import '../../patients/patient_search.dart';
 import '../../presets/models.dart' show FlagTier;
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
 import '../../sync/sync_controller.dart' show SyncController;
+import '../forms/text_field.dart' show limitCodePoints;
 import '../presets/team_setup_screen.dart' show setupNotDownloaded;
 import 'duplicate_panel.dart';
 import 'flag_sheet.dart';
@@ -511,6 +512,16 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
 
   bool get _livingOtherMissing => _living == 'other' && _livingOther.text.trim().isEmpty;
 
+  /// The privacy notice's reason as typed or pasted, cut at [_noticeReasonMax] code points.
+  void _noticeTyped(String typed) {
+    final limited = limitCodePoints(typed, _noticeReasonMax);
+    if (limited == typed) return;
+    _noticeReason.value = TextEditingValue(
+      text: limited,
+      selection: TextSelection.collapsed(offset: limited.length),
+    );
+  }
+
   bool _recognisable() =>
       [_preferred, _given, _family, _descriptor].any((c) => c.text.trim().isNotEmpty) ||
       (_isEdit && _view!.isLocked('legalName'));
@@ -525,6 +536,16 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         // In code points, as the store and the server count a reason: an astral character is one.
         _noticeReason.text.trim().runes.length < 3)
       (message: 'Say why the privacy notice wasn’t given.', focus: _noticeReasonFocus, key: null),
+    // The box keeps at most 300 code points, but a draft restored from an older build may hold more:
+    // said beside its field, as the store would refuse it.
+    if (!_isEdit &&
+        (_notice == PrivacyNoticeDecision.notOffered || _notice == PrivacyNoticeDecision.unable) &&
+        _noticeReason.text.trim().runes.length > _noticeReasonMax)
+      (
+        message: 'Say why the privacy notice wasn’t given in $_noticeReasonMax characters or fewer.',
+        focus: _noticeReasonFocus,
+        key: null,
+      ),
     if (!_recognisable())
       (
         message: _isEdit
@@ -818,6 +839,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   static const _aliasMax = 60;
   static const _substanceMax = 120;
 
+  /// The most a privacy notice's reason holds, in code points (`consent_script.dart`).
+  static const _noticeReasonMax = 300;
+
   void _addAlias() {
     final a = _aliasInput.text.trim();
     if (a.isEmpty) return;
@@ -1104,13 +1128,25 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         ),
         if (_notice == PrivacyNoticeDecision.unable || _notice == PrivacyNoticeDecision.notOffered) ...[
           const SizedBox(height: FieldSpace.s2),
+          // Cut and counted in code points, as the store and the server count a reason (a character
+          // drawn as one but made of two, such as a thumbs-up with a skin tone, counts twice), so the
+          // box never takes a reason Create would then refuse.
           PhiField(
             name: 'noticeReason',
             label: 'Why not?',
             controller: _noticeReason,
             focusNode: _noticeReasonFocus,
             capitalization: TextCapitalization.sentences,
-            maxLength: 300,
+            showCounter: false,
+            onChanged: _noticeTyped,
+          ),
+          const SizedBox(height: FieldSpace.s1),
+          ListenableBuilder(
+            listenable: _noticeReason,
+            builder: (context, _) => Text(
+              '${count(_noticeReason.text.runes.length)} of ${count(_noticeReasonMax)} characters',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
         ],
       ],

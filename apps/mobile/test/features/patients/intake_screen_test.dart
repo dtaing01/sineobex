@@ -846,4 +846,44 @@ void main() {
     final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient);
     expect((create.value! as Map)['privacyNotice'], containsPair('reason', '🧊🧊🧊'));
   });
+
+  // Review finding F6: the box takes no reason the store would then refuse. A thumbs-up with a skin
+  // tone is drawn as one character and is two code points.
+  testWidgets('the privacy notice’s reason is cut at 300 code points, which its counter says, and Create takes it', (
+    tester,
+  ) async {
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+    await tapOn(tester, find.text('Not offered'));
+    // 151 characters on screen, 301 code points.
+    await type(tester, 'noticeReason', '${'👍🏽' * 150}a');
+    final box = tester.widget<TextField>(find.byKey(const ValueKey('phi.noticeReason')));
+    expect(box.controller!.text, '👍🏽' * 150);
+    await expectShown(tester, find.text('300 of 300 characters'));
+    await expectScreenOk(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient);
+    expect((create.value! as Map)['privacyNotice'], containsPair('reason', '👍🏽' * 150));
+  });
+
+  testWidgets('a reason over 300 code points the box got another way, as a draft, is said beside it and nothing '
+      'saves', (tester) async {
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+    await tapOn(tester, find.text('Not offered'));
+    final box = find.byKey(const ValueKey('phi.noticeReason'));
+    await reveal(tester, box);
+    // Not typed, so not cut: as a draft restored from an older build would fill it.
+    tester.widget<TextField>(box).controller!.text = '👍🏽' * 151;
+    await tester.pump();
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    await expectShown(tester, find.text('Say why the privacy notice wasn’t given in 300 characters or fewer.'));
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    // Focus goes to the box (kept alive while it has it, wherever the list is scrolled).
+    await settle(tester);
+    final focused = find.byKey(const ValueKey('phi.noticeReason'), skipOffstage: false);
+    expect(tester.widget<TextField>(focused).focusNode!.hasFocus, isTrue);
+  });
 }
