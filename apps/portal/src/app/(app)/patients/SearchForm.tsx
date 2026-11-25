@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { searchPatients, type SearchState } from '@/app/actions/patients';
 import { ActionForm, SubmitButton, TextField, useFieldId, useFormState } from '@/components/ActionForm';
+import type { ListedFlag } from '@/lib/flags';
 import styles from './patients.module.css';
 
 // The form's action runs here and hands the server only the form. Given the server action itself,
@@ -70,7 +71,9 @@ function Results() {
  * Patient search (design 12.2). The search is a POST and its answer lives only in this form's
  * state: the address stays /patients, so names and birth dates never reach the history.
  */
-export function SearchForm() {
+export function SearchForm({ flags = [] }: { flags?: readonly ListedFlag[] }) {
+  // The flags' fields are written ahead of their code (card P5-tests; P5-portal-filters draws them).
+  void flags;
   return (
     <ActionForm id="search" action={search} label="Search patients">
       <TextField

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   errorCode,
+  flagRefusalSentence,
   PRESET_SENTENCES,
   presetRefusalState,
   NAME_PROBLEM,
@@ -402,5 +403,37 @@ describe('a preset form the API refused', () => {
     );
     // A code the routes do not answer today shows the API's own words.
     expect(say('something_new')).toBe('The API’s own words.');
+  });
+});
+
+// The Flags panel's refusals (phase 5 design 7, 8.1; card P5-portal-panel), written ahead of their
+// code: each in plain words, none the API's code, and each a sentence of its own.
+describe('the Flags panel’s refusals', () => {
+  const cases: [Parameters<typeof flagRefusalSentence>[0], number, string][] = [
+    ['change', 422, 'unknown_flag'],
+    ['change', 422, 'reason_invalid'],
+    ['change', 409, 'archived'],
+    ['change', 404, 'not_found'],
+    ['change', 403, 'forbidden'],
+    ['mark', 403, 'forbidden'],
+    ['mark', 404, 'not_found'],
+    ['mark', 422, 'validation_failed'],
+  ];
+
+  it('words each one plainly, as a sentence, never with the API’s code', () => {
+    for (const [act, status, code] of cases) {
+      const sentence = flagRefusalSentence(act, status, code);
+      expect(sentence, `${act} ${code}`).toMatch(/^[A-Z].*\.$/);
+      expect(sentence).not.toMatch(/[_{}<>]|\d{3}/);
+    }
+    expect(
+      new Set(cases.map(([act, status, code]) => flagRefusalSentence(act, status, code))).size,
+    ).toBeGreaterThan(5);
+  });
+
+  it('says a removed flag can only be cleared, and the reason’s bounds for each act', () => {
+    expect(flagRefusalSentence('change', 409, 'archived')).toContain('clear');
+    expect(flagRefusalSentence('change', 422, 'reason_invalid')).toContain('500');
+    expect(flagRefusalSentence('mark', 422, 'validation_failed')).toContain('3 to 300');
   });
 });

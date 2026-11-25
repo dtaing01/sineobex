@@ -704,3 +704,17 @@ export function publishRefusal(
       return { error: 'Something went wrong, so nothing was published. Try again.' };
   }
 }
+
+/** The flag acts of the patient page's Flags panel (phase 5 design 7, 8.1). */
+export type FlagAct = 'change' | 'mark';
+
+/**
+ * What the Flags panel says of a refusal of [act] (status and code as the API answered them), in
+ * plain words, never the API's: a flag the team no longer lists, a removed flag offered only to
+ * clear, a reason out of bounds, a chart or change not found, an act the person may not make.
+ *
+ * Written ahead of its code (card P5-tests): it throws until card P5-portal-panel builds it.
+ */
+export function flagRefusalSentence(act: FlagAct, status: number, code: string): string {
+  throw new Error(`P5-portal-panel ${act} ${status} ${code}`);
+}
