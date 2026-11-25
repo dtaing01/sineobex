@@ -53,7 +53,16 @@ const row: NoteTypeRow = {
   protected: { sections: ['consent'], fields: [], options: [{ path: 'needs.given', code: 'none' }] },
 };
 
-const draw = () => renderToStaticMarkup(createElement(NoteTypeEditor, { row, titles: {} }));
+const draw = () =>
+  renderToStaticMarkup(
+    createElement(NoteTypeEditor, {
+      row,
+      titles: {},
+      sources: [
+        { key: 'outreach', title: 'Demo: Outreach', sections: [{ id: 'outreach', title: 'Demo: Contact' }] },
+      ],
+    }),
+  );
 
 const held = (id: number, op: Record<string, unknown>): HeldOp => ({
   id,

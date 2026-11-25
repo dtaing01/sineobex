@@ -78,7 +78,14 @@ export default async function NoteTypePage({
   const row = rows.find((r) => r.key === key);
   if (!row) notFound();
   const history = await noteTypeHistory(key);
-  const titles = Object.fromEntries(rows.filter((r) => r.key !== key).map((r) => [r.key, r.title]));
+  const others = rows.filter((r) => r.key !== key);
+  const titles = Object.fromEntries(others.map((r) => [r.key, r.title]));
+  // Every other note type, a removed one too, with its sections: what can be copied is the API's to say.
+  const sources = others.map((r) => ({
+    key: r.key,
+    title: r.state === 'archived' ? `${r.title} (removed)` : r.title,
+    sections: r.definition.sections.map((s) => ({ id: s.id, title: s.title })),
+  }));
   const { definition } = row;
   return (
     <>
@@ -117,7 +124,7 @@ export default async function NoteTypePage({
             Change it here: rename it, rename or hide its sections and fields, and change a choice’s answers.
             Each change is held until you publish them all, with a reason.
           </p>
-          <NoteTypeEditor row={row} titles={titles} />
+          <NoteTypeEditor row={row} titles={titles} sources={sources} />
           <section aria-labelledby="remove-note-type" className="px-panel">
             <h2 id="remove-note-type" className="px-h2">
               Remove

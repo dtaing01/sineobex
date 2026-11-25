@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
+import { AddField, AddSection } from '@/components/presets/AddField';
+import { CopySection, type CopySource } from '@/components/presets/CopySection';
+import { OptionEditor } from '@/components/presets/OptionEditor';
 import styles from '@/components/presets/presets.module.css';
 import type { NoteTypeEdit, NoteTypeField, NoteTypeRow, NoteTypeSection } from '@/lib/presets';
 import { NOTE_TYPE_SENTENCES } from '@/lib/refusals';
@@ -10,6 +13,7 @@ import {
   heldRename,
   heldTitle,
   kindOf,
+  newFieldKind,
   quoted,
   replaceOrAdd,
   valueOf,
@@ -42,6 +46,8 @@ export interface EditorProps {
   row: NoteTypeRow;
   /** Every other note type's title by key: a refusal from a field another one holds names it. */
   titles: Readonly<Record<string, string>>;
+  /** The other note types a section can be copied from, with their sections (CopySection). */
+  sources: readonly CopySource[];
 }
 
 /** The words a person types for a label or a title, sent as typed: the API refuses empty words. */
@@ -319,7 +325,35 @@ function SectionBlock({
           {after}
         </div>
       )}
+      <HeldHere section={section} held={acts.held} />
     </section>
+  );
+}
+
+/**
+ * What the held changes add to a section, or after it, said in its panel without opening it: the
+ * changes themselves, with Undo, are in Changes to publish.
+ */
+function HeldHere({ section, held }: { section: NoteTypeSection; held: readonly HeldOp[] }) {
+  const fields = held.filter((h) => h.op.op === 'add_field' && valueOf(h, 'sectionId') === section.id);
+  const after = held.filter(
+    (h) =>
+      (h.op.op === 'add_section' || h.op.op === 'copy_section') &&
+      valueOf(h, 'afterSectionId') === section.id,
+  );
+  if (fields.length === 0 && after.length === 0) return null;
+  return (
+    <ul className={`px-list ${editor.held}`}>
+      {fields.map((h) => (
+        <li key={h.id}>
+          A new field when you publish: {quoted(String(valueOf(h, 'label')))} (
+          {newFieldKind(h.op as unknown as { kind: string; many?: unknown })}).
+        </li>
+      ))}
+      {after.map((h) => (
+        <li key={h.id}>A new section after this one when you publish: {h.said}.</li>
+      ))}
+    </ul>
   );
 }
 
@@ -393,7 +427,7 @@ export interface EditorContext extends PartActs {
  * render of a newer version says so and is never published over unseen, and a Publish sent again
  * after a dropped connection is refused stale rather than made twice.
  */
-export function NoteTypeEditor({ row, titles }: EditorProps) {
+export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
   // The row of the first render, for the life of the page: later renders are never sent (D115).
   const [opened] = useState(row);
   const [held, setHeld] = useState<HeldOp[]>([]);
@@ -446,7 +480,23 @@ export function NoteTypeEditor({ row, titles }: EditorProps) {
   const { definition } = opened;
   const protectedSections = new Set(opened.protected.sections);
   const protectedFields = new Set(opened.protected.fields);
+  const protectedOptions = new Map<string, Set<string>>();
+  for (const { path, code } of opened.protected.options)
+    protectedOptions.set(path, (protectedOptions.get(path) ?? new Set()).add(code));
   const changed = row.version !== opened.version;
+  const answers = (field: NoteTypeField, path: string) => (
+    <OptionEditor
+      path={path}
+      label={field.label}
+      options={field.options ?? []}
+      fieldProtected={protectedFields.has(path)}
+      protectedCodes={protectedOptions.get(path) ?? new Set()}
+      acts={ctx}
+    />
+  );
+  const startHeld = held.filter(
+    (h) => (h.op.op === 'add_section' || h.op.op === 'copy_section') && valueOf(h, 'afterSectionId') === null,
+  );
 
   function leave(to: string) {
     setLeaving(true);
@@ -642,6 +692,13 @@ export function NoteTypeEditor({ row, titles }: EditorProps) {
         </form>
       </section>
 
+      {startHeld.length > 0 && (
+        <ul className={`px-list ${editor.held}`}>
+          {startHeld.map((h) => (
+            <li key={h.id}>A new section at the start when you publish: {h.said}.</li>
+          ))}
+        </ul>
+      )}
       {definition.sections.map((section) => (
         <SectionBlock
           key={section.id}
@@ -649,8 +706,12 @@ export function NoteTypeEditor({ row, titles }: EditorProps) {
           protectedSections={protectedSections}
           protectedFields={protectedFields}
           acts={ctx}
+          options={answers}
+          after={protectedSections.has(section.id) ? null : <AddField section={section} acts={ctx} />}
         />
       ))}
+      <AddSection sections={definition.sections} acts={ctx} />
+      {sources.length > 0 && <CopySection sources={sources} sections={definition.sections} acts={ctx} />}
     </div>
   );
 }

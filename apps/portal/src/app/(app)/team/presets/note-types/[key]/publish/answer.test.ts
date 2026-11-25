@@ -94,4 +94,58 @@ describe('what Publish is told', () => {
       fieldErrors: { reason: 'Reason: Give a reason of 3 to 300 characters.' },
     });
   });
+
+  it('names the change a number typed as words is in, by its place', () => {
+    expect(
+      publishAnswer(KEY, {
+        refused: {
+          status: 422,
+          code: 'validation_failed',
+          details: { fields: [{ path: 'ops.2.fields.0.min', problem: 'invalid_type' }] },
+        },
+      }),
+    ).toEqual({ ok: false, error: 'Enter numbers for the lowest and highest it takes.', opIndex: 2 });
+  });
+
+  it('says each operation’s refusal beside it, and names another note type a reached field is in', () => {
+    const said = (code: string, details: Record<string, unknown> = { opIndex: 1 }) =>
+      publishAnswer(KEY, { refused: { status: 422, code, details } });
+    for (const code of [
+      'in_use',
+      'not_found',
+      'title_invalid',
+      'label_invalid',
+      'last_option',
+      'last_field',
+      'last_section',
+      'too_many_fields',
+      'too_many_sections',
+      'id_taken',
+      'invalid',
+    ]) {
+      const answer = said(code);
+      expect(answer, code).toMatchObject({ ok: false, opIndex: 1 });
+      expect((answer as { error: string }).error, code).not.toBe('This change can’t be made.');
+    }
+    expect(said('protected', { opIndex: 0, noteTypeKey: 'wound_care' })).toEqual({
+      ok: false,
+      error: 'This part can’t be changed.',
+      opIndex: 0,
+      noteTypeKey: 'wound_care',
+    });
+  });
+
+  it('says a publish of a removed note type, of nothing, and one its checks refuse, without naming a change', () => {
+    const said = (status: number, code: string) => publishAnswer(KEY, { refused: { status, code } });
+    expect(said(409, 'archived')).toMatchObject({ ok: false, error: expect.stringContaining('removed') });
+    expect(said(422, 'no_change')).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('nothing to publish'),
+    });
+    expect(said(422, 'invalid')).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('wasn’t published'),
+    });
+    expect(said(401, 'unauthorized')).toEqual({ ok: false, redirect: '/sign-in?ended=expired' });
+  });
 });
