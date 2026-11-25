@@ -173,6 +173,38 @@ describe('adding a note type', () => {
     answer = refusal(403, 'reauth_required');
     expect((await run(addNoteTypeAction, blank)).to).toBe('/reauth?next=%2Fteam%2Fpresets%2Fnote-types');
   });
+
+  it('sends a blank one with nothing ticked or chosen as it is, so the API names both fields in one answer', async () => {
+    answer = refusal(422, 'validation_failed', {
+      fields: [
+        { path: 'kinds', problem: 'too_small' },
+        { path: 'group', problem: 'invalid_value' },
+        { path: 'title', problem: 'custom' },
+      ],
+    });
+    const r = await run(addNoteTypeAction, { title: '  ', copyOf: '', reason: 'Demo: the night team asked' });
+    expect(writes()[0]!.init!.body).toEqual({
+      title: '',
+      kinds: [],
+      group: '',
+      reason: 'Demo: the night team asked',
+    });
+    expect(r.state).toEqual({
+      error: 'Some fields need changing. Check each one below.',
+      fieldErrors: {
+        kinds: 'Which visits: Choose Medical, Non-Medical or both.',
+        group: 'Timeline group: Choose where the timeline files its notes.',
+        title: 'Title: Enter a title of 1 to 80 characters.',
+      },
+      values: { title: '  ', copyOf: '', reason: 'Demo: the night team asked' },
+    });
+  });
+
+  it('keeps both kinds ticked after a refusal', async () => {
+    answer = refusal(409, 'name_taken');
+    const r = await run(addNoteTypeAction, { ...blank, kinds: ['medical', 'non_medical'] });
+    expect(r.state?.values?.kinds).toBe('medical,non_medical');
+  });
 });
 
 describe('removing and restoring a note type', () => {
@@ -311,6 +343,26 @@ describe('taking Sineobex’s update to a note type', () => {
     expect(revalidated).toEqual([PAGE]);
     // Its next take sends the versions the review now shows, not the ones it sent.
     expect(r.state?.values).toEqual({ key: 'psychological', asNew: 'false', reason: 'Demo: take it' });
+  });
+
+  it('says why a take as new, a held title or nothing on offer refused it', async () => {
+    const said = async (status: number, code: string, asNew = 'false', details?: Record<string, unknown>) => {
+      answer = refusal(status, code, details);
+      return (await run(takeNoteTypeUpdateAction, { ...take, asNew })).state?.error;
+    };
+    expect(await said(409, 'not_removable', 'true')).toBe(
+      'The Red flags note can’t be removed, so its update can’t be added as a new one.',
+    );
+    expect(await said(409, 'name_taken')).toBe(
+      'Another note type has the name this update gives it. Rename that one first.',
+    );
+    expect(await said(409, 'no_update')).toBe('There’s no update to take now.');
+    expect(await said(409, 'referenced', 'true', { referencedBy: { field_supply_map: 1 } })).toBe(
+      'Still used by 1 mapping. Take it out of that first.',
+    );
+    expect(await said(422, 'invalid', 'false', { problems: [] })).toBe(
+      'This update doesn’t fit your team’s other note types, so it can’t be taken as it is.',
+    );
   });
 
   it('asks nothing of the API for a take the page doesn’t write', async () => {
