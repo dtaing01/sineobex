@@ -313,6 +313,19 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('while the clock is paused the fixes wait, and say so (D35)', (tester) async {
+      final (:h, changeId: _, recordId: _, medium: _) = await refusedFlag(tester);
+      // The server's clock is hours from the phone's: charting pauses, and the fixes with it.
+      h.serverAhead = const Duration(hours: 2);
+      await tester.runAsync(() => h.sync.checkClock(fresh: true));
+      await settle(tester);
+      await openAttention(tester);
+      final choose = find.widgetWithText(FilledButton, 'Choose a flag');
+      await reveal(tester, choose);
+      expect(tester.widget<FilledButton>(choose).onPressed, isNull);
+      await expectShown(tester, find.text('You can choose once the phone’s clock is right.'));
+    });
+
     testWidgets('once the store freezes, only how many changes are on the phone (D125)', (tester) async {
       const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
       final (:h, changeId: _, recordId: _, medium: _) = await refusedFlag(tester);

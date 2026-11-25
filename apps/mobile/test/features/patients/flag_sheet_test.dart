@@ -171,6 +171,7 @@ void main() {
   testWidgets('each Save is announced again, so a second press is heard too', (tester) async {
     final handle = tester.ensureSemantics();
     final (:h, :f) = await openDel(tester);
+    final nodes = <int>{};
     for (final (pill, reason) in [
       ('Red · Demo: High', 'Demo: left hospital'),
       ('Yellow · Demo: Medium', 'Demo: settled in'),
@@ -182,7 +183,10 @@ void main() {
       final said = find.text('Flags saved.');
       expect(said, findsOneWidget);
       expect(tester.getSemantics(said), isSemantics(isLiveRegion: true));
+      nodes.add(tester.getSemantics(said).id);
     }
+    // A new node at each press: a live region is read as it appears, not while the same words stay.
+    expect(nodes, hasLength(2));
     expect([for (final v in flagCreates(h)) v['flagId']], [f.high, f.medium]);
     handle.dispose();
   });

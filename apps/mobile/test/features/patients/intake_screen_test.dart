@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/flag_sheet.dart'
     show chooseConditionsAction, chooseRiskLevelAction, noRiskLevelText;
+import 'package:sineobex_field/features/patients/intake_screen.dart' show IntakeScreen;
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/patients/patient_repository.dart' show PatientRepository;
 import 'package:sineobex_field/presets/preset_store.dart';
@@ -813,6 +814,14 @@ void main() {
       await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
       final id = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient).recordId;
       await go(tester, '/patients/$id/edit');
+      // The whole form, to its end: a section near the bottom is drawn only once scrolled to. The
+      // form's own list, not the profile's under it.
+      final form = find.descendant(of: find.byType(IntakeScreen), matching: find.byType(Scrollable)).first;
+      // A drag scrolls only as far as the list knows its length, which grows as it builds: ten.
+      for (var i = 0; i < 10; i++) {
+        await tester.drag(form, const Offset(0, -1000));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('Risk level'), findsNothing);
       expect(find.text(chooseRiskLevelAction), findsNothing);
     });
