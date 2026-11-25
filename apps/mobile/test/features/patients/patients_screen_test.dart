@@ -427,13 +427,17 @@ void main() {
     testWidgets('a filter narrows a name search by the index’s flags; New patient waits for no one found', (
       tester,
     ) async {
-      await listWithFlags(tester);
+      final h = await listWithFlags(tester);
       await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quill');
       await tester.pump(const Duration(milliseconds: 700));
       await settle(tester);
       await reveal(tester, rowOf('Demo Quill'));
+      final store = h.sync.store!;
+      final before = auditEvents(store).length;
       await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
       expect(rowOf('Demo Quill'), findsNothing);
+      // Narrowed from what the search logged as it ran: no list of the filter's own, and no entry.
+      expect(auditEvents(store).sublist(before), isEmpty);
       // The search found people: the filter leaving them out is no reason to register someone new.
       expect(find.text('New patient with this name'), findsNothing);
       // Cleared, the search's own list again.

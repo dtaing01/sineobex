@@ -214,11 +214,13 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   bool get _filtering => _riskFilter != null || _conditionFilter.isNotEmpty;
 
   /// The patients on this phone carrying the filters' flags, as the index gives them: one list, one
-  /// audit entry naming who it shows and never a flag. With no filter, the empty state again.
+  /// audit entry naming who it shows and never a flag. Only with nothing typed, where it shows: a
+  /// search's results are narrowed instead ([_narrowed]), and logged as the search ran. With no
+  /// filter, the empty state again.
   void _listFlagged() {
-    if (!_filtering) {
+    if (!_filtering || !_emptyQuery) {
       _flagged = null;
-      if (_emptyQuery) _loadEmpty();
+      if (!_filtering && _emptyQuery) _loadEmpty();
       return;
     }
     try {
