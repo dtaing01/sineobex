@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   errorCode,
+  flagRefusal,
   flagRefusalSentence,
   PRESET_SENTENCES,
   presetRefusalState,
@@ -424,7 +425,9 @@ describe('the Flags panel’s refusals', () => {
     for (const [act, status, code] of cases) {
       const sentence = flagRefusalSentence(act, status, code);
       expect(sentence, `${act} ${code}`).toMatch(/^[A-Z].*\.$/);
-      expect(sentence).not.toMatch(/[_{}<>]|\d{3}/);
+      // Neither the code nor the status: a reason's bounds (1 to 500, 3 to 300) are words the person needs.
+      expect(sentence).not.toMatch(/[_{}<>]/);
+      expect(sentence).not.toContain(String(status));
     }
     expect(
       new Set(cases.map(([act, status, code]) => flagRefusalSentence(act, status, code))).size,
@@ -435,5 +438,33 @@ describe('the Flags panel’s refusals', () => {
     expect(flagRefusalSentence('change', 409, 'archived')).toContain('clear');
     expect(flagRefusalSentence('change', 422, 'reason_invalid')).toContain('500');
     expect(flagRefusalSentence('mark', 422, 'validation_failed')).toContain('3 to 300');
+  });
+});
+
+// Each refusal beside the field it is about (card P5-portal-panel).
+describe('the Flags panel’s refusals, by field', () => {
+  it('puts a flag’s refusals beside the flag, and a reason’s beside the reason', () => {
+    for (const code of ['unknown_flag', 'archived', 'flag_hidden'])
+      expect(flagRefusal('change', code === 'flag_hidden' ? 403 : 409, code).field, code).toBe('flagId');
+    expect(flagRefusal('change', 422, 'reason_invalid')).toEqual({
+      error: 'Give a reason of 1 to 500 characters.',
+      field: 'reason',
+    });
+    expect(
+      flagRefusal('change', 422, 'validation_failed', { fields: [{ path: 'reason', problem: 'custom' }] }),
+    ).toEqual({ error: 'Give a reason of 1 to 500 characters.', field: 'reason' });
+    expect(flagRefusal('mark', 422, 'validation_failed', { fields: [{ path: 'reason' }] })).toEqual({
+      error: 'Give a reason of 3 to 300 characters.',
+      field: 'reason',
+    });
+    // About the act, not a field: said above the form.
+    for (const [act, status, code] of [
+      ['change', 404, 'not_found'],
+      ['change', 403, 'forbidden'],
+      ['change', 409, 'id_taken'],
+      ['mark', 404, 'not_found'],
+      ['mark', 403, 'forbidden'],
+    ] as const)
+      expect(flagRefusal(act, status, code).field, `${act} ${code}`).toBeUndefined();
   });
 });

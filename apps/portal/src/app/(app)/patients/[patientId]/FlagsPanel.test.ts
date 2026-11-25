@@ -166,7 +166,8 @@ describe('the Flags panel’s form', () => {
     expect(text(html)).toContain('No longer on the team’s list');
     expect(hasTag(html, 'input', ['type="radio"', 'name="action"', 'value="set"'])).toBe(true);
     expect(hasTag(html, 'input', ['type="radio"', 'name="action"', 'value="clear"'])).toBe(true);
-    expect(hasTag(html, 'textarea', ['name="reason"', 'autocomplete="off"', 'required=""'])).toBe(true);
+    // React writes the attribute as autoComplete, which HTML reads in any case.
+    expect(hasTag(html, 'textarea', ['name="reason"', 'autoComplete="off"', 'required=""'])).toBe(true);
     expect(html).toMatch(
       /<button[^>]*type="submit"[^>]*>(?:(?!<\/button>).)*Save(?:(?!<\/button>).)*<\/button>/s,
     );

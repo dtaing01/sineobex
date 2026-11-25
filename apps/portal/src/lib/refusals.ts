@@ -708,13 +708,62 @@ export function publishRefusal(
 /** The flag acts of the patient page's Flags panel (phase 5 design 7, 8.1). */
 export type FlagAct = 'change' | 'mark';
 
+/** Set or clear, each refusal of design 7's flag rows. */
+const FLAG_CHANGE_REFUSALS: Readonly<Record<string, string>> = {
+  unknown_flag: 'That flag isn’t on your team’s list any more. Reload the page to see the flags you can set.',
+  reason_invalid: 'Give a reason of 1 to 500 characters.',
+  archived: 'This flag is no longer on your team’s list, so it can only be cleared.',
+  flag_hidden: 'Your role can’t see this flag, so you can’t change it.',
+  not_found: 'This patient’s chart can’t be found. Reload the page.',
+  forbidden: 'Your role doesn’t let you change flags. Reload the page to see what you can do.',
+  id_taken:
+    'This form already saved a change, so this one wasn’t saved. Reload the page to see the flags as they are now.',
+};
+
+/** Entered in error, each refusal of design 7's row. */
+const FLAG_MARK_REFUSALS: Readonly<Record<string, string>> = {
+  forbidden: 'Only the person who made this change, or a Program Admin, can mark it entered in error.',
+  not_found: 'This change isn’t on the chart any more. Reload the page to see its flags.',
+  validation_failed: 'Give a reason of 3 to 300 characters.',
+  already_marked: 'This change was marked entered in error already.',
+};
+
 /**
  * What the Flags panel says of a refusal of [act] (status and code as the API answered them), in
  * plain words, never the API's: a flag the team no longer lists, a removed flag offered only to
  * clear, a reason out of bounds, a chart or change not found, an act the person may not make.
- *
- * Written ahead of its code (card P5-tests): it throws until card P5-portal-panel builds it.
  */
 export function flagRefusalSentence(act: FlagAct, status: number, code: string): string {
-  throw new Error(`P5-portal-panel ${act} ${status} ${code}`);
+  const said = (act === 'change' ? FLAG_CHANGE_REFUSALS : FLAG_MARK_REFUSALS)[code];
+  if (said) return said;
+  if (code === 'validation_failed' || status === 422)
+    return 'Something about this request was wrong. Reload the page and try again.';
+  return act === 'change'
+    ? 'Something went wrong, so the flag wasn’t changed. Try again.'
+    : 'Something went wrong, so the change wasn’t marked. Try again.';
+}
+
+/**
+ * A refusal of [act] as the panel shows it: its sentence, and the field it is about, said beside
+ * that field. A reason a request's own check refused (`validation_failed` naming `reason`) is said
+ * as the act's reason refusal.
+ */
+export function flagRefusal(
+  act: FlagAct,
+  status: number,
+  code: string,
+  details?: Record<string, unknown>,
+): { error: string; field?: 'flagId' | 'reason' } {
+  const fields = Array.isArray(details?.fields) ? (details.fields as { path?: unknown }[]) : [];
+  const aboutReason = code === 'validation_failed' && fields.some((f) => f?.path === 'reason');
+  if (act === 'change') {
+    if (code === 'reason_invalid' || aboutReason)
+      return { error: FLAG_CHANGE_REFUSALS.reason_invalid!, field: 'reason' };
+    if (code === 'unknown_flag' || code === 'archived' || code === 'flag_hidden')
+      return { error: flagRefusalSentence(act, status, code), field: 'flagId' };
+    return { error: flagRefusalSentence(act, status, code) };
+  }
+  // A mark sends its reason alone, so a request its check refused is refused for the reason.
+  if (code === 'validation_failed') return { error: FLAG_MARK_REFUSALS.validation_failed!, field: 'reason' };
+  return { error: flagRefusalSentence(act, status, code) };
 }

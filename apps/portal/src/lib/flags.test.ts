@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Api from './api';
 import {
   changeFlag,
+  flagAnswer,
+  flagChangeRequest,
   flagChoices,
+  flagMarkRequest,
   listFlags,
   markableChanges,
   markFlagChange,
@@ -202,5 +205,60 @@ describe('what the panel offers', () => {
     expect(
       markableChanges({ ...chart, flagChanges: undefined }, { userId: ALEX, permissions: edit }),
     ).toEqual([]);
+  });
+});
+
+// What the route handlers read from the panel and say back to it (card P5-portal-panel).
+describe('the route handlers’ side', () => {
+  const sent = { id: CHANGE, flagId: HIGH, action: 'set', reason: 'Demo: left hospital this week' };
+
+  it('reads the panel’s post as sent, its reason trimmed as the phone trims it, and nothing else', () => {
+    expect(flagChangeRequest(sent)).toEqual(sent);
+    // A space or a line end at either end, U+0085 among them, which JavaScript's trim keeps.
+    expect(flagChangeRequest({ ...sent, reason: ' \u0085Demo: left hospital\n\u0085 ' })).toEqual({
+      ...sent,
+      reason: 'Demo: left hospital',
+    });
+    expect(flagChangeRequest({ ...sent, extra: 'x' })).toEqual(sent);
+    for (const bad of [null, [], 'x', { ...sent, id: undefined }, { ...sent, action: 'SET' }])
+      expect(flagChangeRequest(bad), JSON.stringify(bad)).toBeNull();
+    expect(flagMarkRequest({ reason: '  Demo: wrong patient \u0085' })).toEqual({
+      reason: 'Demo: wrong patient',
+    });
+    expect(flagMarkRequest({ reason: 3 })).toBeNull();
+  });
+
+  it('says a refusal in the panel’s words beside its field, and sends the browser on only to do something first', () => {
+    expect(flagAnswer('change', PATIENT, { done: true })).toEqual({ ok: true });
+    expect(flagAnswer('change', PATIENT, { refused: { status: 409, code: 'archived' } })).toEqual({
+      ok: false,
+      code: 'archived',
+      error: 'This flag is no longer on your team’s list, so it can only be cleared.',
+      field: 'flagId',
+    });
+    expect(flagAnswer('change', PATIENT, { refused: { status: 422, code: 'reason_invalid' } })).toMatchObject(
+      {
+        ok: false,
+        field: 'reason',
+      },
+    );
+    // A role that may no longer change flags, or a mark of someone else's change: words, never Home.
+    expect(flagAnswer('change', PATIENT, { refused: { status: 403, code: 'forbidden' } })).toMatchObject({
+      ok: false,
+      error: 'Your role doesn’t let you change flags. Reload the page to see what you can do.',
+    });
+    expect(flagAnswer('mark', PATIENT, { refused: { status: 403, code: 'forbidden' } })).toMatchObject({
+      ok: false,
+      error: 'Only the person who made this change, or a Program Admin, can mark it entered in error.',
+    });
+    // Signed out on the way, or a team suspended: where the browser goes.
+    expect(flagAnswer('change', PATIENT, { refused: { status: 401, code: 'unauthorized' } })).toEqual({
+      ok: false,
+      redirect: '/sign-in?ended=expired',
+    });
+    expect(flagAnswer('mark', PATIENT, { refused: { status: 403, code: 'team_suspended' } })).toEqual({
+      ok: false,
+      redirect: '/select-team?problem=team_suspended',
+    });
   });
 });

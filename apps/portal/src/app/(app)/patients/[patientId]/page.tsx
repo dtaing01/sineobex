@@ -7,6 +7,7 @@ import { chartValue, PatientHeader } from '@/components/PatientHeader';
 import { ReviewForm } from '@/components/ReviewForm';
 import { teamToday } from '@/lib/dob';
 import { referralRows, TIMELINE_PAGE, visitRow } from '@/lib/encounters';
+import { flagChoices, listFlags, markableChanges } from '@/lib/flags';
 import { formatDateTime, PROBLEM_STATUS, syncFieldLabel } from '@/lib/labels';
 import { can, currentUser } from '@/lib/me';
 import { loadChart } from '../chart';
@@ -19,6 +20,7 @@ import {
   formatDayOf,
 } from '../format';
 import styles from '../patients.module.css';
+import { FlagsPanel } from './FlagsPanel';
 import { Timeline } from './Timeline';
 
 // Never a name: titles land in the history and on screen shares (module 9).
@@ -45,6 +47,12 @@ const CORRECTED: Record<string, string> = {
 const DECIDED: Record<string, string> = {
   current: 'Decided. The chart keeps its value, and the other stays in its history.',
   alternate: 'Decided. The chart now shows the value you chose; the one it replaced stays in its history.',
+};
+
+/** What the Flags panel says when the page is loaded again after its act (`?flag=`). */
+const FLAG_DONE: Record<string, string> = {
+  saved: 'Flag saved. The history below shows the change.',
+  marked: 'Marked entered in error. It no longer counts among the patient’s flags.',
 };
 
 const METHOD: Record<Schemas['ConsentView']['method'], string> = {
@@ -82,6 +90,12 @@ function Problems({ chart }: { chart: Schemas['PatientChart'] }) {
               {attr(p, 'mergedInto') ? ' · Merged into another entry' : ''}
               {attr(p, 'reversalRequest') === 'open' ? ' · Waiting for an admin to reopen it' : ''}
             </p>
+            {/* The API answers whether its status check is due, by the team's window (design 5.3). */}
+            {attr(p, 'statusCheckDue') === true && (
+              <p>
+                <span className="sx-pill sx-pill--info">Status check due</span>
+              </p>
+            )}
             {(history.length > 0 || notes.length > 0) && (
               <details>
                 <summary>
@@ -126,11 +140,14 @@ export default async function PatientPage({
 }) {
   const { patientId } = await params;
   const query = await searchParams;
-  const [chart, { team }] = await Promise.all([loadChart(patientId), currentUser()]);
+  const [chart, { me, team }] = await Promise.all([loadChart(patientId), currentUser()]);
   const today = teamToday();
   const id = chart.canonicalId;
   const corrected = CORRECTED[typeof query.corrected === 'string' ? query.corrected : ''];
   const decided = DECIDED[typeof query.decided === 'string' ? query.decided : ''];
+  // The flags the panel offers are the API's for this person (D114), asked only where they may change one.
+  const canFlag = can(team, 'patients.edit');
+  const listed = chart.flags && canFlag ? await listFlags() : [];
   const aliases = chart.aliases.filter((a) => a.status === 'active');
   const removedAliases = chart.aliases.filter((a) => a.status !== 'active');
   const allergies = chart.allergies.filter((a) => a.status === 'active');
@@ -207,6 +224,27 @@ export default async function PatientPage({
           </div>
         </dl>
       </section>
+
+      {chart.flags && (
+        <section id="flags" aria-labelledby="flags-heading" className="px-panel">
+          <h2 id="flags-heading" className="px-h2">
+            Flags
+          </h2>
+          <FlagsPanel
+            patientId={id}
+            flags={chart.flags}
+            choices={flagChoices(listed, chart)}
+            markable={markableChanges(chart, { userId: me.user.id, permissions: team?.permissions ?? [] })}
+            canEdit={canFlag}
+            changeId={randomUUID()}
+            notice={
+              typeof query.flag === 'string' && Object.hasOwn(FLAG_DONE, query.flag)
+                ? FLAG_DONE[query.flag]
+                : undefined
+            }
+          />
+        </section>
+      )}
 
       <section aria-labelledby="allergies-heading" className="px-panel">
         <h2 id="allergies-heading" className="px-h2">
