@@ -285,8 +285,7 @@ export interface PresetArea {
   noun: readonly [one: string, many: string];
 }
 
-// The field supplies card is unit P4's (phase 5 design 13.4, card P4-field-supplies): it joins this
-// list with its page, after Flags, in 8.1's order.
+// In 8.1's order. Field supplies counts its mappings; the note types they name are its page's to read.
 export const PRESET_AREAS: readonly PresetArea[] = [
   {
     key: 'categories',
@@ -319,6 +318,14 @@ export const PRESET_AREAS: readonly PresetArea[] = [
     counted: 'flag',
     kinds: ['flag'],
     noun: ['flag', 'flags'],
+  },
+  {
+    key: 'field-supplies',
+    title: 'Field supplies',
+    href: '/team/presets/field-supplies',
+    counted: 'field_supply_map',
+    kinds: ['field_supply_map'],
+    noun: ['mapping', 'mappings'],
   },
   {
     key: 'condition-supplies',

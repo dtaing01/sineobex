@@ -253,3 +253,104 @@ describe('editing a field supply mapping', () => {
     expect(requests).toEqual([]);
   });
 });
+
+// Card P4-field-supplies: what the forms send beyond the cases written ahead of them.
+describe('a field supply mapping’s answer and lines, as sent', () => {
+  const fields = {
+    name: 'Demo: Flu shot given',
+    noteTypeKey: 'general_primary_care',
+    path: 'preventive.vaccine_status.flu',
+    'when.kind': 'equals',
+    'when.value': 'given_today',
+    'lines.0.itemId': GAUZE,
+    'lines.0.qty': '1',
+    reason: 'Demo: count the flu shots',
+  };
+
+  it('sends an answer that is an option as its code, a tick’s as true and a number’s as a number', async () => {
+    answer = { status: 201, body: { id: MAP, version: 1, revision: 4 } };
+    for (const [value, sent] of [
+      ['given_today', 'given_today'],
+      ['true', true],
+      ['40', 40],
+      ['-2.5', -2.5],
+    ] as const) {
+      requests.length = 0;
+      await run(addFieldSupplyAction, { ...fields, 'when.value': value });
+      expect(sentBody().when).toEqual({ equals: sent });
+    }
+  });
+
+  it('sends a field with no answer, and an answer with no field, as typed, so the API names what’s missing', async () => {
+    answer = refusal(422, 'invalid', { problems: [{ path: 'when', code: 'path_without_when' }] });
+    const r = await run(addFieldSupplyAction, { ...fields, 'when.kind': '', 'when.value': '' });
+    expect(sentBody()).not.toHaveProperty('when');
+    expect(sentBody().path).toBe('preventive.vaccine_status.flu');
+    expect(r.state?.fieldErrors).toEqual({ when: 'Answer: Choose the answer, or Every note of this type.' });
+    requests.length = 0;
+    await run(addFieldSupplyAction, { ...fields, path: '' });
+    expect(sentBody()).not.toHaveProperty('path');
+    expect(sentBody().when).toEqual({ equals: 'given_today' });
+  });
+
+  it('says a note type left unchosen, and a quantity that isn’t a count, beside each', async () => {
+    answer = refusal(422, 'invalid', {
+      problems: [
+        { path: 'noteTypeKey', code: 'invalid_format' },
+        { path: 'lines.0.qty', code: 'invalid_union' },
+      ],
+    });
+    const r = await run(addFieldSupplyAction, { ...fields, noteTypeKey: '', 'lines.0.qty': 'two' });
+    expect(sentBody().noteTypeKey).toBe('');
+    expect(sentBody().lines).toEqual([{ itemId: GAUZE, qty: 'two' }]);
+    expect(r.state?.fieldErrors).toEqual({
+      noteTypeKey: 'Note type: Choose a note type.',
+      'lines.0.qty': 'Quantity on line 1: Enter a whole number from 1 to 99.',
+    });
+  });
+
+  it('says a whole note type only some people may read can’t suggest supplies, beside the note type', async () => {
+    answer = refusal(422, 'invalid', { problems: [{ path: 'noteTypeKey', code: 'sensitive_path' }] });
+    const r = await run(addFieldSupplyAction, { ...fields, noteTypeKey: 'harm_reduction', path: '' });
+    expect(r.state).toMatchObject({
+      error: 'Only some people may read this answer, so it can’t suggest supplies.',
+      fieldErrors: {
+        noteTypeKey: 'Note type: Only some people may read this answer, so it can’t suggest supplies.',
+      },
+    });
+  });
+
+  it('asks nothing of the API for an answer no page sends', async () => {
+    for (const action of [addFieldSupplyAction, saveFieldSupplyAction])
+      expect(
+        (await run(action, { ...fields, id: MAP, baseVersion: '1', 'when.kind': 'above' })).state?.error,
+      ).toBe('This can’t be found. Reload the page.');
+    expect(requests).toEqual([]);
+  });
+
+  it('edits a mapping on every note of its type with no answer, and keeps lines the form doesn’t send', async () => {
+    const fromNote = [{ itemId: GAUZE, qty: { fromPath: 'wound.treatment.count' } }];
+    listed = [row(MAP, { name: 'Demo: Every wound visit', noteTypeKey: 'wound_care', lines: fromNote }, 3)];
+    answer = { status: 200, body: { version: 4, revision: 5 } };
+    await run(saveFieldSupplyAction, {
+      id: MAP,
+      baseVersion: '3',
+      name: 'Demo: Every wound round',
+      'when.kind': '',
+      'when.value': '',
+      reason: 'Demo: a plainer name',
+    });
+    expect(writes()[0]!.init!.body).toEqual({
+      baseVersion: 3,
+      body: { name: 'Demo: Every wound round', noteTypeKey: 'wound_care', lines: fromNote },
+      reason: 'Demo: a plainer name',
+    });
+  });
+
+  it('says a mapping another admin removed meanwhile is gone, from the page it was sent from', async () => {
+    answer = refusal(409, 'archived');
+    const r = await run(saveFieldSupplyAction, { ...fields, id: MAP, baseVersion: '1' });
+    expect(r.to).toBe(`${PAGE}?refused=archived&preset=${MAP}`);
+    expect(revalidated).toEqual([PAGE]);
+  });
+});
