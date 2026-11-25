@@ -1839,11 +1839,19 @@ class FakeSyncServer {
   /// sync read would show it to them, by its one copy of the rules (review findings VA-1, VS-1). A
   /// record they may not read through sync at all ([_readsRecord]), a note's answer they may not see
   /// all of ([_fieldForSender]) and a Medical visit's summary withheld from them ([_summaryWithheld])
-  /// are a field that holds nothing.
+  /// are a field that holds nothing. A flag change's mark goes as [_flagChangeShown] shows it: an
+  /// entered-in-error change's reason only to its author and Program Admins, as they are when the
+  /// answer is made (review finding MJ-1).
   Map<String, Object?> _fieldForAnswer(String userId, FakeRecord rec, String field) {
-    if (!_readsRecord(permissionsOf(userId), rec)) return _nothingShown;
+    final perms = permissionsOf(userId);
+    if (!_readsRecord(perms, rec)) return _nothingShown;
     if (rec.entity == entityNote) return _fieldForSender(userId, rec, field);
-    if (_summaryWithheld(permissionsOf(userId), rec, field)) return _nothingShown;
+    if (_summaryWithheld(perms, rec, field)) return _nothingShown;
+    if (rec.entity == entityFlagChange) {
+      final shown = _flagChangeShown(userId, perms, rec, _flagHead(rec.teamId, rec.attributes['flagId']));
+      if (shown == null) return _nothingShown;
+      return ((shown['fields']! as Map<String, Object?>)[field] as Map<String, Object?>?) ?? rec.state(field);
+    }
     return rec.state(field);
   }
 

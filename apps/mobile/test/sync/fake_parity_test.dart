@@ -6345,6 +6345,53 @@ void main() {
         }
       });
 
+      test('a retry of a mark kept in history gives the change’s reasons only to its author and Program Admins, as they are now', () async {
+        // A patient of its own, so the other cases read only theirs.
+        final elsewhere = server.seedPatient(preferredName: 'Demo Cedar');
+        final made = flagChange(elsewhere, flags['flag.frost_risk']!, why: 'Demo: Alex’s own');
+        // A Program Admin marks Alex's change.
+        final first = markOf(idOf(made));
+        expect(await send(alex, [made]), [taken(made)]);
+        expect(await send(admin, [first]), [taken(first)]);
+        const kept = {'outcome': 'history_only'};
+        final why = {
+          'value': {'reason': markReason},
+          'version': 1,
+          'changedBy': admin,
+          'changedAt': now.toIso8601String(),
+        };
+        // Marked, by whom and when, and nothing of why: as their sync read shows the field.
+        final withheld = {...why, 'value': const <String, Object?>{}};
+
+        // Its author's own second mark is kept in history and answered with the mark that stands.
+        final byAlex = markOf(idOf(made), 'Demo: Alex looks again');
+        final [alexs] = await send(alex, [byAlex]);
+        expect([alexs['details'], alexs['server']], [kept, why]);
+
+        // Dana neither made it nor manages the team's people: her mark is held, a Program Admin
+        // accepts it into history, and the same change sent again tells her nothing of why.
+        final byDana = markOf(idOf(made), 'Demo: Dana thinks so too');
+        expect(await send(dana, [byDana]), [heldFor(byDana)]);
+        expect(server.acceptHeld(byDana['changeId']! as String, by: admin)['status'], 'accepted');
+        final [danasRetry] = await send(dana, [byDana]);
+        expect([danasRetry['status'], danasRetry['details'], danasRetry['server']], ['accepted', kept, withheld]);
+        final [read] = (await syncRead(dana, [idOf(made)])).records;
+        expect((read['fields']! as Map<String, Object?>)['enteredInError'], withheld);
+
+        // A lead who manages the team's people is answered with why; moved to Healthcare Staff, the
+        // same change sent again is answered as they may see it now.
+        const lead = 'e3000000-0000-4000-8000-0000000000e3';
+        server.permissions[lead] = const {'patients.view', 'patients.edit', 'team.manage_users'};
+        await register(lead, 'dev-$lead');
+        final byLead = markOf(idOf(made), 'Demo: the lead marks it again');
+        final [leads] = await send(lead, [byLead]);
+        expect([leads['details'], leads['server']], [kept, why]);
+        server.permissions[lead] = FakeSyncServer.healthcareStaff;
+        final [leadsRetry] = await send(lead, [byLead]);
+        expect([leadsRetry['status'], leadsRetry['details'], leadsRetry['server']], ['accepted', kept, withheld]);
+        expect(jsonEncode([danasRetry, leadsRetry]), isNot(contains(markReason)));
+      });
+
       test('a retry is answered with nothing of a flag hidden from its sender since, and logs no read', () async {
         final made = flagChange(patientA, flags['flag.pregnancy']!, why: 'Demo: Dana’s own');
         final first = markOf(idOf(made), 'Demo: on the wrong patient');

@@ -6,7 +6,7 @@ import { applyField } from './entities/fields.ts';
 import { medicalHidden } from '../encounters/read.ts';
 import { fieldForSender, NOTHING_SHOWN } from './entities/note.ts';
 import { missingParent, missingProblem, rulesFor } from './entities/index.ts';
-import { readsRecord } from './read-rules.ts';
+import { flagChangeShown, flagHead, readsRecord } from './read-rules.ts';
 import { AuditAppend, type ParentRef } from './entities/values.ts';
 import {
   DefinitionError,
@@ -172,8 +172,11 @@ const summaryWithheld = (sender: Pick<ApplyActor, 'permissions'>, record: Stored
  * A record's field as it goes back to [sender] in an answer (D86): as the sync read would show it
  * to them, by its one copy of the rules (the coordinator's decision on review findings VA-1 and
  * VS-1). A record they may not read through sync at all (read-rules.ts readsRecord: its kind's key,
- * a sensitive problem's), a note's answer they may not see all of (note.ts fieldForSender), and a
- * Medical visit's summary withheld from them (summaryWithheld) are a field that holds nothing.
+ * a sensitive problem's, the flag rule), a note's answer they may not see all of (note.ts
+ * fieldForSender), and a Medical visit's summary withheld from them (summaryWithheld) are a field
+ * that holds nothing. A flag change's mark goes as flagChangeShown shows it: an entered-in-error
+ * change's reason only to its author and Program Admins, as they are when the answer is made, so a
+ * retry of a mark kept in history tells nobody else why (phase 5 design 6.2; review finding MJ-1).
  */
 async function fieldForAnswer(
   tx: Tx,
@@ -184,6 +187,11 @@ async function fieldForAnswer(
   if (!(await readsRecord(tx, sender.permissions, record))) return NOTHING_SHOWN;
   if (record.entity === 'encounter_note') return fieldForSender(tx, sender, record, field);
   if (summaryWithheld(sender, record, field)) return NOTHING_SHOWN;
+  if (record.entity === 'patient_flag_change') {
+    const flag = await flagHead(tx, record.teamId, record.attributes.flagId as string);
+    const shown = flagChangeShown(sender.permissions, sender.authorId, record, flag);
+    return shown ? fieldState(shown, field) : NOTHING_SHOWN;
+  }
   return fieldState(record, field);
 }
 
