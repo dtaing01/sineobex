@@ -424,6 +424,24 @@ void main() {
       expect(find.textContaining('Pregnancy'), findsNothing);
     });
 
+    testWidgets('a filter narrows a name search by the index’s flags; New patient waits for no one found', (
+      tester,
+    ) async {
+      await listWithFlags(tester);
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quill');
+      await tester.pump(const Duration(milliseconds: 700));
+      await settle(tester);
+      await reveal(tester, rowOf('Demo Quill'));
+      await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+      expect(rowOf('Demo Quill'), findsNothing);
+      // The search found people: the filter leaving them out is no reason to register someone new.
+      expect(find.text('New patient with this name'), findsNothing);
+      // Cleared, the search's own list again.
+      await tapOn(tester, find.byTooltip('Clear risk level'));
+      await reveal(tester, rowOf('Demo Quill'));
+      expect(rowOf('Demo Quill'), findsOneWidget);
+    });
+
     // Note 2 of the second part: an archived flag a patient carries says so beside its pill, as a
     // status chip (flag_pill.dart has no archived state), on the list's row as on the profile.
     testWidgets('an archived risk level a patient carries says so beside its pill, offline', (tester) async {
