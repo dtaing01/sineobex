@@ -2,7 +2,7 @@ import { z } from '@hono/zod-openapi';
 import { CREDENTIALS } from '../../auth/permissions.ts';
 import { recognisableCreate } from '../../patients/recognisable.ts';
 import { Uuid } from '../../routes/schemas.ts';
-import { AnswerField, JsonValue } from '../records.ts';
+import { AnswerField, JsonValue, untrimmed } from '../records.ts';
 import { MAX_VERSION, type AnyRecordEntityName, type PatientEntityName } from '../schemas.ts';
 
 /**
@@ -23,12 +23,13 @@ import { MAX_VERSION, type AnyRecordEntityName, type PatientEntityName } from '.
  * rules that need the chart are the entity modules'.
  */
 
+/** Zod counts min and max in code points, as the phone does (`runes`); untrimmed as the phone trims. */
 const Trimmed = (min: number, max: number) =>
   z
     .string()
     .min(min)
     .max(max)
-    .refine((s) => s === s.trim(), { message: 'untrimmed' });
+    .refine((s) => !untrimmed(s), { message: 'untrimmed' });
 
 const Name80 = Trimmed(1, 80);
 const Text200 = Trimmed(1, 200);
@@ -367,12 +368,12 @@ export const FlagChangeCreate = z
 export const FLAG_REASON_MAX = 500;
 
 /**
- * `reason_invalid`: a flag change's reason is not trimmed, or holds no character or more than
- * FLAG_REASON_MAX. Counted in code points, so an astral character is one, as the phone counts it
- * (sync-values.json). The routes refuse a reason by the same rule.
+ * `reason_invalid`: a flag change's reason is not trimmed, as the phone trims (untrimmed), or holds
+ * no character or more than FLAG_REASON_MAX. Counted in code points, so an astral character is one,
+ * as the phone counts it (sync-values.json). The routes refuse a reason by the same rule.
  */
 export const flagReasonInvalid = (reason: string): boolean =>
-  reason !== reason.trim() || reason.length === 0 || [...reason].length > FLAG_REASON_MAX;
+  untrimmed(reason) || reason.length === 0 || [...reason].length > FLAG_REASON_MAX;
 
 /** Alias removal, allergy, problem, referral or flag change entered in error: set once, with a reason. */
 export const Retraction = z.object({ reason: SyncReason }).strict();
