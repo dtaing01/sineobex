@@ -36,10 +36,11 @@ import { call } from './sync-fixtures.ts';
 //   `permission: 'patients.view_sensitive'`, never the flag. A body its schema refuses is 422
 //   `validation_failed`. Takes the team lock first; `patient_flag.changed` in its transaction.
 // - POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error, `{reason}` (3 to 300):
-//   patients.edit; the change's author or a holder of team.manage_users, else 403 logged; a change
-//   of a flag hidden from the caller, 403 logged as the set is; 404 for a change the patient's
-//   group does not hold; 409 `already_marked`; 200 `{version}`. Writes the mark as sync does, with
-//   its history row; `patient_flag.entered_in_error` in its transaction.
+//   patients.edit; the change's author or a holder of team.manage_users, else 403 logged; 404 for a
+//   change the patient's group does not hold, and for a change of a flag hidden from the caller,
+//   logged, answered alike so it tells nothing (D98 as amended); 409 `already_marked`; 200
+//   `{version}`. Writes the mark as sync does, with its history row; `patient_flag.entered_in_error`
+//   in its transaction.
 // - GET /v1/presets/flags: patients.view; `[{flagId, name, tier, color, colorName, rank}]`, the
 //   team's active flags the caller may see (flagHidden), primary before secondary, each tier by
 //   rank, then name, then id. Names no patient and writes no audit event.
@@ -453,7 +454,7 @@ describe('POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error
     expect(await row(id)).toMatchObject({ status: 'entered_in_error', errorBy: team.admin.userId });
   });
 
-  it('refuses its author once the flag is hidden from them, as a set of it is refused', async () => {
+  it('refuses its author once the flag is hidden from them, as a change the chart does not hold', async () => {
     const author = await memberOf(
       h,
       team.teamId,
@@ -467,10 +468,42 @@ describe('POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error
       where id = (select role_id from sineobex.team_memberships where user_id = ${author.userId})`;
     const before = await auditMark(h);
     const r = await markOf(author, otherPatient, id);
-    expect(r.status).toBe(403);
+    expect([r.status, errorOf(r).code]).toEqual([404, 'not_found']);
     const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
     expect(denied!.patientId).toBe(otherPatient);
     expect(denied!.details).toMatchObject({ permission: 'patients.view_sensitive' });
+    expect(JSON.stringify(denied)).not.toContain(flagId('flag.pregnancy'));
+    expect((await row(id))!.status).toBe('active');
+  });
+
+  it('answers a change of a flag hidden from the caller as one the chart does not hold, whichever patient it names', async () => {
+    // Someone who may mark anyone's change (team.manage_users) but sees no sensitive flag, and so
+    // must learn nothing of which patient carries one: every answer is the one a made-up change gets.
+    const lead = await memberOf(
+      h,
+      team.teamId,
+      ['patients.view', 'patients.edit', 'team.manage_users'],
+      'Flags lead',
+    );
+    const id = await madeBy(nurse, 'flag.pregnancy');
+    const before = await auditMark(h);
+    const answers: [number, unknown][] = [];
+    // The change on its own patient, on another patient, and a change nobody made.
+    for (const [patientId, changeId] of [
+      [otherPatient, id],
+      [patient, id],
+      [otherPatient, randomUUID()],
+    ] as const) {
+      const r = await markOf(lead, patientId, changeId);
+      expect(errorOf(r).code, patientId).toBe('not_found');
+      answers.push([r.status, r.body]);
+    }
+    const madeUp = answers[2]!;
+    expect(madeUp[0]).toBe(404);
+    expect(answers).toEqual([madeUp, madeUp, madeUp]);
+    // Logged as a refusal about the caller, on the patient, never naming the flag; the others are not.
+    const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
+    expect(denied!.patientId).toBe(otherPatient);
     expect(JSON.stringify(denied)).not.toContain(flagId('flag.pregnancy'));
     expect((await row(id))!.status).toBe('active');
   });
