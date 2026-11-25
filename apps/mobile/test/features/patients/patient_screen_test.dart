@@ -553,11 +553,20 @@ void main() {
         problem(h, 'Demo: cough', 'ongoing', ago: const Duration(days: 200));
         await syncAndRefresh(tester, h);
         await go(tester, '/patients/$p1Id');
+        // The problem list sits below the header: each row is scrolled to before it is read.
+        await expectShown(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing, .*status check due')));
         expect(find.text('Status check due'), findsOneWidget);
+        // The Resolved one, opened: never due, however long ago its status was checked.
+        await tapOn(tester, find.text('Resolved (1)'));
+        final burn = find.bySemanticsLabel(RegExp(r'^Demo: old burn, Resolved'));
+        await expectShown(tester, burn);
+        expect(tester.getSemantics(burn).label, isNot(contains('status check due')));
         h.server.offline = true;
         PresetStore(h.sync.store!).clear();
         await go(tester, '/patients/$p1Id');
+        await expectShown(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
         expect(find.text('Status check due'), findsNothing);
+        expect(find.bySemanticsLabel(RegExp('status check due')), findsNothing);
       });
     });
   });

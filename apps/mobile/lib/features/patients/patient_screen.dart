@@ -638,7 +638,8 @@ class _ProfileState extends ConsumerState<_Profile> {
             const Text('The problem list opens with the full chart.')
           else ...[
             if (!problems.any((p) => p.open)) const Text('No open problems.'),
-            for (final p in problems.where((p) => p.open)) _ProblemRow(problem: p, patientId: v.canonicalId),
+            for (final p in problems.where((p) => p.open))
+              _ProblemRow(problem: p, patientId: v.canonicalId, due: _s.statusCheckDue(p)),
             if (problems.any((p) => !p.open))
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
@@ -646,7 +647,8 @@ class _ProfileState extends ConsumerState<_Profile> {
                 onExpansionChanged: (open) => _resolvedOpen = open,
                 title: Text('Resolved (${problems.where((p) => !p.open).length})', style: text.titleMedium),
                 children: [
-                  for (final p in problems.where((p) => !p.open)) _ProblemRow(problem: p, patientId: v.canonicalId),
+                  for (final p in problems.where((p) => !p.open))
+                    _ProblemRow(problem: p, patientId: v.canonicalId, due: _s.statusCheckDue(p)),
                 ],
               ),
           ],
@@ -787,9 +789,12 @@ String copyOutcomeText(CopyOutcome o) => switch (o) {
 };
 
 class _ProblemRow extends StatelessWidget {
-  const _ProblemRow({required this.problem, required this.patientId});
+  const _ProblemRow({required this.problem, required this.patientId, required this.due});
   final ProblemView problem;
   final String patientId;
+
+  /// Its status check is due (phase 5 design 5.3): "Status check due" beside it, and in its label.
+  final bool due;
 
   @override
   Widget build(BuildContext context) {
@@ -802,6 +807,7 @@ class _ProblemRow extends StatelessWidget {
       if (p.hasCode) 'code ${p.code!.code}' else 'No code: won’t add supplies to route bags',
       if (p.sensitive) 'sensitive',
       if (p.notSynced) 'not synced yet',
+      if (due) statusCheckDueText.toLowerCase(),
     ].join(', ');
     void open() => unawaited(context.push('/patients/$patientId/problems/${p.id}'));
     return Semantics(
@@ -825,6 +831,7 @@ class _ProblemRow extends StatelessWidget {
                   runSpacing: FieldSpace.s1,
                   children: [
                     ProblemStatusChip(status: p.status),
+                    if (due) const StatusCheckDueChip(),
                     if (p.sensitive) const StatusChip(label: 'Sensitive', icon: LucideIcons.lock),
                     if (p.notSynced || p.statusPending)
                       const StatusChip(label: 'Not synced yet', icon: LucideIcons.smartphone, tone: ChipTone.info),
@@ -892,6 +899,19 @@ class _FlagsRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// A New or Ongoing problem whose status wasn't checked within the team's window (phase 5 design
+/// 5.3, 8.2).
+const statusCheckDueText = 'Status check due';
+
+/// [statusCheckDueText] as a chip, in words with its own icon, beside the problem's status.
+class StatusCheckDueChip extends StatelessWidget {
+  const StatusCheckDueChip({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const StatusChip(label: statusCheckDueText, icon: LucideIcons.calendarClock, tone: ChipTone.warning);
 }
 
 /// A problem's status in words with its own icon.

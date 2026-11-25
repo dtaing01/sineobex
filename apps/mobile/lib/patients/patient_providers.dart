@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/generated/api.dart' show SineobexApi;
 import '../api/transport.dart';
 import '../app_providers.dart' show syncControllerProvider;
+import '../presets/models.dart' show PresetKind, PresetState, SettingsBody;
+import '../presets/preset_store.dart';
+import '../presets/problem_check.dart';
 import '../security/secure_copy.dart';
 import '../sync/local_store.dart';
 import '../sync/sync_controller.dart';
@@ -40,6 +43,8 @@ class PatientServices extends ChangeNotifier {
       return s.correctedTime ?? s.deviceTime;
     }
 
+    now = corrected;
+
     index = TeamIndex(store, permissions: permissions, now: corrected)..onChanged = notifyListeners;
     charts = ChartCache(store, team.api, now: corrected)..onChanged = notifyListeners;
     idLinks = IdLinks(store, copy: copy, now: corrected)..install();
@@ -71,6 +76,9 @@ class PatientServices extends ChangeNotifier {
 
   /// The person's permission keys in the team, as /v1/me last reported them.
   final List<String> permissions;
+
+  /// The phone's clock, corrected by the server's where a sync measured it.
+  late final DateTime Function() now;
 
   late final TeamIndex index;
   late final ChartCache charts;
@@ -110,6 +118,28 @@ class PatientServices extends ChangeNotifier {
 
   /// Adds problems, moves them, adds notes, marks allergies and problems entered in error.
   bool get mayChart => permissions.contains('encounters.chart');
+
+  /// "Status check due" beside [problem] on the problem lists (phase 5 design 5.3, 8.2; section 11,
+  /// row 21): New or Ongoing, not entered in error, and its status not checked within the team's
+  /// window, by the settings preset this phone holds, offline ([problemCheckDue]). Never where the
+  /// presets aren't held, whatever a chart said, nor where they hold no settings preset: the phone
+  /// doesn't know the team's window then. A problem made here is checked once the server has it.
+  bool statusCheckDue(ProblemView problem) {
+    final presets = PresetStore(store);
+    if (!presets.downloaded) return false;
+    final days = [
+      for (final p in presets.presets(kind: PresetKind.settings))
+        if (p.state == PresetState.active)
+          if (p.body case final SettingsBody settings) settings.problemCheckDays,
+    ].firstOrNull;
+    if (days == null) return false;
+    final check = (
+      status: problem.status,
+      statusCheckedAt: problem.statusCheckedAt,
+      enteredInError: problem.enteredInError != null,
+    );
+    return problemCheckDue(check, now(), days);
+  }
 }
 
 /// For `SyncController(refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: ...))`: makes

@@ -15,7 +15,7 @@ import '../../patients/patient_providers.dart';
 import '../../patients/problems.dart';
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
 import 'patient_labels.dart';
-import 'patient_screen.dart' show ProblemStatusChip;
+import 'patient_screen.dart' show ProblemStatusChip, StatusCheckDueChip;
 import 'patient_widgets.dart';
 import 'sheet_gate.dart' show DialogGate, SheetGate;
 
@@ -207,6 +207,8 @@ class _ProblemState extends ConsumerState<_Problem> {
                 runSpacing: FieldSpace.s1,
                 children: [
                   ProblemStatusChip(status: p.status),
+                  // Offline, by the team's window in the presets this phone holds (5.3).
+                  if (_s.statusCheckDue(p)) const StatusCheckDueChip(),
                   if (p.sensitive) const StatusChip(label: 'Sensitive', icon: LucideIcons.lock),
                   if (p.notSynced || p.statusPending)
                     const StatusChip(label: 'Not synced yet', icon: LucideIcons.smartphone, tone: ChipTone.info),
