@@ -429,8 +429,8 @@ const noticeCorrectionNotApplied = 'correction_not_applied';
 /// `patient_flag_change`) and its patient (`Notice.patientId`), and holds no text of it: "A flag you
 /// set wasn’t applied. Open the patient to set it again." The phone often no longer holds the change
 /// by then (it lets go of a held change, and the person's other phones never had it), so the patient
-/// to open is the one the notice names. ServerNotices.sync files a notice by the record it holds, so
-/// such a notice reaches no patient there yet (review finding MR-2, for the phone's domain class).
+/// to open is the one the notice names: ServerNotices.sync files a notice by the record it holds and,
+/// holding none, under the patient the notice names (that patient's survivor once merged).
 const noticeFlagChangeNotApplied = 'flag_change_not_applied';
 
 /// A sign-off that found its note already finished by a signature over other content (lifecycle
