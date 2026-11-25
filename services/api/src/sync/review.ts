@@ -205,40 +205,52 @@ async function shownChange(
       const problem = problemId ? await RULES.problem.load(tx, problemId, false) : null;
       return problem && !sensitiveHidden(scope.team.permissions, problem) ? shown : null;
     }
-    case 'patient_flag_change':
-      return flagHidden(scope.team.permissions, await heldFlag(tx, scope.team.teamId, r, v, uuid))
-        ? null
-        : shown;
+    case 'patient_flag_change': {
+      const held = await heldFlagChange(tx, scope.team.teamId, r, v, uuid);
+      if (flagHidden(scope.team.permissions, held.flag)) return null;
+      // An Entered in error mark's value is the reason the change will be marked with, which the sync
+      // read shows only to the change's author and Program Admins (flagChangeShown): a reviewer who is
+      // neither is shown nothing of it, and so may not accept it (D87; review finding m-2).
+      const seesWhy = held.authorUserId === scope.principal.userId || scope.can('team.manage_users');
+      return r.op === 'set' && !seesWhy ? null : shown;
+    }
     default:
       return shown;
   }
 }
 
 /**
- * The flag a held flag change names: a create's own, read only when it is a UUID; for a set (an
- * Entered in error mark), the change's as stored, or as its create held here names it, the latest,
- * as the queue names its patient (0024, patient_of_change). Null when none is one of the team's flags.
+ * The flag a held flag change names, and for a set (an Entered in error mark) the change's author: a
+ * create's own flag, read only when it is a UUID; for a mark, the change's as stored, or as its
+ * create held here names it, the latest, as the queue names its patient (0024, patient_of_change),
+ * with who made it, the row's author or that create's sender. The flag is null when none is one of
+ * the team's flags.
  */
-async function heldFlag(
+async function heldFlagChange(
   tx: Tx,
   teamId: string,
   r: Pick<QuarantineRow, 'op' | 'recordId'>,
   v: Record<string, unknown>,
   uuid: (x: unknown) => string | null,
-): Promise<FlagHead | null> {
+): Promise<{ flag: FlagHead | null; authorUserId: string | null }> {
   if (r.op === 'create') {
     const flagId = uuid(v.flagId);
-    return flagId ? flagHead(tx, teamId, flagId) : null;
+    return { flag: flagId ? await flagHead(tx, teamId, flagId) : null, authorUserId: null };
   }
-  const [named] = await tx<{ flagId: string | null }[]>`
-    select coalesce(
-      (select f.flag_id from sineobex.patient_flag_changes f
-       where f.team_id = ${teamId} and f.id = ${r.recordId}),
-      (select sineobex.as_uuid(c.value ->> 'flagId') from sineobex.quarantine_items c
-       where c.team_id = ${teamId} and c.entity = 'patient_flag_change' and c.op = 'create'
-         and c.record_id = ${r.recordId}
-       order by c.received_at desc limit 1)) as flag_id`;
-  return named?.flagId ? flagHead(tx, teamId, named.flagId) : null;
+  const [named] = await tx<{ flagId: string | null; authorUserId: string | null }[]>`
+    select coalesce(f.flag_id, c.flag_id) as flag_id,
+           case when f.id is not null then f.author_user_id else c.user_id end as author_user_id
+    from (select 1) one
+    left join sineobex.patient_flag_changes f on f.team_id = ${teamId} and f.id = ${r.recordId}
+    left join lateral (
+      select sineobex.as_uuid(q.value ->> 'flagId') as flag_id, q.user_id from sineobex.quarantine_items q
+      where q.team_id = ${teamId} and q.entity = 'patient_flag_change' and q.op = 'create'
+        and q.record_id = ${r.recordId}
+      order by q.received_at desc limit 1) c on true`;
+  return {
+    flag: named?.flagId ? await flagHead(tx, teamId, named.flagId) : null,
+    authorUserId: named?.authorUserId ?? null,
+  };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
