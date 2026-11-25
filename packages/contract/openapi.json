@@ -3778,6 +3778,67 @@
         ],
         "type": "object"
       },
+      "NoteTypeEvent": {
+        "properties": {
+          "act": {
+            "description": "installed and platform_updated are the platform installer’s; every other act is a person’s",
+            "enum": [
+              "created",
+              "updated",
+              "archived",
+              "restored",
+              "update_taken",
+              "installed",
+              "platform_updated"
+            ],
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who acted; null for the platform installer"
+          },
+          "reason": {
+            "description": "Why, as the person gave it; null for the platform installer",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Whose version it is: the team’s, or the platform’s, installed or taken by a person",
+            "enum": [
+              "team",
+              "platform"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "The version the act made, or stood on: an archive and a restore make none",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "act",
+          "version",
+          "source",
+          "by",
+          "at",
+          "reason"
+        ],
+        "type": "object"
+      },
       "NoteTypeList": {
         "properties": {
           "noteTypes": {
@@ -7727,6 +7788,89 @@
           }
         ],
         "summary": "Remove a note type from new notes, with a reason (recent sign-in); every version still reads",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/admin/note-types/{key}/history": {
+      "get": {
+        "operationId": "getNoteTypeHistory",
+        "parameters": [
+          {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "A note type’s key, as migration 0017 allows it",
+              "example": "wound_care",
+              "pattern": "^[a-z][a-z0-9_]{1,60}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NoteTypeEvent"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Its history"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every act on a note type, oldest first, with who, when, whose version and why",
         "tags": [
           "presets"
         ]

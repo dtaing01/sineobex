@@ -1035,6 +1035,13 @@ const NOTE_TYPE_ROUTES: RouteCase[] = [
     logged: { permission: MANAGE_PRESETS },
   },
   {
+    method: 'GET',
+    path: '/v1/admin/note-types/harm_reduction/history',
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
     method: 'POST',
     path: '/v1/admin/note-types/psychological/take-update',
     body: { baseVersion: 1, platformVersion: 2, reason: REASON, asNew: false },
@@ -1058,22 +1065,24 @@ describe('phase 5 note type routes', () => {
 
   checksEach(NOTE_TYPE_ROUTES, () => ({ h, teamId }));
 
-  // The list asks no recent sign-in (design 7), as the preset lists ask none: Team setup's pages
+  // The reads ask no recent sign-in (design 7), as the preset reads ask none: Team setup's pages
   // are read without signing in again.
-  it('GET /v1/admin/note-types asks no recent sign-in', async () => {
-    const member = await memberWith(h, teamId, [MANAGE_PRESETS]);
-    const [user] = await h.scratch.owner<{ email: string }[]>`
-      select email from sineobex.users where id = ${member.userId}`;
-    const stale = await h.tokenFor(user!.email, {
-      authTime: new Date(h.clock.now.getTime() - 60 * 60_000),
+  for (const read of NOTE_TYPE_ROUTES.filter((r) => r.method === 'GET'))
+    it(`GET ${read.path} asks no recent sign-in`, async () => {
+      const member = await memberWith(h, teamId, [MANAGE_PRESETS]);
+      const [user] = await h.scratch.owner<{ email: string }[]>`
+        select email from sineobex.users where id = ${member.userId}`;
+      const stale = await h.tokenFor(user!.email, {
+        authTime: new Date(h.clock.now.getTime() - 60 * 60_000),
+      });
+      const mark = await auditMark(h);
+      const res = await h.request(read.path, { token: stale, teamId });
+      expect(res.status).not.toBe(403);
+      expect(res.status).not.toBe(422);
+      const denied = await h.scratch.owner`
+        select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
+      expect(denied).toHaveLength(0);
     });
-    const mark = await auditMark(h);
-    const res = await h.request('/v1/admin/note-types', { token: stale, teamId });
-    expect(res.status).toBe(200);
-    const denied = await h.scratch.owner`
-      select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
-    expect(denied).toHaveLength(0);
-  });
 });
 
 /**

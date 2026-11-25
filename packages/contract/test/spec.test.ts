@@ -106,6 +106,7 @@ describe('openapi.json, patient data in requests and refusals', () => {
     '/v1/admin/note-types/{key}/archive',
     '/v1/admin/note-types/{key}/restore',
     '/v1/admin/note-types/{key}/take-update',
+    '/v1/admin/note-types/{key}/history',
   ];
   const isNoteTypeKey = (path: string, name: string, s: Schema) =>
     name === 'key' && NOTE_TYPE_KEY_PATHS.includes(path) && s.pattern === '^[a-z][a-z0-9_]{1,60}$';
@@ -256,6 +257,7 @@ describe('openapi.json, patient data in requests and refusals', () => {
       ['post', '/v1/admin/note-types/{key}/archive', 'archiveNoteType'],
       ['post', '/v1/admin/note-types/{key}/restore', 'restoreNoteType'],
       ['post', '/v1/admin/note-types/{key}/take-update', 'takeNoteTypeUpdate'],
+      ['get', '/v1/admin/note-types/{key}/history', 'getNoteTypeHistory'],
     ];
     for (const [method, path, operationId] of routes)
       expect(spec.paths[path]?.[method]?.operationId, `${method} ${path}`).toBe(operationId);

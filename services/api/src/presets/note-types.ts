@@ -808,3 +808,71 @@ export function takeNoteTypeUpdate(
     };
   });
 }
+
+// ------------------------------------------------------------------------------------------------
+// The history
+// ------------------------------------------------------------------------------------------------
+
+/** Every act a note type's history keeps (0023's acts; a note type is never reordered). */
+export const NOTE_TYPE_ACTS = [
+  'created',
+  'updated',
+  'archived',
+  'restored',
+  'update_taken',
+  'installed',
+  'platform_updated',
+] as const;
+
+export interface NoteTypeEvent {
+  act: (typeof NOTE_TYPE_ACTS)[number];
+  version: number;
+  /** Whose version it is: the team's own, or the platform's, installed or taken by a person. */
+  source: 'team' | 'platform';
+  by: { userId: string; displayName: string } | null;
+  at: string;
+  reason: string | null;
+}
+
+/**
+ * Every act on one of the team's note types, oldest first, each with the version it made or stood
+ * on, who and why (design 8.1's history, as a preset's: the reason is kept only in
+ * team_preset_events, and shown only here). By version before time, as a preset's history is
+ * ordered: an installer run by a pull that began before an admin's later version can be dated
+ * before it. A key the team holds no head of is 404. Reading it is not audited (PL-13).
+ */
+export async function noteTypeHistory(tx: Tx, teamId: string, key: string): Promise<NoteTypeEvent[]> {
+  const [head] = await tx`select 1 from sineobex.note_types where team_id = ${teamId} and key = ${key}`;
+  if (!head) throw notFound('note type');
+  const rows = await tx<
+    {
+      act: NoteTypeEvent['act'];
+      version: number;
+      origin: 'team' | 'preset' | null;
+      byId: string | null;
+      byName: string | null;
+      at: Date;
+      reason: string | null;
+    }[]
+  >`
+    select e.act, e.version, v.origin, e.created_by as by_id, u.display_name as by_name,
+           e.created_at as at, e.reason
+    from sineobex.team_preset_events e
+    left join sineobex.note_type_versions v
+      on v.team_id = e.team_id and v.key = e.note_type_key and v.version = e.version
+    left join sineobex.users u on u.id = e.created_by
+    where e.team_id = ${teamId} and e.note_type_key = ${key}
+    order by e.version, e.created_at, e.id`;
+  return rows.map((r) => {
+    // Every act names a version its note type holds (this file, the installer).
+    if (r.origin === null) throw new Error('a note type event’s version is missing');
+    return {
+      act: r.act,
+      version: r.version,
+      source: r.origin === 'team' ? 'team' : 'platform',
+      by: r.byId === null ? null : { userId: r.byId, displayName: r.byName ?? '' },
+      at: r.at.toISOString(),
+      reason: r.reason,
+    };
+  });
+}
