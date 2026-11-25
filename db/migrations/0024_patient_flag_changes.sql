@@ -94,6 +94,17 @@ begin
     raise exception 'the mark moves a flag change''s version one step'
       using errcode = 'check_violation', constraint = 'patient_flag_changes_mark_version';
   end if;
+  -- The mark's bookkeeping, as the sync write and the route write it (records.ts bookkeeping): its
+  -- field at version 1 beside the others, and its meta beside the rest, naming who marked it. A sync
+  -- read shows the field by these, so a mark without them would read as never made. No cast and
+  -- no key removal, which fail on a value no writer leaves (class 22) and would stop a push.
+  if new.field_versions is distinct from old.field_versions || '{"enteredInError": 1}'::jsonb
+     or new.field_meta is distinct from
+        old.field_meta || jsonb_build_object('enteredInError', new.field_meta -> 'enteredInError')
+     or new.field_meta -> 'enteredInError' ->> 'by' is distinct from new.error_by::text then
+    raise exception 'the mark writes its bookkeeping'
+      using errcode = 'check_violation', constraint = 'patient_flag_changes_mark_bookkeeping';
+  end if;
   return new;
 end $$;
 

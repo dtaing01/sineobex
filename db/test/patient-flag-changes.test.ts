@@ -582,6 +582,89 @@ describe('0024 patient flag changes', () => {
       }
       expect(await update(id, theMark(1))).toBeNull();
     });
+
+    it('refuses a mark without its bookkeeping, or with bookkeeping that is not the mark’s', async () => {
+      const MARK_BOOKKEEPING = { code: CHECK, constraint: 'patient_flag_changes_mark_bookkeeping' };
+      const id = await made();
+      const before = await rowOf(id);
+      const markedAt = new Date();
+      const meta = (over: Row = {}) => ({
+        by: admin,
+        at: markedAt.toISOString(),
+        changeId: randomUUID(),
+        ...over,
+      });
+      const { field_versions: _v, field_meta: _m, ...bare } = theMark(1, { error_at: markedAt });
+      const wrong: [string, Row][] = [
+        // The status, why, who and when and the version, and nothing of the field's.
+        ['no bookkeeping', bare],
+        ['emptied', { field_versions: {}, field_meta: {} }],
+        ['no field version', { field_versions: {} }],
+        ['another field’s version', { field_versions: { somethingElse: 9 } }],
+        ['the field’s version and another’s', { field_versions: { enteredInError: 1, somethingElse: 9 } }],
+        ['a later field version', { field_versions: { enteredInError: 2 } }],
+        ['no field meta', { field_meta: {} }],
+        ['another field’s meta', { field_meta: { somethingElse: meta() } }],
+        ['the field’s meta and another’s', { field_meta: { enteredInError: meta(), somethingElse: meta() } }],
+        ['meta naming someone else', { field_meta: { enteredInError: meta({ by: worker }) } }],
+        ['meta naming nobody', { field_meta: { enteredInError: meta({ by: null }) } }],
+        [
+          'meta naming someone else, long ago',
+          { field_meta: { enteredInError: meta({ by: worker, at: '1999-01-01T00:00:00.000Z' }) } },
+        ],
+        ['meta that is no object', { field_meta: { enteredInError: 'Demo: marked' } }],
+      ];
+      for (const owner of [false, true]) {
+        const who = owner ? 'as the owner' : 'as the app role';
+        for (const [what, over] of wrong) {
+          const set = what === 'no bookkeeping' ? over : theMark(1, { error_at: markedAt, ...over });
+          expect(await update(id, set, { owner }), `${who}: ${what}`).toEqual(MARK_BOOKKEEPING);
+        }
+      }
+      expect(await rowOf(id)).toEqual(before);
+      // The mark as the sync write makes it, its meta naming who marked it, is taken.
+      expect(
+        await update(id, theMark(1, { error_at: markedAt, field_meta: { enteredInError: meta() } })),
+      ).toBeNull();
+    });
+
+    it('keeps the field meta it had, beside the mark’s', async () => {
+      const MARK_BOOKKEEPING = { code: CHECK, constraint: 'patient_flag_changes_mark_bookkeeping' };
+      const earlier = { by: worker, at: new Date(Date.now() - 60_000).toISOString(), changeId: null };
+      const id = await made({ field_versions: { somethingElse: 3 }, field_meta: { somethingElse: earlier } });
+      const mark = { by: admin, at: new Date().toISOString(), changeId: randomUUID() };
+      expect(
+        await update(
+          id,
+          theMark(1, { field_versions: { enteredInError: 1 }, field_meta: { enteredInError: mark } }),
+        ),
+        'the others dropped',
+      ).toEqual(MARK_BOOKKEEPING);
+      expect(
+        await update(
+          id,
+          theMark(1, {
+            field_versions: { somethingElse: 3, enteredInError: 1 },
+            field_meta: { somethingElse: { ...earlier, by: admin }, enteredInError: mark },
+          }),
+        ),
+        'another rewritten',
+      ).toEqual(MARK_BOOKKEEPING);
+      expect(
+        await update(
+          id,
+          theMark(1, {
+            field_versions: { somethingElse: 3, enteredInError: 1 },
+            field_meta: { somethingElse: earlier, enteredInError: mark },
+          }),
+        ),
+      ).toBeNull();
+      expect(await rowOf(id)).toMatchObject({
+        version: 2,
+        field_versions: { somethingElse: 3, enteredInError: 1 },
+        field_meta: { somethingElse: earlier, enteredInError: mark },
+      });
+    });
   });
 
   it('is never deleted by the app role', async () => {
