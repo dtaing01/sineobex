@@ -211,7 +211,12 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   void _open(FoundPatient p) => unawaited(context.push('/patients/${p.patientId}'));
 
-  bool get _filtering => _riskFilter != null || _conditionFilter.isNotEmpty;
+  /// The filters narrow only from the team index (6.1): a role that holds none (D38), or a phone
+  /// whose index hasn't downloaded yet, would see every list emptied by them, so they aren't offered
+  /// there, and one chosen before the index went counts for nothing.
+  bool get _indexHeld => _s.index.state.eligible && _s.index.state.present;
+
+  bool get _filtering => _indexHeld && (_riskFilter != null || _conditionFilter.isNotEmpty);
 
   /// The patients on this phone carrying the filters' flags, as the index gives them: one list, one
   /// audit entry naming who it shows and never a flag. Only with nothing typed, where it shows: a
@@ -300,8 +305,10 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   );
 
   /// The filters' chips, beside Born: each tier's only where the team's list offers the person a flag
-  /// of it, so a team without flags, or a phone without its setup, shows none.
+  /// of it, so a team without flags, or a phone without its setup, shows none; and none where the
+  /// phone holds no team index to narrow by ([_indexHeld]).
   List<Widget> _filterChips() {
+    if (!_indexHeld) return const [];
     final levels = _s.flags.teamFlags(FlagTier.primary);
     final conditions = _s.flags.teamFlags(FlagTier.secondary);
     String named(String id, List<FlagView> flags, {required bool spoken}) =>

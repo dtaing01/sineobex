@@ -446,6 +446,53 @@ void main() {
       expect(rowOf('Demo Quill'), findsOneWidget);
     });
 
+    // Review finding F3: the filters narrow from the team index, which some roles never hold (D38).
+    testWidgets('a role that holds no team index is offered no flag filters, and its search lists whoever it '
+        'finds', (tester) async {
+      const billing = ['patients.view', 'billing.view_codes', 'inventory.view', 'exports.billing', 'exports.grant'];
+      final h = await signIn(tester, permissions: billing);
+      final team = h.patients.teamId;
+      final high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      h.server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      final quill = h.server.seedPatient(preferredName: 'Demo Quill');
+      h.server.seed(entityFlagChange, {
+        'patientId': quill,
+        'flagId': high,
+        'action': 'set',
+        'reason': 'Demo: a reason',
+      });
+      await syncAndRefresh(tester, h);
+      expect([h.patients.index.eligible, h.patients.flags.presetsHeld], [false, true]);
+      await openPatientsTab(tester);
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quill');
+      await tester.pump(const Duration(milliseconds: 700));
+      await settle(tester);
+      await reveal(tester, rowOf('Demo Quill'));
+      expect(find.widgetWithText(ActionChip, 'Risk level'), findsNothing);
+      expect(find.widgetWithText(ActionChip, 'Conditions'), findsNothing);
+      expect(rowOf('Demo Quill'), findsOneWidget);
+      await expectScreenOk(tester);
+    });
+
+    testWidgets('none once the index is gone from a role that may hold one, and a filter chosen narrows no more', (
+      tester,
+    ) async {
+      final h = await listWithFlags(tester);
+      await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+      h.patients.index.notPermitted();
+      await settle(tester);
+      expect([h.patients.index.state.eligible, h.patients.index.state.present], [true, false]);
+      expect(find.widgetWithText(ActionChip, 'Risk level'), findsNothing);
+      expect(find.byTooltip('Clear risk level'), findsNothing);
+      // Online, a search finds Quill, whom the filter chosen before would have left out.
+      h.server.offline = false;
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quill');
+      await tester.pump(const Duration(milliseconds: 700));
+      await settle(tester);
+      await reveal(tester, rowOf('Demo Quill'));
+      expect(rowOf('Demo Quill'), findsOneWidget);
+    });
+
     // Note 2 of the second part: an archived flag a patient carries says so beside its pill, as a
     // status chip (flag_pill.dart has no archived state), on the list's row as on the profile.
     testWidgets('an archived risk level a patient carries says so beside its pill, offline', (tester) async {
