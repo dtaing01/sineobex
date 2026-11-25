@@ -24,8 +24,9 @@ import {
 // (mayViewProblems and patients.view_sensitive), and flagChangeShown gives an entered-in-error
 // change's reasons only to its author and Program Admins (team.manage_users). Read here through
 // the sync read, the review queue, a retry's answer, the chart, the phone's chart bundle, the team
-// index, search, the flag routes and the portal's flag list. A hidden flag and every history row of
-// it are absent, its reason included, never blanked. Every person, patient and reason is made up.
+// index, search, the flag routes, the portal's flag list and the audit log. A hidden flag and every
+// history row of it are absent, its reason included, never blanked. Every person, patient and
+// reason is made up.
 //
 // Written ahead of P5-read-rule, P5-entity, P5-chart-read, P5-index, P5-route and P5-search: each
 // case fails until the card that builds what it reads lands. What they expect, beyond the other
@@ -41,6 +42,12 @@ import {
 //   history row's `reason`, and its `enteredInError.reason`, left out as the snapshot's are.
 // - A hidden flag's change is missing from the sync read, as a record the team does not have; in the
 //   review queue it is listed hidden (no field, no value) and its accept is 403 change_hidden.
+// - The audit log (CO-14), whose reader need not see sensitive flags: a flag change's two events
+//   name its tier and action, never its flag, so they hold the same keys for a sensitive flag and
+//   for one that is not, synced and from either route; a refusal over a flag hidden from the
+//   caller, from either route, is `access.denied` with reason `cannot_read` and the patient, as D98
+//   logs a request naming a record the caller may not read, and names no flag, no change and no
+//   sensitivity.
 
 const SECRET = 'Demo: told the team at the clinic';
 const WHY = 'Demo: sleeping out in the cold';
@@ -693,5 +700,132 @@ describe('the team index, search, the flag routes and the flag list', () => {
         who,
       ).toBe(reader.sees);
     }
+  });
+});
+
+describe('the audit log (CO-14)', () => {
+  /** The details of the latest event with this action about this flag change. */
+  const detailsOf = async (action: string, changeId: string) => {
+    const [e] = await h.scratch.owner<{ details: Record<string, unknown> }[]>`
+      select details from sineobex.audit_events where action = ${action} and entity_id = ${changeId}
+      order by id desc limit 1`;
+    expect(e, `${action} on ${changeId}`).toBeDefined();
+    return e!.details;
+  };
+  const setByRoute = (token: string, patientId: string, body: Record<string, unknown>) =>
+    call(h, `/v1/patients/${patientId}/flags`, { method: 'POST', token, teamId: t.teamId, json: body });
+  const markByRoute = (token: string, patientId: string, changeId: string) =>
+    call(h, `/v1/patients/${patientId}/flag-changes/${changeId}/entered-in-error`, {
+      method: 'POST',
+      token,
+      teamId: t.teamId,
+      json: { reason: ERROR_WHY },
+    });
+
+  it('a flag change’s two events hold the same keys for a sensitive flag as for any other, synced and from each route, set, clear and mark', async () => {
+    // A patient of its own, so no other case reads these changes.
+    const elsewhere = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Elm' })).id;
+    const synced = async (flagId: string, action: 'set' | 'clear') => {
+      const c = await kim.phone.change({
+        entity: FLAG_CHANGE,
+        op: 'create',
+        value: { patientId: elsewhere, flagId, action, reason: WHY },
+      });
+      expect((await kim.send(c)).map((r) => r.status)).toEqual(['accepted']);
+      return c.recordId;
+    };
+    const markSynced = async (recordId: string) => {
+      const c = await kim.phone.change({
+        entity: FLAG_CHANGE,
+        recordId,
+        op: 'set',
+        field: 'enteredInError',
+        value: { reason: ERROR_WHY },
+      });
+      expect((await kim.send(c)).map((r) => r.status)).toEqual(['accepted']);
+    };
+    const routed = async (flagId: string, action: 'set' | 'clear') => {
+      const id = randomUUID();
+      const r = await setByRoute(kim.token, elsewhere, { id, flagId, action, reason: WHY });
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      return id;
+    };
+    // A sensitive flag and one that is not, of the same tier, so only the flag differs.
+    const flags = { sensitive: ids['flag.pregnancy']!, plain: ids['flag.frost_risk']! };
+    const logged: Record<string, Record<string, Record<string, unknown>>> = {};
+    for (const [which, flagId] of Object.entries(flags)) {
+      const syncedSet = await synced(flagId, 'set');
+      const syncedClear = await synced(flagId, 'clear');
+      const routeSet = await routed(flagId, 'set');
+      const routeClear = await routed(flagId, 'clear');
+      await markSynced(syncedSet);
+      const marked = await markByRoute(kim.token, elsewhere, routeSet);
+      expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+      logged[which] = {
+        'a synced set': await detailsOf('patient_flag.changed', syncedSet),
+        'a synced clear': await detailsOf('patient_flag.changed', syncedClear),
+        'a set from the route': await detailsOf('patient_flag.changed', routeSet),
+        'a clear from the route': await detailsOf('patient_flag.changed', routeClear),
+        'a synced mark': await detailsOf('patient_flag.entered_in_error', syncedSet),
+        'a mark from the route': await detailsOf('patient_flag.entered_in_error', routeSet),
+      };
+    }
+    const sensitive = logged.sensitive!;
+    for (const [what, details] of Object.entries(logged.plain!)) {
+      expect(Object.keys(sensitive[what]!).sort(), what).toEqual(Object.keys(details).sort());
+      // The values too, but for each change's own sync change: nothing tells the two flags apart.
+      const { changeId: _sensitive, ...rest } = sensitive[what]!;
+      const { changeId: _plain, ...plainRest } = details;
+      expect(rest, what).toEqual(plainRest);
+    }
+    // And no event names a flag, whichever it is.
+    const text = JSON.stringify(logged);
+    for (const flagId of Object.values(flags)) expect(text).not.toContain(flagId);
+  });
+
+  it('a refusal over a hidden flag, from either route, is logged as a record the caller may not read, naming no flag, no change and no sensitivity', async () => {
+    const elsewhere = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Fir' })).id;
+    // Kim's change of a sensitive flag, which Lee may not see.
+    const kims = randomUUID();
+    const made = await setByRoute(kim.token, elsewhere, {
+      id: kims,
+      flagId: ids['flag.pregnancy'],
+      action: 'set',
+      reason: SECRET,
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const before = await auditMark(h);
+    const forms = [randomUUID(), randomUUID()];
+    const answers = [
+      await setByRoute(lee.token, elsewhere, {
+        id: forms[0],
+        flagId: ids['flag.pregnancy'],
+        action: 'set',
+        reason: WHY,
+      }),
+      await setByRoute(lee.token, elsewhere, {
+        id: forms[1],
+        flagId: ids['flag.pregnancy'],
+        action: 'clear',
+        reason: WHY,
+      }),
+      await markByRoute(lee.token, elsewhere, kims),
+    ];
+    expect(answers.map((r) => r.status)).toEqual([403, 403, 404]);
+    // Every column of every row these requests wrote.
+    const rows = await h.scratch.owner<{ row: Record<string, unknown> }[]>`
+      select to_jsonb(a) as row from sineobex.audit_events a where id > ${before}::bigint order by id`;
+    const setRoute = '/v1/patients/:patientId/flags';
+    const markRoute = '/v1/patients/:patientId/flag-changes/:changeId/entered-in-error';
+    expect(
+      rows.map(({ row }) => [row.action, row.entity, row.entity_id, row.patient_id, row.details]),
+    ).toEqual([
+      ['access.denied', null, null, elsewhere, { reason: 'cannot_read', route: setRoute }],
+      ['access.denied', null, null, elsewhere, { reason: 'cannot_read', route: setRoute }],
+      ['access.denied', null, null, elsewhere, { reason: 'cannot_read', route: markRoute }],
+    ]);
+    const text = JSON.stringify(rows).toLowerCase();
+    for (const named of [ids['flag.pregnancy']!, kims, ...forms]) expect(text).not.toContain(named);
+    expect(text).not.toContain('sensitive');
   });
 });

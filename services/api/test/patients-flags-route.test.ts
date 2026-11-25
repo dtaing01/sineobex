@@ -32,20 +32,24 @@ import { call } from './sync-fixtures.ts';
 //   first answer and writes nothing more (D115). Refusals, in insertFlagChange's order: 404
 //   `not_found` for a patient the team does not hold; 422 `unknown_flag`, then 422 `reason_invalid`
 //   (empty, untrimmed, over 500 code points); 409 `archived` for a set of an archived flag (a clear is
-//   taken); 403 for a flag hidden from the caller, logged `access.denied` with the patient and
-//   `permission: 'patients.view_sensitive'`, never the flag. A body its schema refuses is 422
-//   `validation_failed`. Takes the team lock first; `patient_flag.changed` in its transaction.
+//   taken); 403 for a flag hidden from the caller, logged as D98 logs a request naming a record the
+//   caller may not read: `access.denied` with reason `cannot_read` and the patient, never the flag,
+//   a change or a permission (CO-14). A body its schema refuses is 422 `validation_failed`. Takes
+//   the team lock first; `patient_flag.changed` in its transaction, `{action, tier}`: no flag.
 // - POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error, `{reason}` (3 to 300):
 //   patients.edit; the change's author or a holder of team.manage_users, else 403 logged; 404 for a
 //   change the patient's group does not hold, and for a change of a flag hidden from the caller,
-//   logged, answered alike so it tells nothing (D98 as amended); 409 `already_marked`; 200
-//   `{version}`. Writes the mark as sync does, with its history row; `patient_flag.entered_in_error`
-//   in its transaction.
+//   logged as the set's refusal is, answered alike so it tells nothing (D98 as amended); 409
+//   `already_marked`; 200 `{version}`. Writes the mark as sync does, with its history row;
+//   `patient_flag.entered_in_error` in its transaction, `{field, kind, version, tier}`: no flag.
 // - GET /v1/presets/flags: patients.view; `[{flagId, name, tier, color, colorName, rank}]`, the
 //   team's active flags the caller may see (flagHidden), primary before secondary, each tier by
 //   rank, then name, then id. Names no patient and writes no audit event.
 
 const REASON = 'Demo: missed two follow-ups this month';
+/** The two writes' routes, as the router names them in an audit event (c.req.routePath). */
+const SET_ROUTE = '/v1/patients/:patientId/flags';
+const MARK_ROUTE = '/v1/patients/:patientId/flag-changes/:changeId/entered-in-error';
 
 interface FlagRow {
   id: string;
@@ -207,7 +211,7 @@ describe('POST /v1/patients/{patientId}/flags', () => {
       entityId: id,
       patientId: patient,
     });
-    expect(event!.details).toMatchObject({ action: 'set', tier: 'primary', flagId: flagId('flag.high') });
+    expect(event!.details).toEqual({ action: 'set', tier: 'primary' });
     expect(await xidOf('audit_events', { entityId: id })).toBe(await xidOf('patient_flag_changes', { id }));
     await expectAuditClean(h, [REASON, 'follow-ups'], before);
 
@@ -218,21 +222,19 @@ describe('POST /v1/patients/{patientId}/flags', () => {
     await expectAudit(h, 'patient_flag.changed', { after: before, count: 1 });
   });
 
-  it('clears a flag, and a sensitive one is logged without its flag', async () => {
+  it('clears a flag, and logs a sensitive one as any other, without its flag', async () => {
     const before = await auditMark(h);
     const clear = await setFlag(team.staff, patient, { flagId: flagId('flag.high'), action: 'clear' });
     expect(clear.status).toBe(201);
     const pregnancy = await setFlag(team.staff, otherPatient, { flagId: flagId('flag.pregnancy') });
     expect(pregnancy.status).toBe(201);
     const events = await expectAudit(h, 'patient_flag.changed', { after: before, count: 2 });
-    expect(events[0]!.details).toMatchObject({
-      action: 'clear',
-      tier: 'primary',
-      flagId: flagId('flag.high'),
-    });
-    expect(events[1]!.details).toMatchObject({ action: 'set', tier: 'secondary' });
-    expect(Object.keys(events[1]!.details)).not.toContain('flagId');
-    expect(JSON.stringify(events.map((e) => e.details))).not.toContain(flagId('flag.pregnancy'));
+    expect(events.map((e) => e.details)).toEqual([
+      { action: 'clear', tier: 'primary' },
+      { action: 'set', tier: 'secondary' },
+    ]);
+    const text = JSON.stringify(events.map((e) => e.details));
+    for (const key of ['flag.high', 'flag.pregnancy']) expect(text).not.toContain(flagId(key));
   });
 
   it('takes the team lock before anything else (D32)', async () => {
@@ -329,7 +331,7 @@ describe('POST /v1/patients/{patientId}/flags', () => {
     expect((await setFlag(team.staff, patient, { flagId: winter.id })).status).toBe(201);
   });
 
-  it('refuses a flag hidden from the caller with 403, logged with the patient and never the flag', async () => {
+  it('refuses a flag hidden from the caller with 403, logged as a record they may not read, with the patient and never the flag', async () => {
     const before = await auditMark(h);
     for (const action of ['set', 'clear'] as const) {
       const r = await setFlag(chw, patient, { flagId: flagId('flag.pregnancy'), action });
@@ -337,10 +339,11 @@ describe('POST /v1/patients/{patientId}/flags', () => {
     }
     const denied = await expectAudit(h, 'access.denied', { after: before, count: 2 });
     for (const e of denied) {
-      expect(e.patientId).toBe(patient);
-      expect(e.details).toMatchObject({ permission: 'patients.view_sensitive' });
+      expect(e).toMatchObject({ entity: null, entityId: null, patientId: patient });
+      expect(e.details).toEqual({ reason: 'cannot_read', route: SET_ROUTE });
     }
     expect(JSON.stringify(denied)).not.toContain(flagId('flag.pregnancy'));
+    expect(JSON.stringify(denied)).not.toContain('sensitive');
     await expectAudit(h, 'patient_flag.changed', { after: before, count: 0 });
     // The flags the CHW may see are set as any member's are.
     expect((await setFlag(chw, patient, { flagId: flagId('flag.frost_risk') })).status).toBe(201);
@@ -354,7 +357,7 @@ describe('POST /v1/patients/{patientId}/flags', () => {
       expect(r.status).toBe(403);
       const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
       // The route as every refusal names it: the router's path, as c.req.routePath gives it.
-      expect(denied!.details).toMatchObject({ route: '/v1/patients/:patientId/flags' });
+      expect(denied!.details).toMatchObject({ route: SET_ROUTE });
     }
   });
 
@@ -370,7 +373,8 @@ describe('POST /v1/patients/{patientId}/flags', () => {
     expect([made.status, made.body]).toEqual([201, { id }]);
     expect(await row(id)).toMatchObject({ patientId: patient, flagId: flagId('flag.low') });
     const [event] = await expectAudit(h, 'patient_flag.changed', { after: before, count: 1 });
-    expect(event!.details).toMatchObject({ flagId: flagId('flag.low') });
+    expect(event).toMatchObject({ entityId: id, patientId: patient });
+    expect(event!.details).toEqual({ action: 'set', tier: 'primary' });
     // The same form sent again in lowercase is the same change.
     expect((await setFlag(team.staff, patient, { id, flagId: flagId('flag.low') })).status).toBe(201);
     await expectAudit(h, 'patient_flag.changed', { after: before, count: 1 });
@@ -431,7 +435,12 @@ describe('POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error
     ]);
     const [event] = await expectAudit(h, 'patient_flag.entered_in_error', { after: before, count: 1 });
     expect(event).toMatchObject({ entity: 'patient_flag_change', entityId: id, patientId: otherPatient });
-    expect(event!.details).toMatchObject({ tier: 'primary', flagId: flagId('flag.medium') });
+    expect(event!.details).toEqual({
+      field: 'enteredInError',
+      kind: 'entered_in_error',
+      version: 1,
+      tier: 'primary',
+    });
     expect(await xidOf('audit_events', { entityId: id })).toBe(await xidOf('patient_flag_changes', { id }));
     await expectAuditClean(h, [reason, REASON], before);
 
@@ -470,9 +479,9 @@ describe('POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error
     const r = await markOf(author, otherPatient, id);
     expect([r.status, errorOf(r).code]).toEqual([404, 'not_found']);
     const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
-    expect(denied!.patientId).toBe(otherPatient);
-    expect(denied!.details).toMatchObject({ permission: 'patients.view_sensitive' });
-    expect(JSON.stringify(denied)).not.toContain(flagId('flag.pregnancy'));
+    expect(denied).toMatchObject({ entity: null, entityId: null, patientId: otherPatient });
+    expect(denied!.details).toEqual({ reason: 'cannot_read', route: MARK_ROUTE });
+    for (const text of [flagId('flag.pregnancy'), id]) expect(JSON.stringify(denied)).not.toContain(text);
     expect((await row(id))!.status).toBe('active');
   });
 
@@ -504,7 +513,8 @@ describe('POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error
     // Logged as a refusal about the caller, on the patient, never naming the flag; the others are not.
     const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
     expect(denied!.patientId).toBe(otherPatient);
-    expect(JSON.stringify(denied)).not.toContain(flagId('flag.pregnancy'));
+    expect(denied!.details).toEqual({ reason: 'cannot_read', route: MARK_ROUTE });
+    for (const text of [flagId('flag.pregnancy'), id]) expect(JSON.stringify(denied)).not.toContain(text);
     expect((await row(id))!.status).toBe('active');
   });
 

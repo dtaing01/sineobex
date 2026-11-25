@@ -1,4 +1,4 @@
-import type { TeamScope } from '../auth/context.ts';
+import type { AuditFn, TeamScope } from '../auth/context.ts';
 import { conflict, forbidden, invalid, notFound, type ApiError } from '../lib/errors.ts';
 import { flagChangeRules, flagDetails, insertFlagChange } from '../sync/entities/patient-flag-change.ts';
 import { lockTeamWrites } from '../sync/locks.ts';
@@ -21,13 +21,26 @@ import type {
  * rule (flagHidden), so the desk and the phone cannot drift (D99), and the portal holds no rule of
  * its own (D114). Each write takes the team lock first (D32) and audits in its transaction; a
  * refusal about the caller is logged as access.denied with the patient, never the flag (D98 as
- * amended), and every other refusal writes nothing.
+ * amended): one over a flag hidden from them as a request naming a record they may not read
+ * (hiddenFlagRefused), one over their role with its key. Every other refusal writes nothing.
  */
 
 type Outcome<T> = { answer: T } | { refused: ApiError };
 
 /** A flag the caller may not see, refused as the flag rule hides it: logged, never naming the flag. */
 const hiddenFlag = () => forbidden('Your role can’t see this flag, so you can’t change it.', 'flag_hidden');
+
+// PLAN-OPEN (CO-14): what may the audit log say of a refusal over a flag the caller may not see?
+// What D98 logs of a request naming a record the caller may not read: cannot_read and the patient.
+/**
+ * A refusal over a flag hidden from the caller, from either route, logged as D98 (as amended) logs
+ * a request naming a record the caller may not read: access.denied with reason cannot_read and the
+ * patient, in the request's transaction. It names no flag, no change and no permission: a reader of
+ * the log need not see sensitive flags, and patients.view_sensitive there would tell them that the
+ * request was about one on that patient (design 9), as a flag or change id would tell them which.
+ */
+const hiddenFlagRefused = (audit: AuditFn, patientId: string, route: string) =>
+  audit({ action: 'access.denied', patientId, details: { reason: 'cannot_read', route } });
 
 /**
  * POST /v1/patients/{patientId}/flags: sets or clears a flag on the patient at the server's time.
@@ -44,7 +57,7 @@ export async function setPatientFlag(
   input: SetPatientFlagInput,
   route: string,
 ): Promise<SetPatientFlagResultValue> {
-  // IDs as the database writes them, so a capital never makes another flag, nor names one in the log.
+  // IDs as the database writes them, so a capital never makes another flag.
   const id = input.id.toLowerCase();
   const patient = patientId.toLowerCase();
   const flagId = input.flagId.toLowerCase();
@@ -105,11 +118,7 @@ export async function setPatientFlag(
             'That flag is no longer on your team’s list, so it can only be cleared.',
           );
         case 'hidden':
-          await audit({
-            action: 'access.denied',
-            patientId: patient,
-            details: { permission: 'patients.view_sensitive', route },
-          });
+          await hiddenFlagRefused(audit, patient, route);
           return { refused: hiddenFlag() };
       }
     }
@@ -129,9 +138,9 @@ const idTaken = () =>
  * patient's chart entered in error, once, with a reason, as a phone's mark does (the entity's
  * write, its history row and its event). 404 for a patient the team does not hold or a change their
  * merged group does not, and for a change of a flag hidden from the caller (D136), which is logged
- * as a refusal about the caller (D98 as amended); 403, logged, for anyone but the change's author or
- * a Program Admin; 409 `already_marked`. A refusal about the caller comes before the state, so it is
- * logged whatever the change holds.
+ * as a request naming a record they may not read (hiddenFlagRefused, D98 as amended); 403, logged,
+ * for anyone but the change's author or a Program Admin; 409 `already_marked`. A refusal about the
+ * caller comes before the state, so it is logged whatever the change holds.
  */
 export async function markFlagChangeInError(
   scope: TeamScope,
@@ -153,11 +162,7 @@ export async function markFlagChangeInError(
     if (!rec || of !== group) throw notFound('flag change');
     const flag = rec.internal.flag as FlagHead | null;
     if (flagHidden(scope.team.permissions, flag)) {
-      await audit({
-        action: 'access.denied',
-        patientId: rec.patientId,
-        details: { permission: 'patients.view_sensitive', route },
-      });
+      await hiddenFlagRefused(audit, rec.patientId!, route);
       // Answered as a change the chart does not hold, so it tells nothing (D98 as amended): a 403
       // would tell a reader the flag is hidden from which patient carries a change of it.
       return { refused: notFound('flag change') };
@@ -211,7 +216,7 @@ export async function markFlagChangeInError(
         field: 'enteredInError',
         kind: 'entered_in_error',
         version: fieldVersion,
-        ...flagDetails(flag, rec.attributes.flagId as string),
+        ...flagDetails(flag),
       },
     });
     return { answer: { version } };
