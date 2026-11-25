@@ -69,6 +69,18 @@ void main() {
     }
   });
 
+  // Phase 5 (design 8.2; card P5-needs-attention), written ahead of its code: a flag change's two
+  // refusals a worker can fix and its notice, word for word.
+  test('a flag change’s refusals and its notice have the design’s sentences (phase 5 design 8.2)', () {
+    expect(problemLabel('unknown_flag'), 'This flag isn’t on your team’s list. Choose a flag.');
+    expect(problemLabel('reason_invalid'), 'The reason is empty or too long. Change the reason.');
+    expect(
+      noticeLabel('flag_change_not_applied', null),
+      'A flag you set wasn’t applied. Open the patient to set it again.',
+    );
+    expect(entityLabel('patient_flag_change'), 'Flag change');
+  });
+
   test('every outbox category has a name', () {
     for (final entity in [...recordEntities, entityAudit]) {
       final category = categoryOf(entity);

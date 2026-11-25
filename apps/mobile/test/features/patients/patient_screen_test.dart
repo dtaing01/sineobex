@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/transport.dart' show NetworkException;
+import 'package:sineobex_field/features/patients/flag_sheet.dart' show changeFlagsAction;
 import 'package:sineobex_field/features/patients/patient_screen.dart';
+import 'package:sineobex_field/presets/preset_store.dart';
+import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
+
+import '../../sync/fake_server.dart';
 
 import 'patient_kit.dart';
 
@@ -391,5 +396,169 @@ void main() {
         expect(h.sync.store!.outbox().where((e) => e.entity == entityAllergy), isEmpty);
       });
     }
+  });
+
+  // Phase 5 (design 8.2; cards P5-phone-sheet and P5-status-check), written ahead of their code: the
+  // header's flag pills, never by colour alone, an archived flag's words, Sent for review, names from
+  // the chart where the presets aren't held; and Status check due on the problem list.
+  group('the profile’s flags (phase 5 design 8.2)', () {
+    Map<String, Object?> flag(String name, String tier, String color, int rank) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': false,
+    };
+
+    String change(AppHarness h, String flagId, {String action = 'set'}) => h.server.seed(entityFlagChange, {
+      'patientId': p1Id,
+      'flagId': flagId,
+      'action': action,
+      'reason': 'Demo: seen under the bridge',
+    }, by: otherStaff);
+
+    for (final run in runs) {
+      testWidgets('the risk level and conditions show as pills that say their colour and name, offline '
+          '(${runName(run)})', (tester) async {
+        final handle = tester.ensureSemantics();
+        final h = await signIn(tester, theme: run.theme, scale: run.scale, narrow: run.narrow);
+        seedP1(h.server);
+        final team = h.patients.teamId;
+        change(h, h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10)));
+        change(h, h.server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10)));
+        await syncAndRefresh(tester, h);
+        await go(tester, '/patients/$p1Id');
+        h.server.offline = true;
+        await go(tester, '/patients/$p1Id');
+        for (final (text, spoken) in [
+          ('Red · Demo: High', 'Red, Demo: High'),
+          ('Blue · Demo: Frost risk', 'Blue, Demo: Frost risk'),
+        ]) {
+          await expectShown(tester, find.text(text));
+          expect(find.bySemanticsLabel(spoken), findsOneWidget);
+        }
+        await expectScreenOk(tester);
+        handle.dispose();
+      });
+    }
+
+    testWidgets('no flags: no pill and no words about them, only the flags row to set one', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await expectShown(tester, find.widgetWithText(OutlinedButton, changeFlagsAction));
+      expect(find.textContaining('Demo: High'), findsNothing);
+      expect(find.text('Sent for review'), findsNothing);
+    });
+
+    testWidgets('an archived flag the patient carries says it is no longer on the team’s list', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      final team = h.patients.teamId;
+      final frost = h.server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      change(h, frost);
+      h.server.archivePreset(team, frost);
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await expectShown(tester, find.text('Blue · Demo: Frost risk'));
+      await expectShown(tester, find.text('No longer on the team’s list'));
+      await expectScreenOk(tester);
+    });
+
+    testWidgets('a change of this phone’s the server holds for review shows as Sent for review', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      final high = h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      // The person's role lost patients.edit at the desk; the phone set the flag before it knew.
+      h.server.permissions[h.patients.userId] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      h.sync.store!.createRecord(entityFlagChange, {
+        'patientId': p1Id,
+        'flagId': high,
+        'action': 'set',
+        'reason': 'Demo: left hospital',
+      });
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await expectShown(tester, find.text('Sent for review'));
+      expect(find.text('Red · Demo: High'), findsNothing);
+    });
+
+    testWidgets('where the presets aren’t held, the pills are named as the chart names them', (tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      change(h, h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: High', 'primary', 'red', 10)));
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      h.server.offline = true;
+      PresetStore(h.sync.store!).clear();
+      await go(tester, '/patients/$p1Id');
+      await expectShown(tester, find.text('Red · Demo: High'));
+    });
+
+    group('Status check due on the problem list (5.3; section 11, row 21)', () {
+      String settings(AppHarness h, int days) => h.server.addPreset(h.patients.teamId, 'settings', {
+        'name': 'Team settings',
+        'bagMinimumsOn': false,
+        'newBagMinimums': <Object?>[],
+        'problemCheckDays': days,
+      });
+
+      String problem(AppHarness h, String title, String status, {required Duration ago}) {
+        final id = h.server.seed(entityProblem, {
+          'patientId': p1Id,
+          'title': title,
+          'status': status == 'resolved' ? 'ongoing' : status,
+        }, at: h.wall.subtract(ago));
+        if (status == 'resolved') {
+          // No create is Resolved, and a set is dated now: its check time is put back by hand, as the
+          // API's tests date one.
+          h.server.serverEdit(id, 'status', {'status': 'resolved', 'encounterId': null}, by: otherStaff);
+          h.server.records[id]!.checkedAt = h.wall.subtract(ago);
+        }
+        return id;
+      }
+
+      for (final run in runs) {
+        testWidgets('beside a New or Ongoing problem not checked within the team’s window, offline '
+            '(${runName(run)})', (tester) async {
+          final handle = tester.ensureSemantics();
+          final h = await signIn(tester, theme: run.theme, scale: run.scale, narrow: run.narrow);
+          seedP1(h.server);
+          settings(h, 90);
+          problem(h, 'Demo: cough', 'ongoing', ago: const Duration(days: 91));
+          problem(h, 'Demo: rash', 'new', ago: const Duration(days: 10));
+          await syncAndRefresh(tester, h);
+          await go(tester, '/patients/$p1Id');
+          h.server.offline = true;
+          await go(tester, '/patients/$p1Id');
+          final due = find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing, .*status check due'));
+          await expectShown(tester, due);
+          expect(find.text('Status check due'), findsOneWidget);
+          expect(find.bySemanticsLabel(RegExp(r'^Demo: rash, New, .*status check due')), findsNothing);
+          await expectScreenOk(tester);
+          handle.dispose();
+        });
+      }
+
+      testWidgets('never beside a Resolved problem, and nowhere where the presets aren’t held', (tester) async {
+        final h = await signIn(tester);
+        seedP1(h.server);
+        settings(h, 90);
+        problem(h, 'Demo: old burn', 'resolved', ago: const Duration(days: 200));
+        problem(h, 'Demo: cough', 'ongoing', ago: const Duration(days: 200));
+        await syncAndRefresh(tester, h);
+        await go(tester, '/patients/$p1Id');
+        expect(find.text('Status check due'), findsOneWidget);
+        h.server.offline = true;
+        PresetStore(h.sync.store!).clear();
+        await go(tester, '/patients/$p1Id');
+        expect(find.text('Status check due'), findsNothing);
+      });
+    });
   });
 }
