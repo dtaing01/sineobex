@@ -168,8 +168,10 @@ const noticeCardConflict = 'id_link_conflict';
 const noticeReversalDecided = 'problem_reversal_decided';
 
 /// The person's notices from the server (`GET /v1/team/notices`: kind, entity and record ID only, and
-/// for a held sign-off's, its note's ID, D104), kept with the phone's own ([LocalStore.notices]), and
-/// read on the phone and on the server alike.
+/// for a held sign-off's, its note's ID, D104, and for a held flag change's, its patient's, phase 5
+/// design 6.2), kept with the phone's own ([LocalStore.notices]), and read on the phone and on the
+/// server alike. Each is filed under the patient of the record it names where the phone holds that
+/// record, else under the patient it names.
 ///
 /// The server's notice IDs live in `kv` with the local notice each became and its entity (IDs only,
 /// no PHI), so a notice is stored once however often it is fetched. The note a notice names is kept
@@ -262,7 +264,7 @@ class ServerNotices {
             store.addNotice(
               n.kind,
               recordId: n.recordId,
-              patientId: _patientOf(n.entity, n.recordId),
+              patientId: _patientOf(n.entity, n.recordId) ?? _named(n.patientId),
               noteId: n.noteId,
             );
         if (n.readAt != null) store.markNoticeRead(id);
@@ -308,6 +310,12 @@ class ServerNotices {
     }
     return true;
   }
+
+  /// The patient a notice names (`Notice.patientId`: a held flag change's, phase 5 design 6.2), as
+  /// this phone knows them now, a merged record's survivor: for a notice whose record the phone
+  /// doesn't hold, which it lets go of once the server holds it, purges with its chart, and never had
+  /// when another phone of the person's made it.
+  String? _named(String? patientId) => patientId == null ? null : store.canonicalPatient(patientId);
 
   /// The patient a notice is about, when the phone holds its record (a card, a problem).
   String? _patientOf(String? entity, String? recordId) {
