@@ -28,5 +28,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const sent = publishRequest(await request.json().catch(() => null));
   if (!sent)
     return answer({ ok: false, error: 'Something about this request was wrong. Reload the page.' }, 422);
-  return answer(publishAnswer(key, await publishNoteType(key, sent)));
+  return answer(publishAnswer(key, await publishNoteType(key, sent), sent.ops));
 }

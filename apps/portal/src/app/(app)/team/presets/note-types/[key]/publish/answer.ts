@@ -37,11 +37,16 @@ export function publishRequest(body: unknown): PublishRequest | null {
 /** The editor's own address, where a fresh sign-in comes back to: the note type's key alone. */
 export const editorAddress = (key: string) => `/team/presets/note-types/${key}`;
 
+/**
+ * What the editor shows once the API has answered the operations `ops` it sent: a refusal of one of
+ * them is said in words for its kind.
+ */
 export function publishAnswer(
   key: string,
   outcome:
     | { published: { version: number; alsoPublished: string[] } }
     | { refused: { status: number; code: string; details?: Record<string, unknown> } },
+  ops: readonly NoteTypeEdit[] = [],
 ): PublishAnswer {
   if ('published' in outcome) {
     const { version, alsoPublished } = outcome.published;
@@ -50,5 +55,7 @@ export function publishAnswer(
   const { code, details } = outcome.refused;
   const go = refusalRedirect(code, editorAddress(key));
   if (go) return { ok: false, redirect: go };
-  return { ok: false, ...publishRefusal(code, details) };
+  const at = details?.opIndex;
+  const op = typeof at === 'number' ? ops[at]?.op : undefined;
+  return { ok: false, ...publishRefusal(code, details, op) };
 }

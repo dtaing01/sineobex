@@ -553,16 +553,41 @@ export interface PublishRefusal {
   fieldErrors?: Record<string, string>;
 }
 
+/** An answer a condition asks for, retired: what shows only for it would never show (in_use). */
+const ASKED_FOR = 'Part of this note type is shown only for this answer, so it can’t be retired.';
+
+/** A number field added with a range no answer fits (the validator's number_range_empty). */
+const NO_NUMBER_FITS =
+  'No number fits between the lowest and highest it takes, so it could never be answered. Undo it and add it again.';
+
+/** The sentence for an operation's refusal, by its code and, where the words differ, its kind. */
+function operationRefusal(
+  code: string,
+  op: string | undefined,
+  details: Record<string, unknown> | undefined,
+) {
+  if (code === 'in_use' && op === 'retire_option') return ASKED_FOR;
+  const problems = Array.isArray(details?.problems) ? (details.problems as { path?: unknown }[]) : [];
+  if (code === 'invalid' && problems.some((p) => typeof p?.path === 'string' && p.path.endsWith('.max')))
+    return NO_NUMBER_FITS;
+  return OPERATION_REFUSALS[code] ?? 'This change can’t be made.';
+}
+
 /**
  * A Publish refused (design 7's PUT): an operation's own code names the change by its index, and the
- * editor says it beside that change; a refusal of the whole publish says what to do.
+ * editor says it beside that change, in words for its kind (`op`, the operation sent at that index);
+ * a refusal of the whole publish says what to do, never which change, since the API names none.
  */
-export function publishRefusal(code: string, details: Record<string, unknown> | undefined): PublishRefusal {
+export function publishRefusal(
+  code: string,
+  details: Record<string, unknown> | undefined,
+  op?: string,
+): PublishRefusal {
   const opIndex = details?.opIndex;
   const noteTypeKey = details?.noteTypeKey;
   if (typeof opIndex === 'number' && Number.isInteger(opIndex) && opIndex >= 0)
     return {
-      error: OPERATION_REFUSALS[code] ?? 'This change can’t be made.',
+      error: operationRefusal(code, op, details),
       opIndex,
       ...(typeof noteTypeKey === 'string' ? { noteTypeKey } : {}),
     };
@@ -581,9 +606,10 @@ export function publishRefusal(code: string, details: Record<string, unknown> | 
         error: 'This note type isn’t on your team’s list. Reload the page to see the list as it is now.',
       };
     case 'invalid':
+      // The checks found it in the version as a whole, so no change is named, nor the last one blamed.
       return {
         error:
-          'This version doesn’t pass Sineobex’s checks, so it wasn’t published. Undo the last change and try again.',
+          'This version doesn’t pass Sineobex’s checks, so it wasn’t published. Undo changes one at a time, pressing Publish after each, to find the one that causes it.',
       };
     case 'validation_failed': {
       const fields = Array.isArray(details?.fields)

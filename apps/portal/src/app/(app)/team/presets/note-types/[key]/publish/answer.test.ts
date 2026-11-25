@@ -135,6 +135,49 @@ describe('what Publish is told', () => {
     });
   });
 
+  it('says a retire of an answer a condition asks for, and a number no answer fits, in words for each (B-14)', () => {
+    const ops = [
+      { op: 'rename_type', title: 'Demo: Night round, ours' },
+      { op: 'retire_option', path: 'outreach.new_need', code: 'emergency' },
+      {
+        op: 'add_field',
+        sectionId: 'notes',
+        kind: 'number',
+        label: 'Demo: Count',
+        min: 10,
+        max: 5,
+        decimals: 0,
+      },
+    ];
+    expect(
+      publishAnswer(KEY, { refused: { status: 422, code: 'in_use', details: { opIndex: 1 } } }, ops),
+    ).toEqual({
+      ok: false,
+      error: 'Part of this note type is shown only for this answer, so it can’t be retired.',
+      opIndex: 1,
+    });
+    const hide = [{ op: 'set_hidden', path: 'outreach.new_need', hidden: true }];
+    expect(
+      publishAnswer(KEY, { refused: { status: 422, code: 'in_use', details: { opIndex: 0 } } }, hide),
+    ).toMatchObject({ error: expect.stringContaining('so it can’t be hidden') });
+    const range = {
+      opIndex: 2,
+      problems: [
+        { file: 'f', path: '$.sections[0].fields[1].max', rule: 'edit.new_field', message: 'no value' },
+      ],
+    };
+    expect(publishAnswer(KEY, { refused: { status: 422, code: 'invalid', details: range } }, ops)).toEqual({
+      ok: false,
+      error:
+        'No number fits between the lowest and highest it takes, so it could never be answered. Undo it and add it again.',
+      opIndex: 2,
+    });
+    // Found in the version as a whole: no change is named, and the last one isn't blamed.
+    const whole = publishAnswer(KEY, { refused: { status: 422, code: 'invalid' } }, ops);
+    expect(whole).not.toHaveProperty('opIndex');
+    expect((whole as { error: string }).error).not.toMatch(/last change/);
+  });
+
   it('says a publish of a removed note type, of nothing, and one its checks refuse, without naming a change', () => {
     const said = (status: number, code: string) => publishAnswer(KEY, { refused: { status, code } });
     expect(said(409, 'archived')).toMatchObject({ ok: false, error: expect.stringContaining('removed') });

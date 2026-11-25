@@ -700,19 +700,43 @@ describe('PUT /v1/admin/note-types/{key}', () => {
     }
   });
 
-  it('refuses a version phase 4’s validator refuses, with what it found: a retired option a condition still names', async () => {
+  it('refuses, by its index, a retire of an answer a condition asks for and a number field no answer fits, writing nothing', async () => {
+    // Each would leave a version phase 4's validator refuses as a whole; the operation refuses it
+    // first, so the editor can name the change (review B-14).
     const row = await rowOf('outreach');
+    expect(
+      await refusedUnwritten(
+        () =>
+          api.publish('outreach', row.version, [
+            { op: 'rename_type', title: 'Demo: Outreach, retired' },
+            { op: 'retire_option', path: 'outreach.new_need', code: 'emergency' },
+          ]),
+        422,
+        'in_use',
+      ),
+    ).toEqual({ opIndex: 1 });
+    const section = row.definition.sections[0]!.id;
     const details = await refusedUnwritten(
       () =>
         api.publish('outreach', row.version, [
-          { op: 'retire_option', path: 'outreach.new_need', code: 'emergency' },
+          {
+            op: 'add_field',
+            sectionId: section,
+            kind: 'number',
+            label: 'Demo: Count',
+            min: 10,
+            max: 5,
+            decimals: 0,
+          },
+          { op: 'rename_type', title: 'Demo: Outreach, counted' },
         ]),
       422,
       'invalid',
     );
-    expect(Array.isArray(details.problems) && details.problems.length > 0, JSON.stringify(details)).toBe(
-      true,
-    );
+    expect(details.opIndex).toBe(0);
+    expect((details.problems as { path: string }[]).map((p) => p.path)).toEqual([
+      expect.stringMatching(/\.max$/),
+    ]);
   });
 
   it('refuses a publish from a version that is not the current one, with the current one, writing nothing', async () => {
@@ -965,19 +989,19 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
     const theirs = noteTypesApi(t.teamId, t.admin);
     const row = await rowOf('quick_encounter', theirs);
     const wound = await rowOf('wound_care', theirs);
-    const details = await refusedUnwritten(
-      () =>
-        theirs.publish('quick_encounter', row.version, [
-          { op: 'retire_option', path: 'wound.drainage', code: 'scant' },
-        ]),
-      422,
-      'invalid',
-      t.teamId,
-    );
+    // Refused where it reaches wound care, by its index, naming the note type (review B-14).
     expect(
-      [...new Set((details.problems as { file: string }[]).map((p) => p.file))],
-      JSON.stringify(details),
-    ).toEqual([`note-types/wound_care/v${wound.version + 1}.json`]);
+      await refusedUnwritten(
+        () =>
+          theirs.publish('quick_encounter', row.version, [
+            { op: 'retire_option', path: 'wound.drainage', code: 'scant' },
+          ]),
+        422,
+        'in_use',
+        t.teamId,
+      ),
+    ).toEqual({ opIndex: 0, noteTypeKey: 'wound_care' });
+    expect((await rowOf('wound_care', theirs)).version).toBe(wound.version);
   });
 
   it('rewords an option carried into the quick encounter, each version declaring its own rename', async () => {
