@@ -459,10 +459,11 @@ class PatientFlags {
   /// What the phone keeps of a flag change of its own once a receipt confirms it, in the receipt's
   /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, in `kv`;
   /// never a flag or a reason): the change's own time, as the server's `when` reads it (the corrected
-  /// time, else the device's); when the receipt came, by the corrected clock; and, for a mark the
+  /// time, else the device's); when the receipt came, by the corrected clock; for each mark the
   /// server holds for a Program Admin, the mark's change, so it is told from a held create of the
-  /// same change. [_read] dates a confirmed change by them until a chart gives the server's time.
-  /// What it kept of a change the phone no longer holds goes here too.
+  /// same change; and whether a later mark was taken, which a held one's fate no longer decides.
+  /// [_read] dates a confirmed change by them until a chart gives the server's time. What it kept of
+  /// a change the phone no longer holds goes here too.
   void _onConfirmed(OutboxEntry e, AcceptedReceipt receipt) {
     if (e.entity != entityFlagChange) return;
     final kept = {...?_kept(e.recordId)};
@@ -470,7 +471,10 @@ class PatientFlags {
       kept[_keptAt] = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
       kept[_keptReceivedAt] = _now().millisecondsSinceEpoch;
     } else if (e.op == 'set' && e.field == 'enteredInError' && receipt.inReview) {
-      kept[_keptHeldMark] = e.changeId;
+      kept[_keptHeldMarks] = [..._heldMarksOf(kept), e.changeId];
+      kept.remove(_keptMarkTaken);
+    } else if (e.op == 'set' && e.field == 'enteredInError') {
+      kept[_keptMarkTaken] = true;
     } else {
       return;
     }
@@ -490,6 +494,12 @@ class PatientFlags {
     final value = jsonDecode(raw);
     return value is Map<String, Object?> ? value : null;
   }
+
+  /// The change IDs of every mark of a flag change the server held, as [kept] holds them.
+  static List<String> _heldMarksOf(Map<String, Object?>? kept) => [
+    for (final id in kept?[_keptHeldMarks] as List<Object?>? ?? const [])
+      if (id is String) id,
+  ];
 
   // ---- recording ----
 
@@ -653,7 +663,7 @@ class PatientFlags {
       entityFlagChange,
     ])) {
       final recordId = r['record_id']! as String;
-      if (_kept(recordId)?[_keptHeldMark] == r['change_id']) {
+      if (_heldMarksOf(_kept(recordId)).contains(r['change_id'])) {
         heldMarks.add(recordId);
       } else {
         heldCreates.add(recordId);
@@ -708,7 +718,8 @@ class PatientFlags {
       if (state == FlagChangeState.refused) continue;
       final flag = catalog[a['flagId']];
       if (flag == null || _hidden(flag)) continue;
-      final heldMark = heldMarks.contains(row.id);
+      // A mark held for review, unless a later one of this phone's was taken since.
+      final heldMark = heldMarks.contains(row.id) && kept?[_keptMarkTaken] != true;
       changes.add(
         _Change(
           id: row.id,
@@ -927,7 +938,8 @@ const _manageUsers = 'team.manage_users';
 const _keptKvPrefix = 'flagChange.';
 const _keptAt = 'at';
 const _keptReceivedAt = 'receivedAt';
-const _keptHeldMark = 'heldMark';
+const _keptHeldMarks = 'heldMarks';
+const _keptMarkTaken = 'markTaken';
 
 // What the flags sheet, intake and Needs attention say when this layer stops: its words.
 const _notAllowed = 'Your role can’t change a patient’s flags.';

@@ -804,6 +804,23 @@ void main() {
       view = flags().flagsOf(held.patientId);
       expect([view.riskLevel?.flagId, view.sentForReview, view.history.single.enteredInError], [high, false, null]);
     });
+
+    test('a mark made again once a held one wasn’t applied, and taken, is the change’s mark', () async {
+      final held = await heldMark();
+      server.rejectHeld(held.markChange);
+      await services.notices.sync();
+      // The role is put right; the person marks the change again, and the server takes it.
+      server.permissions[alex] = {...FakeSyncServer.healthcareStaff};
+      expect(flags().mayEnterInError(flags().flagsOf(held.patientId).history.single), isTrue);
+      flags().enterInError(held.recordId, 'Demo: set on the wrong patient, again');
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'taken');
+      expect(server.records[held.recordId]!.status, 'entered_in_error');
+      final view = flags().flagsOf(held.patientId);
+      expect([view.riskLevel, view.sentForReview], [null, false]);
+      final mark = view.history.single.enteredInError;
+      expect([mark?.held, mark?.waiting, mark?.reason], [false, false, 'Demo: set on the wrong patient, again']);
+    });
   });
 
   group('the two refusals a worker can fix (6.2, D121)', () {
