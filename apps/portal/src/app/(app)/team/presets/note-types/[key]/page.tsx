@@ -117,7 +117,7 @@ export default async function NoteTypePage({
           </dd>
         </div>
       </dl>
-      <Offer row={row} />
+      <Offer row={row} headingLevel={2} />
       {row.state === 'active' ? (
         <>
           {row.protected.whole ? (

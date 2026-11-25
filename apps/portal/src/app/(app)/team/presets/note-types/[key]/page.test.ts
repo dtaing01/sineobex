@@ -66,12 +66,40 @@ const draw = async (key: string) =>
     await NoteTypePage({ params: Promise.resolve({ key }), searchParams: Promise.resolve({}) }),
   );
 
+/** The page's headings, in the order drawn, as h1, h2, ...: what a screen reader's outline reads. */
+const outline = (html: string) => [...html.matchAll(/<h([1-6])[\s>]/g)].map((m) => Number(m[1]));
+
 beforeEach(() => {
   rows = [];
   history = [event()];
 });
 
 describe('a note type’s own page', () => {
+  it('draws Sineobex’s update as a part of the page, its heading at level 2 under the h1, in place, as new or removed', async () => {
+    const update = {
+      platformVersion: 2,
+      definition: definition('outreach', { version: 2, title: 'Demo: Night round, newer' }),
+      changesFixed: [] as string[],
+    };
+    for (const over of [
+      { customized: true },
+      { customized: true, updateChangesFixed: true, update: { ...update, changesFixed: ['group'] } },
+      { state: 'archived' as const, customized: true },
+    ]) {
+      rows = [row('outreach', { updateOnOffer: true, update, ...over })];
+      const html = await draw('outreach');
+      expect(html, JSON.stringify(over)).toMatch(/<h2 id="offer-outreach"[^>]*>Update available/);
+      // No heading level is skipped going down the page (axe's heading-order).
+      const levels = outline(html);
+      expect(levels[0]).toBe(1);
+      for (let i = 1; i < levels.length; i++)
+        expect(
+          levels[i]! - levels[i - 1]!,
+          `${JSON.stringify(over)}: ${levels.join(' ')}`,
+        ).toBeLessThanOrEqual(1);
+    }
+  });
+
   it('draws no editor for a note type that can’t be changed at all, and says so once', async () => {
     const sections = [
       {

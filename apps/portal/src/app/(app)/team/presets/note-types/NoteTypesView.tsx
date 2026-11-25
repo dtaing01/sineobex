@@ -13,11 +13,16 @@ import { groupOf, noteTypeReviewRows, readersOf, visitsOf, whoseOf } from './wor
 /** The editor's address: a key, never a title (design 7). */
 export const editorPath = (key: string) => `/team/presets/note-types/${key}`;
 
-/** Sineobex's update to one note type, placed for every one the page shows: it draws nothing while none is on offer. */
-export function Offer({ row }: { row: NoteTypeRow }) {
+/**
+ * Sineobex's update to one note type, placed for every one the page shows: it draws nothing while
+ * none is on offer. Its heading is at `headingLevel`: 3 under the note type's h2 here, 2 straight
+ * after the h1 of the note type's own page.
+ */
+export function Offer({ row, headingLevel = 3 }: { row: NoteTypeRow; headingLevel?: 2 | 3 }) {
   const { update } = row;
   return (
     <NoteTypeOffer
+      headingLevel={headingLevel}
       noteType={{
         key: row.key,
         title: row.title,

@@ -136,6 +136,8 @@ describe('the note types page', () => {
     );
     expect(sectionOf(html, 'harm_reduction')).toContain('Add as new');
     expect(sectionOf(html, 'outreach')).not.toContain('Sineobex updated');
+    // Under the note type's h2, its offer's heading is an h3.
+    expect(sectionOf(html, 'psychological')).toMatch(/<h3 id="offer-psychological"[^>]*>Update available/);
   });
 
   it('asks, to add one, for a note type to copy or for Medical, Non-Medical or both and a timeline group, with a reason', () => {

@@ -15,6 +15,11 @@ export interface NoteTypeOfferProps {
   offer: { platformVersion: number; changesFixed: boolean } | null;
   /** The note type now beside Sineobex's new version (ReviewTable). */
   review: ReactNode;
+  /**
+   * 2 on a note type's own page, where the offer follows its h1; 3 in the list and the Removed list,
+   * under the note type's h2, as a preset's offer is placed (UpdateOffer).
+   */
+  headingLevel?: 2 | 3;
 }
 
 /**
@@ -58,7 +63,7 @@ function SentVersion({ name, version }: { name: 'baseVersion' | 'platformVersion
  * Placed for every note type the page shows: it draws nothing while nothing is on offer, and a take
  * refused stays to say why, though the offer has gone by the time the list is read again.
  */
-export function NoteTypeOffer({ noteType, offer, review }: NoteTypeOfferProps) {
+export function NoteTypeOffer({ noteType, offer, review, headingLevel = 3 }: NoteTypeOfferProps) {
   const [refused, setRefused] = useState(false);
   if (!offer && !refused) return null;
   const { key, title } = noteType;
@@ -68,12 +73,15 @@ export function NoteTypeOffer({ noteType, offer, review }: NoteTypeOfferProps) {
     setRefused(next.error !== undefined);
     return next;
   };
+  const Heading = headingLevel === 2 ? 'h2' : 'h3';
+  // At level 3 the offer sits in its note type's own panel, which leaves a review too little width
+  // at 320 px inside a second one, so it is drawn unboxed there (OfferForm's reason).
   return (
-    <section aria-labelledby={`offer-${key}`} className={styles.flat}>
-      <h3 id={`offer-${key}`} className="px-h3">
+    <section aria-labelledby={`offer-${key}`} className={headingLevel === 2 ? 'px-panel' : styles.flat}>
+      <Heading id={`offer-${key}`} className={headingLevel === 2 ? 'px-h2' : 'px-h3'}>
         {offer ? 'Update available' : 'Sineobex’s update'}
         <span className="sr-only"> for {title}</span>
-      </h3>
+      </Heading>
       <ActionForm id={`take-${key}`} action={take} label={`Take Sineobex’s update to ${title}`}>
         {offer ? (
           <>
