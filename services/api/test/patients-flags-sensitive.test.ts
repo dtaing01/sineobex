@@ -7,11 +7,14 @@ import { platformIds } from './presets-fixtures.ts';
 import {
   call,
   clinician,
+  FakePhone,
+  push,
+  register,
+  results,
   setRole,
   setupTeam,
   type Change,
   type Clinician,
-  type FakePhone,
   type Team,
 } from './sync-fixtures.ts';
 
@@ -403,6 +406,80 @@ describe('a value sent back (D86)', () => {
     expect(again).toMatchObject({ status: 'accepted', details: { outcome: 'history_only' } });
     expect(again!.server).toEqual({ value: null, version: 0, changedBy: null, changedAt: null });
     await expectAudit(h, 'patient.viewed', { after: before, count: 0 });
+  });
+
+  it('a retry of a mark kept in history gives the change’s reasons only to its author and Program Admins, as they are now', async () => {
+    // A patient of its own, so the chart cases below read only theirs.
+    const elsewhere = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Cedar' })).id;
+    const made = await kim.phone.change({
+      entity: FLAG_CHANGE,
+      op: 'create',
+      value: {
+        patientId: elsewhere,
+        flagId: ids['flag.frost_risk'],
+        action: 'set',
+        reason: 'Demo: Kim’s own',
+      },
+    });
+    const markBy = (phone: FakePhone, reason: string) =>
+      phone.change({
+        entity: FLAG_CHANGE,
+        recordId: made.recordId,
+        op: 'set',
+        field: 'enteredInError',
+        value: { reason },
+      });
+    const phoneOf = async (token: string) => {
+      const phone = await FakePhone.create();
+      await register(h, phone, token, t.teamId);
+      return {
+        phone,
+        send: async (...changes: Change[]) => results((await push(h, phone, token, t.teamId, changes)).body),
+      };
+    };
+    // A Program Admin marks Kim's change.
+    const admin = await phoneOf(t.adminToken);
+    const first = await markBy(admin.phone, ERROR_WHY);
+    expect((await kim.send(made)).map((r) => r.status)).toEqual(['accepted']);
+    expect((await admin.send(first)).map((r) => r.status)).toEqual(['accepted']);
+    const kept = { status: 'accepted', details: { outcome: 'history_only' } };
+    const why = { value: { reason: ERROR_WHY }, version: 1, changedBy: t.adminId };
+    // Marked, by whom and when, and nothing of why: as their sync read shows the field.
+    const withheld = { value: {}, version: 1, changedBy: t.adminId, changedAt: expect.any(String) };
+
+    // Its author's own second mark is kept in history and answered with the mark that stands.
+    const byKim = await markBy(kim.phone, 'Demo: Kim looks again');
+    expect((await kim.send(byKim))[0]).toMatchObject({ ...kept, server: why });
+
+    // Ivy neither made it nor manages the team's people: her mark is held, a Program Admin accepts
+    // it into history, and the same change sent again tells her nothing of why.
+    const byIvy = await markBy(ivy.phone, 'Demo: Ivy thinks so too');
+    expect((await ivy.send(byIvy))[0]).toMatchObject({ reason: 'permission', quarantined: true });
+    const [item] = await h.scratch.owner<{ id: string }[]>`
+      select id from sineobex.quarantine_items where change_id = ${byIvy.changeId}`;
+    const accepted = await call(h, `/v1/team/quarantine/${item!.id}/decision`, {
+      method: 'POST',
+      token: t.adminToken,
+      teamId: t.teamId,
+      json: { decision: 'accept', reason: 'Demo: checked with the team' },
+    });
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+    const [ivysRetry] = await ivy.send(byIvy);
+    expect(ivysRetry).toMatchObject(kept);
+    expect(ivysRetry!.server).toEqual(withheld);
+    expect((await syncRead(ivy.token, [made.recordId])).records[0]!.fields.enteredInError).toEqual(withheld);
+
+    // A lead who manages the team's people is answered with why; moved to Healthcare Staff, the
+    // same change sent again is answered as they may see it now.
+    const lead = await memberWith(h, t.teamId, ['patients.view', 'patients.edit', 'team.manage_users']);
+    const leads = await phoneOf(lead.token);
+    const byLead = await markBy(leads.phone, 'Demo: the lead marks it again');
+    expect((await leads.send(byLead))[0]).toMatchObject({ ...kept, server: why });
+    await setRole(h, t, lead.membershipId, 'healthcare_staff');
+    const [leadsRetry] = await leads.send(byLead);
+    expect(leadsRetry).toMatchObject(kept);
+    expect(leadsRetry!.server).toEqual(withheld);
+    expect(JSON.stringify([ivysRetry, leadsRetry])).not.toContain(ERROR_WHY);
   });
 });
 
