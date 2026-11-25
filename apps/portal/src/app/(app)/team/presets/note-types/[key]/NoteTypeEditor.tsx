@@ -192,10 +192,11 @@ function PartControls({
               Rename<span className="sr-only"> {`${what} ${quoted(name)}`}</span>
             </button>
           )}
+          {/* Its words say what a press does, Hide or Show again, so it is no toggle (no aria-pressed),
+              whose name would have to stay the same (WCAG 4.1.2); the status line says what is held. */}
           <button
             type="button"
             className="sx-btn sx-btn--secondary"
-            aria-pressed={hidden !== undefined}
             onClick={() =>
               hidden
                 ? acts.undo(hidden, `Shown again: ${what} ${quoted(name)}`)
