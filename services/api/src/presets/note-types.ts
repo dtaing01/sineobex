@@ -1,7 +1,8 @@
 import {
-  applyNoteTypeEdits,
   canonicalJson,
   copyPart,
+  editNoteTypesApplied,
+  mayReach,
   PRESETS,
   sha256Hex,
   takeRevision,
@@ -488,10 +489,13 @@ function operationsOf(ops: readonly NoteTypeEdit[]): { operations: string[]; cou
 
 /**
  * Publishes a team's edit of one of its note types (5.4): the operations applied in order to its
- * newest version, by packages/forms' applyNoteTypeEdits, which refuses an operation with its code;
- * the result named as the next version (4.3) and checked with phase 4's validate, version rules and
- * size limit; then stored as the team's own (`origin = 'team'`, `customized`). An edit from a
- * version that is not the current one is stale, and a removed note type is refused.
+ * newest version, by packages/forms' editNoteTypes, which refuses an operation with its code and
+ * carries each option operation along mapsTo to the fields of the team's other note types that share
+ * its list (rule 5), naming the note type whose field refused it. Each note type it changes gets its
+ * next version in this one transaction, named as its own row (4.3), checked with phase 4's validate,
+ * version rules and size limit, stored as the team's own (`origin = 'team'`, `customized`), with its
+ * own event and audit event. An edit from a version that is not the current one is stale, and a
+ * removed note type is refused.
  */
 export function publishNoteType(
   scope: PresetWriteScope,
@@ -502,31 +506,71 @@ export function publishNoteType(
     if (held.state === 'archived') throw refusal('archived');
     if (input.baseVersion !== held.currentVersion) throw refusal('stale', { held });
     const versions = await versionsOf(w, held);
-    const others = Object.fromEntries(
-      w.team.all.filter((n) => n.state === 'active' && n.key !== held.key).map((n) => [n.key, n.definition]),
+    const active = w.team.all.filter((n) => n.state === 'active');
+    const current = Object.fromEntries(active.map((n) => [n.key, n.definition]));
+    const platform = platformNewest();
+    // Every version of each note type an option operation may reach, so a code it makes is above
+    // every one they have used (rule 3), and the version rules check each against all of its own;
+    // the others at their current version alone, which is all an operation reads of them.
+    const reachable = mayReach({ key: held.key, versions, team: current, platform });
+    const loaded = await versionsFor(w.tx, w.teamId, reachable);
+    const team = Object.fromEntries(
+      active.map((n) => [
+        n.key,
+        n.key === held.key ? versions : (loaded.get(n.key)?.map((v) => v.definition) ?? [n.definition]),
+      ]),
     );
-    const outcome = applyNoteTypeEdits(input.ops, { versions, team: others, platform: platformNewest() });
+    for (const key of reachable)
+      if (team[key]!.at(-1)?.version !== w.team.get(key)!.currentVersion)
+        throw new Error('a note type’s head is not at its newest version');
+    const outcome = editNoteTypesApplied({ key: held.key, edits: input.ops, team, platform });
     if (!outcome.ok) throw editRefusal(outcome.opIndex, outcome.refusal);
-    const next = outcome.definition;
-    // A version that only renumbers the current one would send every phone a new one for nothing.
-    if (canonicalJson({ ...next, version: held.currentVersion }) === canonicalJson(held.definition))
+    const [own, ...also] = outcome.published;
+    if (own?.key !== held.key || also.some((p) => !reachable.includes(p.key)))
+      throw new Error('a publish changed a note type it did not read every version of');
+    // A publish that only renumbers the current version would send every phone a new one for nothing.
+    if (
+      also.length === 0 &&
+      canonicalJson({ ...own.definition, version: held.currentVersion }) === canonicalJson(held.definition)
+    )
       throw refusal('no_change');
-    const problems = problemsOf(w.team, new Map([[next.key, next]]), next, versions, outcome.renames);
+    const stored = new Map(outcome.published.map((p) => [p.key, p.definition]));
+    const problems = outcome.published.flatMap((p) =>
+      problemsOf(w.team, stored, p.definition, team[p.key]!, p.renames),
+    );
     if (problems.length > 0) throw refusedVersions(problems);
-    if (next.title !== held.title && (await titleHeld(w, next.title, [held.key])))
+    if (own.definition.title !== held.title && (await titleHeld(w, own.definition.title, [held.key])))
       throw refusal('name_taken');
-    const { version } = next;
     return {
       changes: {
-        versions: [{ key: held.key, definition: next, origin: 'team', presetVersion: null }],
+        versions: outcome.published.map((p) => ({
+          key: p.key,
+          definition: p.definition,
+          origin: 'team' as const,
+          presetVersion: null,
+        })),
         made: [],
-        changed: [{ key: held.key, title: next.title, version, customized: true }],
-        events: [{ key: held.key, act: 'updated', version }],
-        audits: () => [
-          noteTypeAudit('note_type.published', held.key, { version, ...operationsOf(input.ops) }),
-        ],
+        changed: outcome.published.map((p) => ({
+          key: p.key,
+          title: p.definition.title,
+          version: p.definition.version,
+          customized: true,
+        })),
+        events: outcome.published.map((p) => ({
+          key: p.key,
+          act: 'updated' as const,
+          version: p.definition.version,
+        })),
+        // One for each note type published, naming the operations applied to it.
+        audits: () =>
+          outcome.published.map((p) =>
+            noteTypeAudit('note_type.published', p.key, {
+              version: p.definition.version,
+              ...operationsOf(p.applied.map((i) => input.ops[i]!)),
+            }),
+          ),
       },
-      answer: () => ({ version, alsoPublished: [] }),
+      answer: () => ({ version: own.definition.version, alsoPublished: also.map((p) => p.key) }),
     };
   });
 }

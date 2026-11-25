@@ -848,6 +848,72 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
       );
   });
 
+  it('makes a carried option’s code above every one each note type it reaches has used, hidden ones too (rule 3)', async () => {
+    // Wound care makes a field of its own and hides it, so its current version uses no code its
+    // version before did; an option the quick encounter adds and carries into wound care gets a code
+    // above them all, the same in both, never one wound care gave a meaning before.
+    const t = await presetsTeam(h, 'Note Types Codes');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const at = async (key: string) => (await rowOf(key, theirs)).version;
+    const made = await theirs.publish('wound_care', await at('wound_care'), [
+      {
+        op: 'add_field',
+        sectionId: 'wound',
+        kind: 'choice',
+        label: 'Demo: Smell',
+        many: false,
+        options: ['Demo: None', 'Demo: Some'],
+      },
+    ]);
+    expect(made.status, JSON.stringify(made.body)).toBe(200);
+    const hidden = await theirs.publish('wound_care', await at('wound_care'), [
+      { op: 'set_hidden', path: 'wound.t_1', hidden: true },
+    ]);
+    expect(hidden.status, JSON.stringify(hidden.body)).toBe(200);
+    const mark = await auditMark(h);
+    const r = await theirs.publish('quick_encounter', await at('quick_encounter'), [
+      { op: 'add_option', path: 'wound.dressing', label: 'Demo: Foil' },
+    ]);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.alsoPublished).toEqual(['wound_care']);
+    const codes = await Promise.all(
+      [
+        ['quick_encounter', 'wound.dressing'],
+        ['wound_care', 'wound.treatment.dressing'],
+      ].map(async ([key, path]) => {
+        const { definition } = await storedAs(key!, await at(key!), t.teamId);
+        return fieldOf(definition, path!).options!.at(-1);
+      }),
+    );
+    expect(codes).toEqual([
+      { code: 't_4', label: 'Demo: Foil' },
+      { code: 't_4', label: 'Demo: Foil' },
+    ]);
+    expect((await auditAfter(h, mark)).map((e) => [e.action, e.entityId, e.details])).toEqual([
+      ['note_type.published', 'quick_encounter', { version: 2, operations: ['add_option'], count: 1 }],
+      ['note_type.published', 'wound_care', { version: 4, operations: ['add_option'], count: 1 }],
+    ]);
+  });
+
+  it('refuses an option operation whose reach would leave a field of another note type with no option, naming it', async () => {
+    const t = await presetsTeam(h, 'Note Types Reach');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const row = await rowOf('social_needs', theirs);
+    const quick = fieldOf((await rowOf('quick_encounter', theirs)).definition, 'social.needs');
+    const ops: NoteTypeEdit[] = quick.options!.map((o) => ({
+      op: 'retire_option',
+      path: 'needs.needs',
+      code: o.code,
+    }));
+    const details = await refusedUnwritten(
+      () => theirs.publish('social_needs', row.version, ops),
+      422,
+      'last_option',
+      t.teamId,
+    );
+    expect(details).toEqual({ opIndex: ops.length - 1, noteTypeKey: 'quick_encounter' });
+  });
+
   it('never edits from a stored version that is not the row it says, nor lists one', async () => {
     // A row written by hand, its hash another definition's: the list and a publish answer a fault
     // and write nothing, rather than make the next version from it (D79).

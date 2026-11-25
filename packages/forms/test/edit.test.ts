@@ -7,10 +7,13 @@ import {
   applyNoteTypeEdits,
   canonicalJson,
   editNoteTypes,
+  editNoteTypesApplied,
   fieldAt,
+  fieldPlace,
   holdsProtected,
   isNoteTypeTitle,
   isProtected,
+  mayReach,
   NOTE_TYPE_EDIT_OPS,
   OPTION_EDIT_OPS,
   optionReach,
@@ -453,6 +456,63 @@ describe('optionReach (rule 5)', () => {
 
   it('reaches nothing from a field nothing maps to', () => {
     expect(optionReach('demo_exam', 'systems.seen', team)).toEqual([]);
+  });
+
+  it('names among the note types a publish may reach every one an operation reaches (mayReach)', () => {
+    // What the API reads every version of before it publishes: each case's reached note types are
+    // among them, whatever its operations, so a code is never made below one a reached type used.
+    for (const c of vectors.fanout) {
+      if (!('published' in c.expected)) continue;
+      const current = Object.fromEntries(
+        Object.entries(c.team).map(([key, refs]) => [key, named(refs.at(-1)!)]),
+      );
+      const may = mayReach({
+        key: c.key,
+        versions: c.team[c.key]!.map(named),
+        team: current,
+        platform: byKey(c.platform),
+      });
+      for (const p of c.expected.published) if (p.key !== c.key) expect(may, c.name).toContain(p.key);
+      expect(may, c.name).not.toContain(c.key);
+      expect(may, `${c.name}: never an auto note type`).not.toContain('demo_flags');
+    }
+    expect(mayReach({ key: 'demo_exam', versions: [named('demo_exam@1')], team, platform: {} })).toEqual([]);
+  });
+
+  it('answers which operations it applied to each note type it publishes (editNoteTypesApplied)', () => {
+    for (const c of vectors.fanout) {
+      const versions = Object.fromEntries(
+        Object.entries(c.team).map(([key, refs]) => [key, refs.map(named)]),
+      );
+      const input = { key: c.key, edits: c.ops, team: versions, platform: byKey(c.platform) };
+      const applied = editNoteTypesApplied(input);
+      const plain = editNoteTypes(input);
+      if (!applied.ok || !plain.ok) {
+        expect(applied, c.name).toEqual(plain);
+        continue;
+      }
+      expect(
+        applied.published.map(({ applied: _a, ...p }) => p),
+        c.name,
+      ).toEqual(plain.published);
+      const own = applied.published.find((p) => p.key === c.key)!;
+      expect(own.applied, c.name).toEqual(c.ops.map((_, i) => i));
+      for (const p of applied.published)
+        for (const i of p.applied)
+          if (p.key !== c.key) expect(OPTION_EDIT_OPS, c.name).toContain(c.ops[i]!.op);
+    }
+    // Two option operations reaching the full type: both are applied there.
+    const two = vectors.fanout.find((c) => c.name.startsWith('two option operations'))!;
+    const outcome = editNoteTypesApplied({
+      key: two.key,
+      edits: two.ops,
+      team: Object.fromEntries(Object.entries(two.team).map(([key, refs]) => [key, refs.map(named)])),
+      platform: byKey(two.platform),
+    });
+    expect(outcome.ok && outcome.published.map((p) => [p.key, p.applied])).toEqual([
+      ['demo_quick', [0, 1]],
+      ['demo_full', [0, 1]],
+    ]);
   });
 
   it('is the operations on options alone that it carries', () => {
@@ -1463,6 +1523,22 @@ describe('over the released note types', () => {
     }
   });
 
+  it('may reach from the quick encounter the full note types it maps into, and from each of those the quick encounter', () => {
+    const others = (key: string) =>
+      mayReach({ key, versions: [released.get(key)!], team: RELEASED, platform: RELEASED });
+    expect(others('quick_encounter')).toEqual(['general_primary_care', 'social_needs', 'wound_care']);
+    for (const full of ['general_primary_care', 'social_needs', 'wound_care'])
+      expect(others(full)).toEqual(['quick_encounter']);
+    for (const key of [
+      'harm_reduction',
+      'outreach',
+      'psychological',
+      'red_flags_disposition',
+      'sexual_reproductive',
+    ])
+      expect(others(key), key).toEqual([]);
+  });
+
   it('carries an option added to the quick encounter into the full note type it maps to, with one code', () => {
     const team = Object.fromEntries([...released].map(([key, d]) => [key, [d]]));
     const quick = released.get('quick_encounter')!;
@@ -1491,8 +1567,11 @@ describe('over the released note types', () => {
         outcome.published.map((p) => p.key),
         path,
       ).toEqual(['quick_encounter', fullKey]);
+      // By the field's path, the entry part of a repeating section left out, as an operation names
+      // it: wound care's wound section repeats, so fieldAt, which reads an answer's path, would need
+      // an entry.
       const added = outcome.published.map((p) => {
-        const f = fieldAt(p.definition, p.key === 'quick_encounter' ? path : fullPath)!.field as {
+        const f = fieldPlace(p.definition, p.key === 'quick_encounter' ? path : fullPath)!.field as {
           options: Option[];
         };
         return f.options.at(-1);
