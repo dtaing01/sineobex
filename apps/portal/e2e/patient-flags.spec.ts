@@ -549,6 +549,43 @@ test('Entered in error on a clear says the flag it cleared can come back, and th
   expect((await chartFor(ADMIN, patient.id)).flags!.primary?.flagId).toBe(high.flagId);
 });
 
+// Review finding R4: the panel records no change that would change nothing, as the phone's sheet
+// writes only what differs.
+test('a Set of a flag the patient has, or a Clear of one they don’t, is said beside it and never sent', async ({
+  page,
+}) => {
+  const patient = await freshPatient();
+  const medium = await flagNamed('Medium');
+  const frost = await flagNamed('Frost risk');
+  await changeFlag(ADMIN, patient.id, frost.flagId, 'set', 'Demo: sleeps by the made-up river');
+
+  await signIn(page, ADMIN);
+  const posted: string[] = [];
+  page.on('request', (r) => {
+    if (r.method() === 'POST' && r.url().endsWith(`/patients/${patient.id}/flags`)) posted.push(r.url());
+  });
+  await page.goto(`/patients/${patient.id}`);
+  const parts = partsOf(page);
+  const action = parts.form.getByRole('group', { name: 'Set or clear' });
+  await fill(parts, pill(medium), 'Clear', 'Demo: pressed Clear by mistake');
+  await parts.save.click();
+  await expect(parts.alert).toBeFocused();
+  await besideIt(action, 'This patient doesn’t have this flag, so there’s nothing to clear.');
+  await fill(parts, `${pill(frost)} (on this patient)`, 'Set', 'Demo: still by the river');
+  await parts.save.click();
+  await expect(parts.alert).toBeFocused();
+  await besideIt(action, 'This patient has this flag already.');
+  await expectAccessible(page, 'a change that changes nothing', { inPlace: true });
+  expect(posted).toEqual([]);
+  expect((await chartFor(ADMIN, patient.id)).flags!.history).toHaveLength(1);
+
+  // The same flag the other way is a change, and is saved.
+  await parts.action('Clear').check();
+  await parts.save.click();
+  await expect(page).toHaveURL(/\?flag=saved$/);
+  expect(posted).toHaveLength(1);
+});
+
 // Review finding R1: an answer is the route handler's only in its shape; JSON from a gateway or a
 // platform in front of the portal says nothing of whether the act went through.
 test('an answer that isn’t the route handler’s own is read as a dropped connection, and what was typed stays', async ({

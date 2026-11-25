@@ -186,6 +186,14 @@ export function FlagsPanel({
     else if (choice.clearOnly && action === 'set')
       problems.flagId = flagRefusalSentence('change', 409, 'archived');
     if (action !== 'set' && action !== 'clear') problems.action = 'Choose Set or Clear.';
+    // A change that would change nothing is not one to record: as the phone's sheet writes only what
+    // differs, the panel sends neither a clear of a flag the patient doesn't have nor a set of one
+    // they have (design 8.1). The page is read again after every save, so what it says they carry is
+    // the chart as it was then.
+    else if (choice && !choice.clearOnly && action === 'set' && choice.carried)
+      problems.action = 'This patient has this flag already.';
+    else if (choice && action === 'clear' && !choice.carried)
+      problems.action = 'This patient doesn’t have this flag, so there’s nothing to clear.';
     if (blank(reason)) problems.reason = 'Give a reason.';
     if (Object.keys(problems).length > 0) {
       setFieldErrors(problems);
