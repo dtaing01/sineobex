@@ -651,26 +651,28 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
         ) : (
           <ol className={editor.heldList}>
             {held.map((h) => (
-              <li key={h.id} id={`held-${h.id}`} className={editor.heldItem}>
-                <span>{h.said}</span>
-                {refused?.opId === h.id && (
-                  <span id={`held-${h.id}-refused`} className="sx-help sx-help--error">
-                    {refused.error}
-                    {reached}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  ref={(el) => {
-                    if (el) undoButtons.current.set(h.id, el);
-                    else undoButtons.current.delete(h.id);
-                  }}
-                  className="sx-btn sx-btn--secondary"
-                  {...(refused?.opId === h.id ? { 'aria-describedby': `held-${h.id}-refused` } : {})}
-                  onClick={() => undoFromList(h)}
-                >
-                  Undo<span className="sr-only"> {h.said}</span>
-                </button>
+              <li key={h.id} id={`held-${h.id}`}>
+                <div className={editor.heldItem}>
+                  <span>{h.said}</span>
+                  {refused?.opId === h.id && (
+                    <span id={`held-${h.id}-refused`} className="sx-help sx-help--error">
+                      {refused.error}
+                      {reached}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    ref={(el) => {
+                      if (el) undoButtons.current.set(h.id, el);
+                      else undoButtons.current.delete(h.id);
+                    }}
+                    className="sx-btn sx-btn--secondary"
+                    {...(refused?.opId === h.id ? { 'aria-describedby': `held-${h.id}-refused` } : {})}
+                    onClick={() => undoFromList(h)}
+                  >
+                    Undo<span className="sr-only"> {h.said}</span>
+                  </button>
+                </div>
               </li>
             ))}
           </ol>

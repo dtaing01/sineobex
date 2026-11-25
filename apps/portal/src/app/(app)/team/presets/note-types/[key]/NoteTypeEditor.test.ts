@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -178,6 +179,17 @@ describe('what the editor holds', () => {
     expect(shown.live.map((o) => o.code)).toEqual(['food', 'socks']);
     expect(shown.retired.map((r) => [r.option.code, r.op.id])).toEqual([['none', 7]]);
     expect(shown.added.map((h) => h.id)).toEqual([3]);
+  });
+});
+
+describe('the changes to publish', () => {
+  it('are numbered, as a refusal names “Change 3”: each stays a list item, its parts in a column inside it (B-11)', () => {
+    const css = readFileSync(new URL('./editor.module.css', import.meta.url), 'utf8');
+    const rule = (selector: string) =>
+      new RegExp(`(^|\\n)\\.${selector}\\s*\\{([^}]*)\\}`).exec(css)?.[2] ?? '';
+    expect(rule('heldList')).toMatch(/list-style:\s*decimal/);
+    expect(rule('heldList')).not.toMatch(/display:/);
+    expect(css).not.toMatch(/\.heldList\s*>\s*li\s*\{[^}]*display:/);
   });
 });
 
