@@ -992,9 +992,12 @@ class PatientRepository {
     return id;
   }
 
+  /// [reason] trimmed, 3 to 300 code points, as the store and the server count it: an astral
+  /// character is one, so this layer's words come first and a reason the store takes is never refused.
   static String _reason(String reason) {
     final r = reason.trim();
-    if (r.length < 3 || r.length > 300) {
+    final length = r.runes.length;
+    if (length < 3 || length > 300) {
       throw const LocalValidationError('Give a short reason (3 to 300 characters).', paths: {'reason'});
     }
     return r;

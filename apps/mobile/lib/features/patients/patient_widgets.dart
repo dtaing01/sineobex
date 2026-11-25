@@ -371,7 +371,9 @@ class _ReasonDialogState extends State<_ReasonDialog> {
 
   void _submit() {
     final r = _reason.text.trim();
-    if (r.length < 3 || r.length > 300) {
+    // In code points, as the store and the server count a reason: an astral character is one.
+    final length = r.runes.length;
+    if (length < 3 || length > 300) {
       setState(() => _error = 'Give a short reason (3 to 300 characters).');
       return;
     }

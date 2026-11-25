@@ -502,7 +502,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       (message: 'Choose why they can’t consent now.', focus: null, key: _consentKey),
     if (!_isEdit &&
         (_notice == PrivacyNoticeDecision.notOffered || _notice == PrivacyNoticeDecision.unable) &&
-        _noticeReason.text.trim().length < 3)
+        // In code points, as the store and the server count a reason: an astral character is one.
+        _noticeReason.text.trim().runes.length < 3)
       (message: 'Say why the privacy notice wasn’t given.', focus: _noticeReasonFocus, key: null),
     if (!_recognisable())
       (

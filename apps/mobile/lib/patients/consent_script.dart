@@ -97,10 +97,12 @@ String _noticeWire(PrivacyNoticeDecision d) => switch (d) {
   PrivacyNoticeDecision.notOffered => 'not_offered',
 };
 
-/// A reason as the sync value takes it: trimmed, 3 to 300 characters.
+/// A reason as the sync value takes it: trimmed, 3 to 300 characters, counted in code points as the
+/// store and the server count them (an astral character is one).
 String _reason(String reason) {
   final r = reason.trim();
-  if (r.length < 3 || r.length > 300) {
+  final length = r.runes.length;
+  if (length < 3 || length > 300) {
     throw const LocalValidationError('Give a short reason (3 to 300 characters).', paths: {'reason'});
   }
   return r;

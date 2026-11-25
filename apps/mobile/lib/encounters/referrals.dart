@@ -225,7 +225,9 @@ class Referrals {
     }
     if (!mayEnterInError(shown)) throw const LocalValidationError(_notYours, problem: 'not_allowed');
     final text = reason.trim();
-    if (text.length < 3 || text.length > 300) {
+    // In code points, as the store and the server count it: an astral character is one.
+    final length = text.runes.length;
+    if (length < 3 || length > 300) {
       throw const LocalValidationError(_reasonLength, problem: 'reason', paths: {'reason'});
     }
     store.transaction(() {
