@@ -693,12 +693,37 @@ export async function takeNoteTypeUpdate(
   );
 }
 
-/** Publishes the operations the editor held, as the note type's next version (design 5.4). */
+/** What the API answered a Publish: the version it made, or its refusal as it came. */
+export type PublishOutcome =
+  | { published: { version: number; alsoPublished: string[] } }
+  | { refused: { status: number; code: string; details?: Record<string, unknown> } };
+
+/**
+ * Publishes the operations the editor held, as the note type's next version (design 5.4), and
+ * answers what the API said, a refusal included: the editor's route handler says it (publish/
+ * answer.ts), and never redirects, since a redirect would lose what the editor holds.
+ */
 export async function publishNoteType(
   key: string,
   body: { baseVersion: number; ops: NoteTypeEdit[]; reason: string },
-): Promise<{ version: number; alsoPublished: string[] }> {
-  void key;
-  void body;
-  throw new Error('P4-editor');
+): Promise<PublishOutcome> {
+  const { data, error, response } = await (
+    await api()
+  ).PUT('/v1/admin/note-types/{key}', {
+    params: { path: { key } },
+    // Each operation as the editor made it: the API checks its shape and its values (D114).
+    body: body as unknown as Schemas['PublishNoteType'],
+  });
+  if (response.ok && data) return { published: { version: data.version, alsoPublished: data.alsoPublished } };
+  const refused = (error as { error?: { code?: unknown; details?: unknown } } | undefined)?.error;
+  const details = refused?.details;
+  return {
+    refused: {
+      status: response.status,
+      code: typeof refused?.code === 'string' ? refused.code : 'error',
+      ...(details !== null && typeof details === 'object'
+        ? { details: details as Record<string, unknown> }
+        : {}),
+    },
+  };
 }
