@@ -479,6 +479,54 @@ describe('optionReach (rule 5)', () => {
     expect(mayReach({ key: 'demo_exam', versions: [named('demo_exam@1')], team, platform: {} })).toEqual([]);
   });
 
+  it('may reach, from a quick note type, what a quick type it could copy a section from maps into', () => {
+    // A quick type of the team's own whose versions map nowhere may copy a section that maps from
+    // the platform's quick type, or from another quick type of the team's: what those map into is
+    // among what a publish on it may reach.
+    const own = {
+      ...named('demo_quick@1'),
+      key: 'demo_mine',
+      sections: [named('demo_quick@1').sections[0]!],
+    };
+    const bare = {
+      ...own,
+      sections: [{ ...own.sections[0]!, fields: own.sections[0]!.fields.map(({ mapsTo: _m, ...f }) => f) }],
+    } as ResolvedNoteType;
+    const current = { demo_mine: bare, demo_full: named('demo_full@1'), demo_flags: named('demo_flags@1') };
+    expect(mayReach({ key: 'demo_mine', versions: [bare], team: current, platform: {} })).toEqual([]);
+    for (const [team, platform] of [
+      [{ ...current, demo_quick: named('demo_quick@1') }, {}],
+      [current, { demo_quick: named('demo_quick@1') }],
+    ] as const)
+      expect(mayReach({ key: 'demo_mine', versions: [bare], team, platform })).toContain('demo_full');
+  });
+
+  it('publishes no version of a note type an operation reached and left as it was', () => {
+    // The full field already words the option as the quick one is reworded: only the quick type changes.
+    const full = named('demo_full@1');
+    const worded = {
+      ...full,
+      sections: full.sections.map((s) => ({
+        ...s,
+        fields: s.fields.map((f) =>
+          f.id === 'dressing' && f.kind === 'choice'
+            ? {
+                ...f,
+                options: f.options.map((o) => (o.code === 'gauze' ? { ...o, label: 'Demo: Gauze pad' } : o)),
+              }
+            : f,
+        ),
+      })),
+    } as ResolvedNoteType;
+    const outcome = editNoteTypes({
+      key: 'demo_quick',
+      edits: [{ op: 'rename_option', path: 'quick.dressing', code: 'gauze', label: 'Demo: Gauze pad' }],
+      team: { demo_quick: [named('demo_quick@1')], demo_full: [worded] },
+      platform: {},
+    });
+    expect(outcome.ok && outcome.published.map((p) => p.key)).toEqual(['demo_quick']);
+  });
+
   it('answers which operations it applied to each note type it publishes (editNoteTypesApplied)', () => {
     for (const c of vectors.fanout) {
       const versions = Object.fromEntries(
