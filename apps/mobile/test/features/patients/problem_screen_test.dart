@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/patients/problem_screen.dart';
+import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/sync/local_store.dart';
 
 import 'patient_kit.dart';
@@ -175,5 +176,65 @@ void main() {
     await expectShown(tester, find.text('Your role reads problems; it doesn’t add notes.'));
     await expectScreenOk(tester);
     handle.dispose();
+  });
+
+  // Phase 5 (design 5.3, 8.2; section 11, row 21; card P5-status-check), written ahead of its code:
+  // "Status check due" on a New or Ongoing problem not checked within the team's window, offline from
+  // the settings preset; never on one checked within it or on a Resolved one; nothing where the
+  // presets aren't held.
+  group('Status check due (phase 5 design 5.3)', () {
+    Future<({AppHarness h, String cough, String rash})> problemsWithWindow(WidgetTester tester, {Run? run}) async {
+      final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
+      seedP1(h.server);
+      h.server.addPreset(h.patients.teamId, 'settings', {
+        'name': 'Team settings',
+        'bagMinimumsOn': false,
+        'newBagMinimums': <Object?>[],
+        'problemCheckDays': 30,
+      });
+      final cough = h.server.seed(entityProblem, {
+        'patientId': p1Id,
+        'title': 'Demo: cough',
+        'status': 'ongoing',
+      }, at: h.wall.subtract(const Duration(days: 31)));
+      final rash = h.server.seed(entityProblem, {
+        'patientId': p1Id,
+        'title': 'Demo: rash',
+        'status': 'new',
+      }, at: h.wall.subtract(const Duration(days: 29)));
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      h.server.offline = true;
+      return (h: h, cough: cough, rash: rash);
+    }
+
+    for (final run in runs) {
+      testWidgets('a problem past the team’s window says so, offline (${runName(run)})', (tester) async {
+        final handle = tester.ensureSemantics();
+        await problemsWithWindow(tester, run: run);
+        await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+        expect(find.byType(ProblemScreen), findsOneWidget);
+        await expectShown(tester, find.text('Status check due'));
+        await expectScreenOk(tester);
+        handle.dispose();
+      });
+    }
+
+    testWidgets('not on a problem checked within the window, and nowhere where the presets aren’t held', (
+      tester,
+    ) async {
+      final (:h, cough: _, rash: _) = await problemsWithWindow(tester);
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      await expectShown(tester, find.text('Status check due'));
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: rash, New')));
+      expect(find.text('Status check due'), findsNothing);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      PresetStore(h.sync.store!).clear();
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      expect(find.text('Status check due'), findsNothing);
+    });
   });
 }

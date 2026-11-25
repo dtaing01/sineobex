@@ -3,9 +3,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sineobex_field/features/patients/flag_sheet.dart' show conditionsDoneAction;
+import 'package:sineobex_field/features/patients/patient_row.dart' show PatientRow;
 import 'package:sineobex_field/features/patients/patients_screen.dart';
+import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 
+import '../../sync/fake_server.dart';
 import 'patient_kit.dart';
 
 /// The Patients tab (design 12.1): the list's status line, a search found offline by a misspelled
@@ -305,4 +309,119 @@ void main() {
       expect(store.outbox(), hasLength(before));
     });
   }
+
+  // Phase 5 (design 8.2; section 11, row 37; card P5-phone-list), written ahead of its code: each index
+  // row's risk level, and the Risk level and Conditions filters, offline from the index, a sensitive
+  // flag absent for a reader the flag rule hides it from.
+  group('flags on the patient list (phase 5 design 8.2)', () {
+    Map<String, Object?> flag(String name, String tier, String color, int rank, {bool sensitive = false}) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': sensitive,
+    };
+
+    /// Three patients on the team's list: Quill with High, Quillon with Medium and Frost risk, and
+    /// Quillan with Pregnancy (sensitive) and Frost risk.
+    Future<AppHarness> listWithFlags(WidgetTester tester, {Run? run, List<String>? permissions}) async {
+      final h = await signIn(
+        tester,
+        theme: run?.theme,
+        scale: run?.scale ?? 1,
+        narrow: run?.narrow ?? false,
+        permissions: permissions,
+      );
+      final team = h.patients.teamId;
+      final high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      final medium = h.server.addPreset(team, 'flag', flag('Demo: Medium', 'primary', 'yellow', 20));
+      final frost = h.server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      final pregnancy = h.server.addPreset(
+        team,
+        'flag',
+        flag('Demo: Pregnancy', 'secondary', 'purple', 30, sensitive: true),
+      );
+      void set(String patientId, String flagId) => h.server.seed(entityFlagChange, {
+        'patientId': patientId,
+        'flagId': flagId,
+        'action': 'set',
+        'reason': 'Demo: a reason',
+      });
+      final quill = h.server.seedPatient(preferredName: 'Demo Quill');
+      final quillon = h.server.seedPatient(preferredName: 'Demo Quillon');
+      final quillan = h.server.seedPatient(preferredName: 'Demo Quillan');
+      set(quill, high);
+      set(quillon, medium);
+      set(quillon, frost);
+      set(quillan, pregnancy);
+      set(quillan, frost);
+      await syncAndRefresh(tester, h);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      return h;
+    }
+
+    Finder rowOf(String name) => find.bySemanticsLabel(RegExp('^$name[,.]'));
+
+    Future<void> chooseInDialog(WidgetTester tester, String chip, List<String> pills, {bool done = false}) async {
+      await tapOn(tester, find.widgetWithText(ActionChip, chip));
+      for (final pill in pills) {
+        await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(pill)));
+        await tester.pumpAndSettle();
+      }
+      if (done) await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(conditionsDoneAction)));
+      await settle(tester);
+    }
+
+    for (final run in runs) {
+      testWidgets('each row shows its risk level, and Risk level lists who carries it, offline (${runName(run)})', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        final h = await listWithFlags(tester, run: run);
+        await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quill');
+        await tester.pump(const Duration(milliseconds: 700));
+        await settle(tester);
+        final quill = rowOf('Demo Quill');
+        await reveal(tester, quill);
+        // Its pill, in words, and in what a screen reader hears of the row.
+        expect(find.descendant(of: find.byType(PatientRow), matching: find.text('Red · Demo: High')), findsOneWidget);
+        expect(tester.getSemantics(quill).label, contains('Red, Demo: High'));
+        await expectScreenOk(tester);
+
+        // The filter, with no name typed: the list on this phone, by risk level.
+        await tester.enterText(find.byKey(const ValueKey('phi.search')), '');
+        await settle(tester);
+        final before = auditEvents(h.sync.store!).length;
+        await chooseInDialog(tester, 'Risk level', ['Red · Demo: High']);
+        await expectShown(tester, find.text('1 patient found on this phone'));
+        await reveal(tester, rowOf('Demo Quill'));
+        expect(rowOf('Demo Quillon'), findsNothing);
+        expect(rowOf('Demo Quillan'), findsNothing);
+        // One list, one audit entry, and never the flag.
+        expect(auditEvents(h.sync.store!).sublist(before), ['patient.searched']);
+        await expectScreenOk(tester);
+        handle.dispose();
+      });
+    }
+
+    testWidgets('Conditions lists who carries every one chosen, with or without a risk level', (tester) async {
+      await listWithFlags(tester);
+      await chooseInDialog(tester, 'Conditions', ['Blue · Demo: Frost risk'], done: true);
+      await expectShown(tester, find.text('2 patients found on this phone'));
+      expect(rowOf('Demo Quillon'), findsOneWidget);
+      expect(rowOf('Demo Quillan'), findsOneWidget);
+      await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+      await expectShown(tester, find.text('1 patient found on this phone'));
+      expect(rowOf('Demo Quillon'), findsOneWidget);
+    });
+
+    testWidgets('a sensitive flag is absent for a reader the flag rule hides it from', (tester) async {
+      await listWithFlags(tester, permissions: FakeSyncServer.chw.toList());
+      await tapOn(tester, find.widgetWithText(ActionChip, 'Conditions'));
+      expect(find.descendant(of: find.byType(Dialog), matching: find.text('Blue · Demo: Frost risk')), findsOneWidget);
+      expect(find.textContaining('Pregnancy'), findsNothing);
+    });
+  });
 }

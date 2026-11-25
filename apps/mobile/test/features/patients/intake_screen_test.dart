@@ -3,8 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/features/patients/flag_sheet.dart'
+    show chooseConditionsAction, chooseRiskLevelAction, noRiskLevelText;
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/patients/patient_repository.dart' show PatientRepository;
+import 'package:sineobex_field/presets/preset_store.dart';
+import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 
 import 'patient_kit.dart';
@@ -680,5 +684,157 @@ void main() {
     expect((await fieldNamed(tester, 'preferredName')).focusNode!.hasFocus, isTrue);
     await expectScreenOk(tester);
     handle.dispose();
+  });
+
+  // Phase 5 (design 8.2; section 11, row 11; card P5-intake), written ahead of its code: a new
+  // patient's risk level, optional, None by default, with its reason once one is picked, saved with
+  // the patient in createPatient's transaction; no conditions; the patient saves without one where
+  // the presets aren't held or while the clock is paused.
+  group('the risk level at intake (phase 5 design 8.2)', () {
+    Map<String, Object?> flag(String name, String tier, String color, int rank) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': false,
+    };
+
+    late String high;
+
+    Future<AppHarness> intakeWithFlags(WidgetTester tester, {Run? run, bool clockOff = false}) async {
+      final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
+      final team = h.patients.teamId;
+      high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      h.server
+        ..addPreset(team, 'flag', flag('Demo: Medium', 'primary', 'yellow', 20))
+        ..addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      await syncAndRefresh(tester, h);
+      if (clockOff) {
+        h.serverAhead = const Duration(minutes: 7);
+        await tester.runAsync(() => h.sync.syncNow());
+        await settle(tester);
+      }
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+      return h;
+    }
+
+    Future<void> pickLevel(WidgetTester tester, String pill) async {
+      await tapOn(tester, find.text(chooseRiskLevelAction));
+      expect(find.byType(Dialog), findsOneWidget);
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(pill)));
+      await settle(tester);
+    }
+
+    List<OutboxEntry> flagChanges(AppHarness h) => [
+      for (final e in h.sync.store!.outbox())
+        if (e.entity == entityFlagChange) e,
+    ];
+
+    for (final run in runs) {
+      testWidgets('optional, None by default; once one is picked, a reason; saved with the patient (${runName(run)})', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        final h = await intakeWithFlags(tester, run: run);
+        await expectShown(tester, find.text('Risk level'));
+        await expectShown(tester, find.text(noRiskLevelText));
+        // Conditions are not offered at intake, and no reason is asked before a level is picked.
+        expect(find.text(chooseConditionsAction), findsNothing);
+        expect(find.byKey(const ValueKey('phi.riskLevelReason')), findsNothing);
+        await expectScreenOk(tester);
+
+        await pickLevel(tester, 'Red · Demo: High');
+        await expectShown(tester, find.text('Red · Demo: High'));
+        await expectShown(tester, find.byKey(const ValueKey('phi.riskLevelReason')));
+        await expectScreenOk(tester);
+        await type(tester, 'riskLevelReason', 'Demo: left hospital this week');
+        await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+        expect(find.byType(PatientScreen), findsOneWidget);
+
+        final outbox = h.sync.store!.outbox();
+        final patient = outbox.singleWhere((e) => e.entity == entityPatient && e.op == 'create');
+        final change = flagChanges(h).single;
+        expect(change.value, {
+          'patientId': patient.recordId,
+          'flagId': high,
+          'action': 'set',
+          'reason': 'Demo: left hospital this week',
+        });
+        // A dependent of the patient's create: sent after it.
+        expect(change.seq, greaterThan(patient.seq));
+        await expectShown(tester, find.text('Red · Demo: High'));
+        handle.dispose();
+      });
+    }
+
+    testWidgets('a level picked needs its reason: Create says so and saves nothing', (tester) async {
+      final h = await intakeWithFlags(tester);
+      await pickLevel(tester, 'Yellow · Demo: Medium');
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      await expectShown(tester, find.text('Give a reason for the risk level.'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+      // None again: nothing is asked, and the patient saves without a level.
+      await pickLevel(tester, noRiskLevelText);
+      expect(find.byKey(const ValueKey('phi.riskLevelReason')), findsNothing);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), hasLength(1));
+      expect(flagChanges(h), isEmpty);
+    });
+
+    testWidgets('where the presets aren’t held the row says to connect; the patient saves without one', (tester) async {
+      final h = await intakeWithFlags(tester);
+      PresetStore(h.sync.store!).clear();
+      h.patients.changed();
+      await settle(tester);
+      await expectShown(tester, find.text('Your team’s setup hasn’t downloaded yet. Connect to finish.'));
+      expect(find.text(chooseRiskLevelAction), findsNothing);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), hasLength(1));
+      expect(flagChanges(h), isEmpty);
+    });
+
+    testWidgets('while the clock is paused the row says so; the patient saves without one (D35)', (tester) async {
+      final h = await intakeWithFlags(tester, clockOff: true);
+      await expectShown(tester, find.text('A risk level can be set once the phone’s clock is right.'));
+      expect(find.text(chooseRiskLevelAction), findsNothing);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), hasLength(1));
+      expect(flagChanges(h), isEmpty);
+    });
+
+    testWidgets('Edit offers no risk level: the profile’s flags row sets one', (tester) async {
+      final h = await intakeWithFlags(tester);
+      await expectShown(tester, find.text('Risk level'));
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      final id = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient).recordId;
+      await go(tester, '/patients/$id/edit');
+      expect(find.text('Risk level'), findsNothing);
+      expect(find.text(chooseRiskLevelAction), findsNothing);
+    });
+  });
+
+  // The second part's note 5, written ahead of its code: the screen counts a reason as the store
+  // and the server do, in code points, so it says what is missing before the store refuses it.
+  testWidgets('a privacy notice not given needs a reason of three code points, an astral character once', (
+    tester,
+  ) async {
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+    await tapOn(tester, find.text('Not offered'));
+    // Two astral characters are four UTF-16 units and two code points.
+    await type(tester, 'noticeReason', '🧊🧊');
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    await expectShown(tester, find.text('Say why the privacy notice wasn’t given.'));
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    await type(tester, 'noticeReason', '🧊🧊🧊');
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient);
+    expect((create.value! as Map)['privacyNotice'], containsPair('reason', '🧊🧊🧊'));
   });
 }
