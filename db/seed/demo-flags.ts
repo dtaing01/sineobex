@@ -5,11 +5,15 @@ import { demoId, demoPatientId } from './demo-patients.ts';
 /**
  * Made-up flags on two demo patients (phase 5 design 13.4, card P5-seed; 9, "demo additions start
  * Demo:"): the platform's High risk level, coloured Red, on one, and its Frost risk condition on
- * another, each with a reason starting "Demo:". Each is written as sync applies a phone's flag change
- * (design 6.2, 4.5) and as demo-encounters.ts writes its visits: by a seeded staff member who holds
- * patients.edit and may see the flag, the change's time the phone's own, never later than its
- * receipt, its clock verified. The seed cannot import the API (the API imports this package), so the
- * few rules it needs are restated here; db/test/demo-flags.test.ts holds every row to the API's own
+ * another, each with a reason starting "Demo:", so that every demo environment, the preview among
+ * them, shows flags on demo patients without anyone setting one first. Each is written as sync
+ * applies a phone's flag change (design 6.2, 4.5): the change's time the phone's own, never later
+ * than its receipt, its clock verified. Where the demo staff are (local and test databases), as
+ * demo-encounters.ts writes its visits: by a seeded staff member who holds patients.edit and may see
+ * the flag. Where they aren't (the preview, where people are invited), by the seed's own author, as
+ * the demo patients and presets are, who is in every demo environment and whom nobody can sign in as
+ * (review finding R7). The seed cannot import the API (the API imports this package), so the few
+ * rules it needs are restated here; db/test/demo-flags.test.ts holds every row to the API's own
  * functions. Nothing is audited: the seed is not anyone's act, as its patients and visits are not.
  */
 
@@ -64,13 +68,14 @@ interface Author {
 
 /**
  * Writes the demo team's flag changes once; a second run writes nothing. Where no seeded staff can
- * have made them (the preview, where people are invited), none: `skipped` says why, as the visits'.
- * The rest of the rules a phone's change is held to are checked first, for every change still to
- * write, so a run writes both or neither.
+ * have made them (the preview, where people are invited), [seedAuthorId], the seed's own author,
+ * made them, as it made the demo patients. The rest of the rules a phone's change is held to are
+ * checked first, for every change still to write, so a run writes both or neither.
  */
 export async function seedDemoFlags(
   tx: TransactionSql,
   teamId: string,
+  seedAuthorId: string,
 ): Promise<{ changes: number; skipped?: string }> {
   // A flag change takes the team lock first, as sync takes it (design 6.2, D32), before anything is
   // read: a writer at the same moment commits first, and is seen.
@@ -86,18 +91,21 @@ export async function seedDemoFlags(
   if (missing.length === 0) return { changes: 0 };
 
   const staff = await authorsOf(tx, teamId);
-  if (missing.some((c) => !staff.has(c.by))) return { changes: 0, skipped: 'no demo staff to set them' };
+  // The demo staff's own changes where every one of them is a member; else the seed's author's.
+  const byStaff = missing.every((c) => staff.has(c.by));
   const flags = await platformFlags(tx, teamId);
   if (!flags) return { changes: 0, skipped: 'the team does not hold the platform flags they name' };
 
   // The rules sync holds a phone's change to (design 6.2), in the order the shared check takes them
   // (insertFlagChange): one of the team's flags, which platformFlags reads as the flag rule reads it;
-  // the reason, trimmed, 1 to 500 code points; then the flag rule, beside the entity's own key. A
-  // change its author may not make is held for a Program Admin, never stored, so none is written.
+  // the reason, trimmed, 1 to 500 code points; then, for a member's change, the flag rule beside the
+  // entity's own key. A change its author may not make is held for a Program Admin, never stored, so
+  // none is written. The seed's author is no member, and no one's act is held to a member's rules.
   for (const c of missing) {
     if (reasonInvalid(c.reason) || !c.reason.startsWith('Demo: ')) {
       throw new Error(`demo flag change ${c.n}: its reason is not one sync takes, or not made up`);
     }
+    if (!byStaff) continue;
     const author = staff.get(c.by)!;
     if (!author.permissions.has('patients.edit') || flagHidden(author.permissions, flags[c.flag])) {
       return { changes: 0, skipped: `the author of demo flag change ${c.n} may not set its flag` };
@@ -115,8 +123,8 @@ export async function seedDemoFlags(
         received_at, device_time, clock_verified, author_user_id, created_device_id, change_id, approved_by,
         updated_at)
       values (${demoFlagChangeId(c.n)}, ${teamId}, ${demoPatientId(c.patient)}, ${flags[c.flag].id}, 'set',
-        ${c.reason}, ${c.at}, ${receivedAt}, ${c.at}, true, ${staff.get(c.by)!.userId}, null, null, null,
-        ${receivedAt})
+        ${c.reason}, ${c.at}, ${receivedAt}, ${c.at}, true, ${byStaff ? staff.get(c.by)!.userId : seedAuthorId},
+        null, null, null, ${receivedAt})
       on conflict (id) do nothing
       returning id`;
     written += rows.length;

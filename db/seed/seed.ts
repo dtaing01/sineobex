@@ -195,9 +195,10 @@ export async function seed(
     const { visits, skipped } = await seedDemoEncounters(tx, DEMO_TEAM_ID);
     log(skipped ? `  no demo visits: ${skipped}` : `  ${visits} made-up visit(s)`);
 
-    // Flags need the platform's flags above and staff who may set them, as a phone's change does:
-    // the preview has no such staff, so it gets no flag, as it gets no visit.
-    const flags = await seedDemoFlags(tx, DEMO_TEAM_ID);
+    // Flags need the platform's flags above. They are the demo staff's, who may set them, as a
+    // phone's change is, where those staff are; in the preview, which has none, the seed's own
+    // author's, as the patients and presets are, so the preview shows flags too.
+    const flags = await seedDemoFlags(tx, DEMO_TEAM_ID, author!.id);
     log(flags.skipped ? `  no demo flags: ${flags.skipped}` : `  ${flags.changes} made-up flag change(s)`);
   });
 }

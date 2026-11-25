@@ -14,7 +14,7 @@ import { FlagChangeCreate, valueProblem } from '../../services/api/src/sync/enti
 import { flagHead, flagHidden } from '../../services/api/src/sync/read-rules.ts';
 import { demoFlagChangeId } from '../seed/demo-flags.ts';
 import { NEIGHBOUR_TEAM_ID } from '../seed/demo-patients.ts';
-import { DEMO_TEAM_ID, seed } from '../seed/seed.ts';
+import { DEMO_TEAM_ID, SEED_AUTHOR, seed } from '../seed/seed.ts';
 import { migrate, setEnvironment } from '../src/migrate.ts';
 import { createScratchDatabase, type ScratchDatabase } from '../src/testing.ts';
 
@@ -191,20 +191,59 @@ describe('demo flags in the seed', () => {
     }
   });
 
-  it('sets none in the preview, which has no seeded staff to have set them', async () => {
-    // The test database's seed sets both (above); the preview's, none.
+  // Review finding R7: the preview shows flags on demo patients without anyone setting one first
+  // (design 13.4), though it has no seeded staff: the seed's own author sets them there, as it made
+  // the demo patients, and joins no team.
+  it('sets both in the preview too, by the seed’s own author, who is no member, and once', async () => {
     expect(changes).toHaveLength(2);
     const preview = await createScratchDatabase({ migrate: false });
     try {
       await migrate(preview.owner);
       await setEnvironment(preview.owner, 'preview');
       await seed(preview.owner);
-      expect(await changesOf(preview.owner)).toEqual([]);
-      // The patients and the platform's flags are there all the same.
-      const flags = await preview.owner<{ n: number }[]>`
-        select count(*)::int as n from sineobex.team_presets
-        where team_id = ${DEMO_TEAM_ID} and origin_key in ('flag.high', 'flag.frost_risk')`;
-      expect(flags[0]?.n).toBe(2);
+      const first = await snapshotOf(preview.owner);
+      await seed(preview.owner);
+      expect(await snapshotOf(preview.owner)).toEqual(first);
+      const there = await changesOf(preview.owner);
+      // The same two changes as the test database's, but for who made them.
+      const shape = (c: Change) => [
+        c.id,
+        c.patientId,
+        c.originKey,
+        c.action,
+        c.reason,
+        c.effectiveAt.getTime(),
+      ];
+      expect(there.map(shape)).toEqual(changes.map(shape));
+      const [author] = await preview.owner<{ id: string }[]>`
+        select id from sineobex.users where email = ${SEED_AUTHOR.email}`;
+      expect(new Set(there.map((c) => c.authorUserId))).toEqual(new Set([author!.id]));
+      const members = await preview.owner<{ n: number }[]>`
+        select count(*)::int as n from sineobex.team_memberships where user_id = ${author!.id}`;
+      expect(members[0]?.n).toBe(0);
+      // Each shows in its patient's chart answer as the API works it out, for a reader with the
+      // standard Healthcare Staff role, as an invited member would read it: through the API's own
+      // connection and transaction (its column names, the team and person it sets).
+      const [role] = await preview.owner<{ permissions: Permission[] }[]>`
+        select permissions from sineobex.roles where team_id is null and key = 'healthcare_staff'`;
+      const permissions = new Set(role!.permissions);
+      const previewSql = createSql(preview.ownerUrl, { max: 1 });
+      try {
+        const previewApi = createDatabase(previewSql);
+        for (const c of there) {
+          const chart = await previewApi.tx({ teamId: DEMO_TEAM_ID, userId: author!.id }, (tx) =>
+            loadChart(tx, scopeOf(author!.id, permissions), c.patientId),
+          );
+          expect(chart!.flags?.history.map((h) => [h.changeId, h.authorName])).toEqual([
+            [c.id, SEED_AUTHOR.name],
+          ]);
+          const shown =
+            c.originKey === 'flag.high' ? chart!.flags?.primary?.flagId : chart!.flags?.secondary[0]?.flagId;
+          expect(shown, c.id).toBe(c.flagId);
+        }
+      } finally {
+        await previewSql.end();
+      }
     } finally {
       await preview.drop();
     }
