@@ -54,7 +54,10 @@ export interface HeldNoteType {
   readonly platformLatest: number | null;
   /** The team edited, archived or restored it: a platform version is then only offered. */
   readonly customized: boolean;
-  /** The platform version its newest platform row was installed or taken from; null with none. */
+  /**
+   * The platform version it last took: its newest platform row's, or a newer one taken from its
+   * offer as a new note type (lastTakenOf); null with none.
+   */
   readonly lastTaken: number | null;
   /** Its current version's definition, checked as definitionFor checks it, and frozen. */
   readonly definition: ResolvedNoteType;
@@ -87,6 +90,7 @@ export async function loadTeamNoteTypes(tx: Tx, teamId: string): Promise<TeamNot
     left join sineobex.note_type_versions v
       on v.team_id = h.team_id and v.key = h.key and v.version = h.current_version
     where h.team_id = ${teamId}`;
+  const takenAsNew = await takenAsNewRows(tx, teamId);
   const all: HeldNoteType[] = [];
   for (const { hash, definition, ...head } of rows) {
     // Every writer writes a head with its version (the installer, this module); 0023 cannot hold it.
@@ -97,7 +101,8 @@ export async function loadTeamNoteTypes(tx: Tx, teamId: string): Promise<TeamNot
       hash,
       definition,
     });
-    all.push({ ...head, definition: stored.definition });
+    const lastTaken = await lastTakenOf(head, takenAsNew);
+    all.push({ ...head, lastTaken, definition: stored.definition });
   }
   const byKey = new Map(all.map((n) => [n.key, n]));
   const maps = await tx<{ key: string; n: number }[]>`
@@ -112,6 +117,49 @@ export async function loadTeamNoteTypes(tx: Tx, teamId: string): Promise<TeamNot
     get: (key) => byKey.get(key),
     maps: new Map(maps.map((m) => [m.key, m.n])),
   };
+}
+
+/** A team's own key's first version, written from a platform version: an update taken as new. */
+interface TakenAsNew {
+  key: string;
+  presetVersion: number;
+  hash: string;
+}
+
+/**
+ * The first version of each of the team's own keys that is a platform version (`origin = 'preset'`):
+ * only a take as new writes one (createNoteType writes the team's own), naming the platform's
+ * definition as that key's version 1 (4.3).
+ */
+function takenAsNewRows(tx: Tx, teamId: string): Promise<TakenAsNew[]> {
+  return tx<TakenAsNew[]>`
+    select key, preset_version, hash from sineobex.note_type_versions
+    where team_id = ${teamId} and version = 1 and origin = 'preset' and left(key, 2) = 't_'`;
+}
+
+/**
+ * The platform version a note type last took (5.1, 5.2): its newest platform row's, or a newer one
+ * the team took from its offer as a new note type, which leaves no row of its own. A take as new
+ * names the platform's definition as the new key's version 1, so that row's hash is the hash of
+ * this key's platform version named so, and of no other (the hash names its definition). Without
+ * it, the old one would offer again the very update taken as new, and Add as new again would be
+ * refused for the name the first one holds. A later platform version of the key is still offered on
+ * the old one, never on the new one: nothing stored names the key a note type was taken from.
+ */
+async function lastTakenOf(
+  head: { key: string; platformLatest: number | null; lastTaken: number | null },
+  takenAsNew: readonly TakenAsNew[],
+): Promise<number | null> {
+  let last = head.lastTaken;
+  if (head.platformLatest === null || head.platformLatest <= (last ?? 0)) return last;
+  for (const row of takenAsNew) {
+    if (row.presetVersion <= (last ?? 0) || row.presetVersion > head.platformLatest) continue;
+    const preset = PRESETS.find((p) => p.key === head.key && p.version === row.presetVersion);
+    if (!preset) continue;
+    const named = { ...copyPart(preset.definition), key: row.key, version: 1 };
+    if ((await sha256Hex(canonicalJson(named))) === row.hash) last = row.presetVersion;
+  }
+  return last;
 }
 
 /**
