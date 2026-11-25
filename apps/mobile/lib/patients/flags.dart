@@ -11,6 +11,8 @@
 /// database, and in what this class answers, never in a log, a notice or an audit entry (design 9).
 library;
 
+import 'dart:convert';
+
 import '../api/generated/api.dart' as api show ChartFlags, FlagChangeMark, FlagHistoryRow, FlagTier;
 import '../presets/current_flags.dart';
 import '../presets/models.dart' show FlagBody, FlagColor, FlagTier, PresetKind, PresetState;
@@ -190,9 +192,19 @@ typedef IntakeRiskLevel = ({String flagId, String reason});
 
 /// A team's patient flags on this phone, for one person.
 class PatientFlags {
-  PatientFlags(this.store, {required this.userId, required this.permissions, this.nameOf, this.index});
+  PatientFlags(
+    this.store, {
+    required this.userId,
+    required this.permissions,
+    this.nameOf,
+    this.index,
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
 
   final LocalStore store;
+
+  /// The phone's clock, corrected by the server's where a sync measured it: when a receipt came.
+  final DateTime Function() _now;
 
   /// The person's ID: a change's author.
   final String userId;
@@ -424,6 +436,39 @@ class PatientFlags {
     onChanged?.call();
   }
 
+  // ---- receipts ----
+
+  /// Registers the receipt hook ([_onConfirmed]). Called once per store.
+  void install() => store.onConfirmed.add(_onConfirmed);
+
+  /// What the phone keeps of a flag change of its own once a receipt confirms it, in the receipt's
+  /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, in `kv`;
+  /// never a flag or a reason): the change's own time, as the server's `when` reads it (the corrected
+  /// time, else the device's), and when the receipt came, by the corrected clock. [_read] dates a
+  /// confirmed change by them until a chart gives the server's time. What it kept of a change the
+  /// phone no longer holds goes here too.
+  void _onConfirmed(OutboxEntry e, AcceptedReceipt receipt) {
+    if (e.entity != entityFlagChange || e.op != 'create') return;
+    final kept = {...?_kept(e.recordId)};
+    kept[_keptAt] = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
+    kept[_keptReceivedAt] = _now().millisecondsSinceEpoch;
+    store.setKv('$_keptKvPrefix${e.recordId}', jsonEncode(kept));
+    store.database.execute(
+      'DELETE FROM kv WHERE substr(key, 1, ${_keptKvPrefix.length}) = ? '
+      'AND substr(key, ${_keptKvPrefix.length + 1}) NOT IN (SELECT id FROM records)',
+      [_keptKvPrefix],
+    );
+  }
+
+  /// What [_onConfirmed] kept of the flag change [recordId]; null for none (one not confirmed yet,
+  /// one made on another phone, or one confirmed by a version of the app that kept nothing).
+  Map<String, Object?>? _kept(String recordId) {
+    final raw = store.kv('$_keptKvPrefix$recordId');
+    if (raw == null) return null;
+    final value = jsonDecode(raw);
+    return value is Map<String, Object?> ? value : null;
+  }
+
   // ---- recording ----
 
   /// One change, checked as the server would refuse it and in this layer's words, then created.
@@ -610,7 +655,14 @@ class PatientFlags {
       }
       final a = rec.attributes;
       final serverAt = _time(a['effectiveAt']);
-      final dated = serverAt ?? create?.correctedTime ?? create?.deviceTime ?? row.createdAt;
+      final kept = create == null ? _kept(row.id) : null;
+      final keptAt = _ms(kept?[_keptAt]);
+      final receivedAt = _ms(kept?[_keptReceivedAt]);
+      // One confirmed here that no chart dates yet: by its own time, never later than its receipt, as
+      // the server dates it (D90; section 11, row 30), and not by when its record was made here, which
+      // is the phone's own clock, uncorrected.
+      final ownAt = keptAt != null && receivedAt != null && receivedAt.isBefore(keptAt) ? receivedAt : keptAt;
+      final dated = serverAt ?? create?.correctedTime ?? create?.deviceTime ?? ownAt ?? row.createdAt;
       var at = dated;
       if (rec.origin == 'local') {
         if (serverAt == null && lastOwn != null && !at.isAfter(lastOwn) && !dated.isBefore(lastOwnAsDated!)) {
@@ -629,6 +681,7 @@ class PatientFlags {
           flag: flag,
           action: a['action'] as String? ?? '',
           at: at,
+          receivedAt: receivedAt,
           pending: create != null,
           authorId: rec.authorUserId ?? '',
           authorName: rows[row.id]?.authorName ?? nameOf?.call(rec.authorUserId ?? ''),
@@ -640,7 +693,10 @@ class PatientFlags {
     }
 
     // A patient whose chart the phone doesn't hold whole: the index's word stands for the server's
-    // earlier changes, and what it can't reflect yet of this phone's is folded after it.
+    // earlier changes, and what it can't reflect yet of this phone's is folded after it: a change still
+    // waiting, or one whose receipt came after the index was worked out (the index's time is the
+    // server's, the receipt's the corrected clock's), else, where the receipt's time wasn't kept, one
+    // made after it.
     final base = <FlagChangeRef>[];
     var counted = changes.where((c) => c.state == FlagChangeState.sent || c.state == FlagChangeState.waiting);
     final indexed = full ? null : index?.flagsOf(canonical);
@@ -650,7 +706,7 @@ class PatientFlags {
         base.add((id: '', flagId: id, action: 'set', effectiveAt: epoch, enteredInError: false));
       }
       final refreshedAt = index!.state.refreshedAt;
-      counted = counted.where((c) => c.pending || refreshedAt == null || c.at.isAfter(refreshedAt));
+      counted = counted.where((c) => c.pending || refreshedAt == null || (c.receivedAt ?? c.at).isAfter(refreshedAt));
     }
     final current = currentFlags(
       changes: [
@@ -702,6 +758,8 @@ class PatientFlags {
   }
 
   static DateTime? _time(Object? iso) => iso is String ? DateTime.tryParse(iso) : null;
+
+  static DateTime? _ms(Object? ms) => ms is int ? DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true) : null;
 
   /// By rank, then name (by code unit, as the server orders them), then ID.
   static List<_Flag> _ordered(Iterable<_Flag> flags) => [...flags]
@@ -763,6 +821,7 @@ class _Change {
     required this.flag,
     required this.action,
     required this.at,
+    required this.receivedAt,
     required this.pending,
     required this.authorId,
     required this.authorName,
@@ -777,6 +836,10 @@ class _Change {
 
   /// The server's time for it, or this phone's for one made here that no chart lists yet.
   final DateTime at;
+
+  /// For one made here, when its receipt came, by the corrected clock; null while it waits, and where
+  /// the phone kept none.
+  final DateTime? receivedAt;
 
   /// Made here, its create still waiting for its receipt.
   final bool pending;
@@ -803,6 +866,12 @@ class _Change {
 const flagsClockPaused = 'Flags can be changed once the phone’s clock is right.';
 
 const _manageUsers = 'team.manage_users';
+
+/// Where [PatientFlags] keeps what a receipt confirms of a flag change of this phone's (IDs and times
+/// only, `kv` by the flag change's ID), and its keys.
+const _keptKvPrefix = 'flagChange.';
+const _keptAt = 'at';
+const _keptReceivedAt = 'receivedAt';
 
 // What the flags sheet, intake and Needs attention say when this layer stops: its words.
 const _notAllowed = 'Your role can’t change a patient’s flags.';

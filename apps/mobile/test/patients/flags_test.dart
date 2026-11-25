@@ -14,6 +14,7 @@ import 'package:sineobex_field/presets/models.dart';
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/presets/presets_refresher.dart';
 import 'package:sineobex_field/sync/canonical_json.dart' show valueHash;
+import 'package:sineobex_field/sync/clock.dart' show ClockState;
 import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
@@ -508,6 +509,104 @@ void main() {
       expect(flags().flagsOf(p).riskLevel?.flagId, high);
     });
 
+    // Review finding F1: a change confirmed here, and not yet dated by a chart, keeps its own time (the
+    // corrected clock's, as the server's when reads it), never the phone's own clock's, which may run
+    // off the server's by anything short of the pause limit.
+    test('a change confirmed here is dated by its own time until a chart dates it: the clock three minutes '
+        'ahead', () async {
+      final p = await openedPatient();
+      phone.wall = phone.wall.add(const Duration(minutes: 3));
+      expect(phone.clock.status.paused, isFalse, reason: 'within the limit, so charting goes on');
+      final first = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'confirmed');
+
+      advance(const Duration(minutes: 1));
+      server.offline = true;
+      final second = flags().record(p, flagId: medium, action: 'set', reason: 'Demo: doing better');
+      final view = flags().flagsOf(p);
+      expect([view.riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [medium, medium]);
+      expect(
+        [for (final h in view.history) (h.changeId, h.state, h.at)],
+        [
+          (second, FlagChangeState.waiting, start.add(const Duration(minutes: 1))),
+          (first, FlagChangeState.sent, start),
+        ],
+      );
+
+      server.offline = false;
+      await phone.engine.syncAll(force: true);
+      expect(flags().flagsOf(p).riskLevel?.flagId, medium);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      expect(flags().flagsOf(p).riskLevel?.flagId, medium, reason: 'as the server holds it');
+    });
+
+    test('with the clock ahead, None clears the level the phone shows, which the server then takes off', () async {
+      final p = await openedPatient();
+      phone.wall = phone.wall.add(const Duration(minutes: 3));
+      flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      await phone.engine.syncAll(force: true);
+      advance(const Duration(minutes: 1));
+      server.offline = true;
+      flags().save(p, riskLevel: medium, conditions: const {}, reason: 'Demo: doing better');
+      advance(const Duration(seconds: 30));
+      expect(flags().flagsOf(p).riskLevel?.flagId, medium);
+      final cleared = flags().save(p, riskLevel: null, conditions: const {}, reason: 'Demo: discharged');
+      expect((createOf(cleared.single).value! as Map<String, Object?>)['flagId'], medium);
+      expect(flags().flagsOf(p).riskLevel, isNull);
+
+      server.offline = false;
+      await phone.engine.syncAll(force: true);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      expect(flags().flagsOf(p).riskLevel, isNull, reason: 'the server holds no level either');
+    });
+
+    test('with the clock behind, a change confirmed here after a teammate’s still counts after it', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      server.seed(
+        entityFlagChange,
+        {'patientId': p, 'flagId': medium, 'action': 'set', 'reason': 'Demo: weekly check'},
+        by: blair,
+        at: start.subtract(const Duration(minutes: 1)),
+      );
+      await services.patients.open(p);
+      phone.wall = phone.wall.subtract(const Duration(minutes: 3));
+      expect(phone.clock.status.paused, isFalse, reason: 'within the limit, so charting goes on');
+      final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'confirmed');
+      final view = flags().flagsOf(p);
+      expect([view.riskLevel?.flagId, view.history.first.changeId], [high, id]);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      expect(flags().flagsOf(p).riskLevel?.flagId, high, reason: 'as the server holds it');
+    });
+
+    test('a change made while the clock had no reference is dated no later than its receipt, as the server '
+        'dates it', () async {
+      final p = await openedPatient();
+      // The phone restarts offline, its clock two hours ahead: no reference, so nothing pauses and the
+      // change carries the phone's own time.
+      server.offline = true;
+      phone.boot.reboot();
+      phone.wall = phone.wall.add(const Duration(hours: 2));
+      await phone.restart();
+      services = servicesFor(FakeSyncServer.healthcareStaff.toList());
+      expect(phone.clock.status.state, ClockState.unverified);
+      final first = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      server.offline = false;
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'confirmed');
+      // The sync measured the clock; the person puts it right, and a minute later chooses Medium.
+      phone.wall = phone.wall.subtract(const Duration(hours: 2));
+      advance(const Duration(minutes: 1));
+      server.offline = true;
+      final second = flags().record(p, flagId: medium, action: 'set', reason: 'Demo: doing better');
+      final view = flags().flagsOf(p);
+      expect(view.riskLevel?.flagId, medium);
+      expect([for (final h in view.history) h.changeId], [second, first]);
+      expect(view.history.last.at, start, reason: 'its receipt’s time, as the server’s effective time is');
+    });
+
     test(
       'a change the server holds for review shows only as Sent for review, until a Program Admin accepts it',
       () async {
@@ -933,6 +1032,47 @@ void main() {
       await indexRefresh();
       expect(services.index.flagsOf(p)?.primary, medium);
       expect(flags().flagsOf(p).riskLevel?.flagId, medium);
+    });
+
+    // Review finding F1, the index's side: the index's time is the server's, so a change confirmed
+    // here is weighed against it by when its receipt came, by the corrected clock, never by the phone's
+    // own clock or by when it was made.
+    test('a change confirmed before the index comes again counts after the index’s word: the clock two '
+        'minutes behind', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      phone.wall = phone.wall.subtract(const Duration(minutes: 2));
+      expect(phone.clock.status.paused, isFalse, reason: 'within the limit, so charting goes on');
+      await indexRefresh();
+      server.offline = true;
+      await services.patients.open(p);
+      expect(isPartialChart(store(), p), isTrue);
+      advance(const Duration(minutes: 1));
+      flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      expect(flags().flagsOf(p).riskLevel?.flagId, high);
+
+      server.offline = false;
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'confirmed');
+      expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [high, high]);
+    });
+
+    test('a change confirmed after an index that came while it waited counts, the chart not downloaded', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      await indexRefresh();
+      server.offline = true;
+      await services.patients.open(p);
+      advance(const Duration(minutes: 1));
+      flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      advance(const Duration(minutes: 30));
+      server.offline = false;
+      // A pull to refresh downloads the index while the change still waits here.
+      await indexRefresh();
+      expect(flags().flagsOf(p).riskLevel?.flagId, high);
+      advance(const Duration(seconds: 20));
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'confirmed');
+      expect(isPartialChart(store(), p), isTrue);
+      expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [high, high]);
     });
   });
 
