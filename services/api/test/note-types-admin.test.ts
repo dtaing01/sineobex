@@ -1734,3 +1734,122 @@ describe('every note type write', () => {
     expect(JSON.stringify(event!.details)).not.toContain('quieter');
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// The history (design 8.1, as a preset's)
+// ------------------------------------------------------------------------------------------------
+
+describe('GET /v1/admin/note-types/{key}/history', () => {
+  interface Event {
+    act: string;
+    version: number;
+    source: 'team' | 'platform';
+    by: { userId: string; displayName: string } | null;
+    at: string;
+    reason: string | null;
+  }
+  const historyOf = (key: string, a = api) => a.send('GET', `/v1/admin/note-types/${key}/history`);
+
+  it('lists every act on a note type of the team’s own, oldest first, with who, whose version and why', async () => {
+    const t = await presetsTeam(h, 'Note Types History');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const made = await theirs.create({
+      title: 'Demo: Kept in the history',
+      kinds: ['non_medical'],
+      group: 'outreach',
+    });
+    const key = made.body.key as string;
+    expect(
+      (
+        await theirs.publish(
+          key,
+          1,
+          [{ op: 'rename_type', title: 'Demo: Kept, renamed' }],
+          'Demo: plainer words',
+        )
+      ).status,
+    ).toBe(200);
+    expect((await theirs.archive(key, 2, 'Demo: not used now')).status).toBe(200);
+    expect((await theirs.restore(key, 'Demo: wanted back')).status).toBe(200);
+    const mark = await auditMark(h);
+    const r = await historyOf(key, theirs);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const by = { userId: t.admin.userId, displayName: t.admin.displayName };
+    const events = r.body as unknown as Event[];
+    expect(events.map(({ at: _at, ...e }) => e)).toEqual([
+      { act: 'created', version: 1, source: 'team', by, reason: REASON },
+      { act: 'updated', version: 2, source: 'team', by, reason: 'Demo: plainer words' },
+      { act: 'archived', version: 2, source: 'team', by, reason: 'Demo: not used now' },
+      { act: 'restored', version: 2, source: 'team', by, reason: 'Demo: wanted back' },
+    ]);
+    for (const e of events) expect(Number.isNaN(Date.parse(e.at)), e.at).toBe(false);
+    // Reading it is not audited (PL-13), and the reasons it shows are in no audit event (design 9).
+    expect(await auditAfter(h, mark)).toEqual([]);
+    const audited = await h.scratch.owner<{ details: unknown }[]>`
+      select details from sineobex.audit_events where team_id = ${t.teamId} and entity = 'note_type'`;
+    expect(JSON.stringify(audited)).not.toMatch(/plainer words|not used now|wanted back/);
+  });
+
+  it('names the platform as the installer of its note types, and a person who takes its update', async () => {
+    const t = await presetsTeam(h, 'Note Types History Platform');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const installed = await historyOf('outreach', theirs);
+    expect(installed.status, JSON.stringify(installed.body)).toBe(200);
+    expect((installed.body as unknown as Event[]).map(({ at: _at, ...e }) => e)).toEqual([
+      { act: 'installed', version: 1, source: 'platform', by: null, reason: null },
+    ]);
+    const row = await rowOf('psychological', theirs);
+    expect(
+      (await theirs.publish('psychological', row.version, [{ op: 'rename_type', title: 'Demo: Ours now' }]))
+        .status,
+    ).toBe(200);
+    const next = await platformNext('psychological', (d) => ({ ...d, title: `${d.title}, again` }));
+    const unrelease = release(next);
+    try {
+      const listed = await call(h, '/v1/forms/note-types', {
+        token: await tokenOf(h, t.admin),
+        teamId: t.teamId,
+      });
+      expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+      const offered = await rowOf('psychological', theirs);
+      const taken = await theirs.takeUpdate('psychological', {
+        baseVersion: offered.version,
+        platformVersion: next.version,
+        asNew: false,
+      });
+      expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+      const r = await historyOf('psychological', theirs);
+      const by = { userId: t.admin.userId, displayName: t.admin.displayName };
+      expect((r.body as unknown as Event[]).map(({ at: _at, ...e }) => e)).toEqual([
+        { act: 'installed', version: 1, source: 'platform', by: null, reason: null },
+        { act: 'updated', version: 2, source: 'team', by, reason: REASON },
+        { act: 'update_taken', version: 3, source: 'platform', by, reason: REASON },
+      ]);
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('answers 404 for a key the team holds no note type of, another team’s own among them', async () => {
+    const theirs = noteTypesApi(other.teamId, other.admin);
+    const made = await theirs.create({ title: 'Demo: Theirs alone', kinds: ['medical'], group: 'clinical' });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    refused(await historyOf(made.body.key as string), 404, 'not_found');
+    refused(await historyOf('no_such_type'), 404, 'not_found');
+    refused(await historyOf('Not A Key'), 422, 'validation_failed');
+  });
+
+  it('is refused to a member without team.manage_presets, and logged', async () => {
+    const writer = await memberOf(
+      h,
+      team.teamId,
+      ['patients.view', 'encounters.chart'],
+      'Note Types History Reader',
+    );
+    const mark = await auditMark(h);
+    refused(await historyOf('outreach', noteTypesApi(team.teamId, writer)), 403, 'forbidden');
+    expect((await auditAfter(h, mark)).map((e) => [e.action, e.details.permission])).toEqual([
+      ['access.denied', 'team.manage_presets'],
+    ]);
+  });
+});

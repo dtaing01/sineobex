@@ -52,6 +52,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/note-types/{key}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every act on a note type, oldest first, with who, when, whose version and why */
+        get: operations["getNoteTypeHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/note-types/{key}/restore": {
         parameters: {
             query?: never;
@@ -2396,6 +2413,26 @@ export interface components {
             /** @description The newest version the team holds */
             version: number;
         };
+        NoteTypeEvent: {
+            /**
+             * @description installed and platform_updated are the platform installer’s; every other act is a person’s
+             * @enum {string}
+             */
+            act: "created" | "updated" | "archived" | "restored" | "update_taken" | "installed" | "platform_updated";
+            /** Format: date-time */
+            at: string;
+            /** @description Who acted; null for the platform installer */
+            by: components["schemas"]["UserRef"] | null;
+            /** @description Why, as the person gave it; null for the platform installer */
+            reason: string | null;
+            /**
+             * @description Whose version it is: the team’s, or the platform’s, installed or taken by a person
+             * @enum {string}
+             */
+            source: "team" | "platform";
+            /** @description The version the act made, or stood on: an archive and a restore make none */
+            version: number;
+        };
         NoteTypeList: {
             noteTypes: components["schemas"]["NoteTypeEntry"][];
         };
@@ -3724,6 +3761,65 @@ export interface operations {
             };
             /** @description Conflicts with the current state */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getNoteTypeHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A note type’s key, as migration 0017 allows it */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Its history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteTypeEvent"][];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

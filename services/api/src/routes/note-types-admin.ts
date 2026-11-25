@@ -6,7 +6,9 @@ import {
   createNoteType,
   FIXED_NOTE_TYPE_FIELDS,
   loadTeamNoteTypes,
+  NOTE_TYPE_ACTS,
   NOTE_TYPE_GROUPS,
+  noteTypeHistory,
   noteTypeUpdateOf,
   publishNoteType,
   referencedBy,
@@ -17,7 +19,7 @@ import {
 } from '../presets/note-types.ts';
 import { presetReadScope, presetWriteScope, PresetReason } from '../presets/store.ts';
 import type { App } from '../app.ts';
-import { MAX_VERSION } from '../sync/schemas.ts';
+import { DateTime, MAX_VERSION, UserRef } from '../sync/schemas.ts';
 import type { Deps } from '../types.ts';
 import { errors } from './schemas.ts';
 
@@ -330,6 +332,30 @@ const TakeNoteTypeUpdateResult = z
   })
   .openapi('TakeNoteTypeUpdateResult');
 
+/** One act in a note type's history, as a preset's history gives one, without its definition. */
+const NoteTypeEvent = z
+  .object({
+    act: z.enum(NOTE_TYPE_ACTS).openapi({
+      description:
+        'installed and platform_updated are the platform installer’s; every other act is a person’s',
+    }),
+    version: z
+      .number()
+      .int()
+      .min(1)
+      .openapi({ description: 'The version the act made, or stood on: an archive and a restore make none' }),
+    source: z.enum(['team', 'platform']).openapi({
+      description: 'Whose version it is: the team’s, or the platform’s, installed or taken by a person',
+    }),
+    by: z.union([UserRef, z.null()]).openapi({ description: 'Who acted; null for the platform installer' }),
+    at: DateTime,
+    reason: z
+      .string()
+      .nullable()
+      .openapi({ description: 'Why, as the person gave it; null for the platform installer' }),
+  })
+  .openapi('NoteTypeEvent');
+
 const listRoute = createRoute({
   method: 'get',
   path: '/v1/admin/note-types',
@@ -419,6 +445,20 @@ const takeUpdateRoute = createRoute({
   },
 });
 
+const historyRoute = createRoute({
+  method: 'get',
+  path: '/v1/admin/note-types/{key}/history',
+  operationId: 'getNoteTypeHistory',
+  tags: ['presets'],
+  summary: 'Every act on a note type, oldest first, with who, when, whose version and why',
+  security: [{ bearer: [] }],
+  request: { params: keyParam },
+  responses: {
+    200: { description: 'Its history', ...json(z.array(NoteTypeEvent)) },
+    ...errors(401, 403, 404, 422),
+  },
+});
+
 // The pages list note types by title, in one order whatever the database's collation (CI runs two
 // PostgreSQL versions), the key settling two titles a reader would sort alike.
 const byTitle = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
@@ -469,6 +509,14 @@ export function registerNoteTypeAdminRoutes(app: App, deps: Deps): void {
   app.openapi(listRoute, async (c) => {
     const scope = await presetReadScope(c, deps);
     return c.json(await listNoteTypesAdmin(scope), 200);
+  });
+
+  // The history of 8.1, as a preset's: who, when, the platform's or the team's, and the reason, which
+  // is kept only in team_preset_events and shown only here (design 9).
+  app.openapi(historyRoute, async (c) => {
+    const { key } = c.req.valid('param');
+    const scope = await presetReadScope(c, deps);
+    return c.json(await scope.tx((tx) => noteTypeHistory(tx, scope.team.teamId, key)), 200);
   });
 
   app.openapi(addRoute, async (c) => {

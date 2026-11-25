@@ -868,6 +868,45 @@ enum NoteTypeEntrySensitivity {
   String toJson() => wire;
 }
 
+/// installed and platform_updated are the platform installer’s; every other act is a person’s
+enum NoteTypeEventAct {
+  created('created'),
+  updated('updated'),
+  archived('archived'),
+  restored('restored'),
+  updateTaken('update_taken'),
+  installed('installed'),
+  platformUpdated('platform_updated'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteTypeEventAct(this.wire);
+  final String wire;
+
+  static NoteTypeEventAct fromJson(String value) =>
+      NoteTypeEventAct.values.firstWhere((e) => e.wire == value, orElse: () => NoteTypeEventAct.unknown);
+
+  String toJson() => wire;
+}
+
+/// Whose version it is: the team’s, or the platform’s, installed or taken by a person
+enum NoteTypeEventSource {
+  team('team'),
+  platform('platform'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteTypeEventSource(this.wire);
+  final String wire;
+
+  static NoteTypeEventSource fromJson(String value) =>
+      NoteTypeEventSource.values.firstWhere((e) => e.wire == value, orElse: () => NoteTypeEventSource.unknown);
+
+  String toJson() => wire;
+}
+
 enum NoteTypePlatformUpdateChangesFixedItem {
   kinds('kinds'),
   group('group'),
@@ -4326,6 +4365,47 @@ class NoteTypeEntry {
         'quick': quick,
         'sensitivity': sensitivity.toJson(),
         'title': title,
+        'version': version,
+      };
+}
+
+class NoteTypeEvent {
+  const NoteTypeEvent({
+    required this.act,
+    required this.at,
+    required this.by,
+    required this.reason,
+    required this.source,
+    required this.version,
+  });
+
+  /// installed and platform_updated are the platform installer’s; every other act is a person’s
+  final NoteTypeEventAct act;
+  final DateTime at;
+  /// Who acted; null for the platform installer
+  final UserRef? by;
+  /// Why, as the person gave it; null for the platform installer
+  final String? reason;
+  /// Whose version it is: the team’s, or the platform’s, installed or taken by a person
+  final NoteTypeEventSource source;
+  /// The version the act made, or stood on: an archive and a restore make none
+  final int version;
+
+  factory NoteTypeEvent.fromJson(Map<String, dynamic> json) => NoteTypeEvent(
+        act: NoteTypeEventAct.fromJson(json['act'] as String),
+        at: DateTime.parse(json['at'] as String),
+        by: json['by'] == null ? null : UserRef.fromJson(json['by'] as Map<String, dynamic>),
+        reason: json['reason'] == null ? null : json['reason'] as String,
+        source: NoteTypeEventSource.fromJson(json['source'] as String),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'act': act.toJson(),
+        'at': at.toUtc().toIso8601String(),
+        'by': by == null ? null : by!.toJson(),
+        'reason': reason == null ? null : reason!,
+        'source': source.toJson(),
         'version': version,
       };
 }
@@ -7854,6 +7934,12 @@ class SineobexApi {
   Future<NoteTypeDefinition> getNoteTypeDefinition({required String key, required String version}) async {
     final json = await _transport.send('GET', '/v1/forms/note-types/${Uri.encodeComponent(key)}/${Uri.encodeComponent(version)}');
     return NoteTypeDefinition.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Every act on a note type, oldest first, with who, when, whose version and why
+  Future<List<NoteTypeEvent>> getNoteTypeHistory({required String key}) async {
+    final json = await _transport.send('GET', '/v1/admin/note-types/${Uri.encodeComponent(key)}/history');
+    return (json as List<dynamic>).map((e) => NoteTypeEvent.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// A patient’s chart, as the role may see it. A merged ID answers the kept chart.
