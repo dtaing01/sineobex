@@ -589,6 +589,17 @@ export function publishRefusal(code: string, details: Record<string, unknown> | 
         : [];
       if (fields.some((f) => f?.path === 'reason'))
         return { error: FIELDS_TITLE, fieldErrors: { reason: `Reason: ${REASON_PROBLEM}` } };
+      // A change the request's own check refused, such as a number typed as words: named by its place.
+      for (const f of fields) {
+        const at = typeof f?.path === 'string' ? /^ops\.(\d+)\.(.+)$/.exec(f.path) : null;
+        if (!at) continue;
+        return {
+          error: /(^|\.)(min|max)$/.test(at[2]!)
+            ? 'Enter numbers for the lowest and highest it takes.'
+            : 'Something in this change isn’t right. Undo it and make it again.',
+          opIndex: Number(at[1]),
+        };
+      }
       const ops = fields.find((f) => typeof f?.path === 'string' && f.path.split('.')[0] === 'ops');
       if (ops?.path === 'ops' && ops.problem === 'too_small')
         return { error: 'Make a change before you publish.' };
