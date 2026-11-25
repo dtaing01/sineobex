@@ -479,11 +479,10 @@ class PatientFlags {
 
   // ---- reading ----
 
-  bool get _seesSensitive => seesSensitiveFlags(permissions);
-
-  /// The flag rule over the phone's view of a flag: a sensitive one the person doesn't see. A flag
-  /// the phone knows nowhere is never in the catalog, so never shown (the rule's team half).
-  bool _hidden(_Flag f) => f.sensitive && !_seesSensitive;
+  /// The flag rule ([flagHidden], the phone's one copy) over a flag as this class holds it: one of the
+  /// presets by its body; one only a chart names, which the server's rule showed this person when it
+  /// read the chart, is shown. A flag the phone knows nowhere is never in the catalog, so never shown.
+  bool _hidden(_Flag f) => f.held && flagHidden(permissions, f.body);
 
   /// The team's flags the phone's copy of the presets holds, archived ones included, by ID.
   Map<String, _Flag> _held() => {
@@ -497,7 +496,7 @@ class PatientFlags {
           color: b.color,
           colorName: b.color.colorName,
           archived: p.state == PresetState.archived,
-          sensitive: b.sensitive,
+          body: b,
         ),
   };
 
@@ -518,7 +517,6 @@ class PatientFlags {
         color: FlagColor.byCode(f.color.wire),
         colorName: f.colorName,
         archived: f.archived,
-        sensitive: false,
       );
     }
     for (final h in chart.history) {
@@ -532,7 +530,6 @@ class PatientFlags {
         color: null,
         colorName: '',
         archived: false,
-        sensitive: false,
       );
     }
     return out;
@@ -657,8 +654,12 @@ class PatientFlags {
         for (final c in counted)
           (id: c.id, flagId: c.flag.id, action: c.action, effectiveAt: c.at, enteredInError: c.mark != null),
       ],
-      flags: {for (final MapEntry(:key, :value) in catalog.entries) key: value.ref},
-      hidden: (f) => f.sensitive && !_seesSensitive,
+      // The fold leaves out a change whose flag it isn't given: every flag the rule hides is kept out.
+      flags: {
+        for (final MapEntry(:key, :value) in catalog.entries)
+          if (!_hidden(value)) key: value.ref,
+      },
+      hidden: (_) => false,
     );
     final history = [...changes]
       ..sort((x, y) {
@@ -722,7 +723,7 @@ class _Flag {
     required this.color,
     required this.colorName,
     required this.archived,
-    required this.sensitive,
+    this.body,
   });
 
   final String id;
@@ -733,8 +734,11 @@ class _Flag {
   final String colorName;
   final bool archived;
 
-  /// False for a flag a chart named: the server's flag rule let this person see it then.
-  final bool sensitive;
+  /// The preset's body, which the flag rule reads; null for a flag only a chart names.
+  final FlagBody? body;
+
+  /// The phone's copy of the presets holds it.
+  bool get held => body != null;
 
   FlagView get view =>
       FlagView(flagId: id, name: name, tier: tier, color: color, colorName: colorName, rank: rank, archived: archived);
@@ -743,7 +747,7 @@ class _Flag {
     tier: tier,
     rank: rank,
     name: name,
-    sensitive: sensitive,
+    sensitive: body?.sensitive ?? false,
     state: archived ? PresetState.archived : PresetState.active,
   );
 }

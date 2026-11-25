@@ -428,6 +428,20 @@ void main() {
       expect(() => services.index.withFlags(riskLevel: high), throwsA(isA<ChartingPaused>()));
     });
 
+    // Card P5-phone-index's own case: the flag rule's team half, beside its sensitive half above.
+    test('a flag the phone’s copy of the presets doesn’t hold is left out, and filters for no one', () async {
+      final ids = seed(1);
+      // The team added it after the phone last pulled its presets.
+      final late = server.addPreset(team, 'flag', flag('Demo: Wet feet', 'secondary', 'teal', 40));
+      change(ids[0], frost);
+      change(ids[0], late);
+      await refresher.refresh(RefreshReason.manual);
+      server.offline = true;
+      expect(json(), contains(late));
+      expect(services.index.flagsOf(ids[0])?.secondary, [frost]);
+      expect(services.index.withFlags(conditions: {late}), isEmpty);
+    });
+
     test('a sensitive flag is in the index only for a reader who may see it, and filters for no one else', () async {
       final ids = seed(2);
       change(ids[0], pregnancy);

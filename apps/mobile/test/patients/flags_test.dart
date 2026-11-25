@@ -936,6 +936,25 @@ void main() {
     });
   });
 
+  test('a change the chart no longer lists counts nowhere, though its record is still here', () async {
+    final p = server.seedPatient(preferredName: 'Demo Wren');
+    final id = server.seed(entityFlagChange, {
+      'patientId': p,
+      'flagId': wet,
+      'action': 'set',
+      'reason': 'Demo: wet feet',
+    }, by: blair);
+    await services.patients.open(p);
+    expect(ids(flags().flagsOf(p).conditions), [wet]);
+    // The server's list lost the flag (a build fault, 6.2), so its chart leaves the change out; this
+    // phone's copy of the presets still holds the flag, and its store the record, until the purge.
+    server.presetsOf(team).heads.remove(wet);
+    await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+    expect(store().record(id), isNotNull);
+    final view = flags().flagsOf(p);
+    expect([view.conditions, view.history], [isEmpty, isEmpty]);
+  });
+
   test('a held change a Program Admin didn’t apply leaves Sent for review and counts nowhere', () async {
     final p = await openedPatient();
     server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
