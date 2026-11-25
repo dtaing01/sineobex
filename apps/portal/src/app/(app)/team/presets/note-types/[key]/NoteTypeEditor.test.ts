@@ -181,6 +181,14 @@ describe('what the editor holds', () => {
   });
 });
 
+describe('the editor’s buttons', () => {
+  it('name what a press does, Hide or Show again, and none is a toggle whose state its name contradicts (B-4)', () => {
+    const html = draw();
+    expect(html).toContain('Hide<span class="sr-only"> the section “Demo: Needs”</span>');
+    expect(html).not.toContain('aria-pressed');
+  });
+});
+
 describe('what the editor makes of a Publish’s answer', () => {
   it('reloads only for a redirect it was not let follow, and keeps what it holds for any answer not its own (B-15)', () => {
     expect(answerKind({ type: 'opaqueredirect', contentType: null })).toBe('session_ended');
