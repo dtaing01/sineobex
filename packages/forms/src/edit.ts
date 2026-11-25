@@ -163,8 +163,9 @@ export type NoteTypeEditContext = {
    */
   versions: readonly ResolvedNoteType[];
   /**
-   * The team's other active note types, each at its current version, by key: a field that maps
-   * to this one (`in_use`), a section to copy, and what the validator looks another key up in.
+   * The team's other note types, removed ones too, each at its current version, by key: a field
+   * that maps to this one (`in_use`; a removed one keeps its mapsTo and comes back as it is), a
+   * section to copy, and what the validator looks another key up in.
    * Within a publish that changes several types (edit-fanout.ts), each at the version the publish
    * has made of it so far.
    */

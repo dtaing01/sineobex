@@ -989,6 +989,55 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
       );
     }
   });
+
+  it('reads a removed quick encounter as an active one: what it maps to stays in use, and its lists move with it', async () => {
+    // Removed, a note type keeps its mapsTo and comes back as it is (5.1, 5.4). So a hide of a field
+    // the removed quick encounter maps to is refused, and an option operation reaches it (rule 5):
+    // once restored, it maps only to what wound care has, and its next publish passes the validator.
+    const t = await presetsTeam(h, 'Note Types Removed Quick');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const maps = await h.scratch.owner<{ id: string; version: number }[]>`
+      select p.id, p.current_version as version from sineobex.team_presets p
+      join sineobex.team_preset_versions v
+        on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
+      where p.team_id = ${t.teamId} and p.kind = 'field_supply_map' and p.state = 'active'
+        and v.body ->> 'noteTypeKey' = 'quick_encounter'`;
+    const presets = presetsApi(h, t.teamId, t.admin);
+    for (const map of maps)
+      expect((await presets.archive('field_supply_map', map.id, map.version)).status).toBe(200);
+    const quick = await rowOf('quick_encounter', theirs);
+    expect((await theirs.archive('quick_encounter', quick.version)).status).toBe(200);
+
+    const wound = await rowOf('wound_care', theirs);
+    expect(
+      await refusedUnwritten(
+        () =>
+          theirs.publish('wound_care', wound.version, [
+            { op: 'set_hidden', path: 'wound.type', hidden: true },
+          ]),
+        422,
+        'in_use',
+        t.teamId,
+      ),
+    ).toEqual({ opIndex: 0 });
+    const retired = await theirs.publish('wound_care', wound.version, [
+      { op: 'retire_option', path: 'wound.drainage_amount', code: 'none' },
+    ]);
+    expect(retired.status, JSON.stringify(retired.body)).toBe(200);
+    expect(retired.body).toEqual({ version: wound.version + 1, alsoPublished: ['quick_encounter'] });
+    // The removed one has its next version, stays removed, and its list moved with wound care's.
+    const reached = await rowOf('quick_encounter', theirs);
+    expect(reached).toMatchObject({ state: 'archived', version: quick.version + 1 });
+    const { definition } = await storedAs('quick_encounter', quick.version + 1, t.teamId);
+    expect(fieldOf(definition, 'wound.drainage').options!.map((o) => o.code)).not.toContain('none');
+    expect(fieldOf(definition, 'wound.type').options!.length).toBeGreaterThan(0);
+
+    expect((await theirs.restore('quick_encounter')).status).toBe(200);
+    const renamed = await theirs.publish('quick_encounter', reached.version, [
+      { op: 'rename_type', title: 'Demo: Quick, back again' },
+    ]);
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+  });
 });
 
 // ------------------------------------------------------------------------------------------------

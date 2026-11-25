@@ -62,7 +62,8 @@ function mappedKeys(definition: ResolvedNoteType): Set<string> {
  * maps to, and every field that maps to that one or to it, in note types other than `key` that are
  * in `team` and not `auto`, by key and then path. Only a choice field, outside a grid's cell, holds
  * options to keep in step, and only one that is there is reached. `team` holds the current version
- * of each of the team's active note types, the edited one included.
+ * of each of the team's note types, the edited one included, and removed ones too: a removed one
+ * keeps its mapsTo and comes back as it is, so its list moves with the others.
  */
 export function optionReach(
   key: string,
@@ -101,7 +102,7 @@ export function optionReach(
  * platform's. So these are the note types a mapsTo names in any version of `key` (and, for a quick
  * `key`, in the team's quick types and the platform's), and the note types whose current version
  * maps into one of those or into `key`; never an `auto` one. `team` holds the current version of
- * each of the team's active note types, `key`'s among them or not.
+ * each of the team's note types, removed ones too, `key`'s among them or not.
  */
 export function mayReach(input: {
   key: string;
@@ -156,7 +157,7 @@ export type NoteTypeTeamEdit =
 export function editNoteTypes(input: {
   key: string;
   edits: readonly NoteTypeEdit[];
-  /** Every version of each of the team's active note types, oldest first, by key: `key`'s among them. */
+  /** Every version of each of the team's note types, removed ones too, oldest first, by key: `key`'s among them. */
   team: Readonly<Record<string, readonly ResolvedNoteType[]>>;
   /** The platform's note types, each at its newest released version, by key. */
   platform: Readonly<Record<string, ResolvedNoteType>>;
