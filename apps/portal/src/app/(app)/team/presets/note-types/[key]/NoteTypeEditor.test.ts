@@ -2,7 +2,17 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { NoteTypeDefinition, NoteTypeRow } from '@/lib/presets';
-import { heldHide, heldRename, heldTitle, replaceOrAdd, shownOptions, type HeldOp } from './held';
+import { ID_TAKEN, liveAfterDrop } from '@/lib/refusals';
+import {
+  answerKind,
+  copyTakenWords,
+  heldHide,
+  heldRename,
+  heldTitle,
+  replaceOrAdd,
+  shownOptions,
+  type HeldOp,
+} from './held';
 import { NoteTypeEditor } from './NoteTypeEditor';
 
 // The note type editor as the page first draws it, and what it holds (phase 5 design 5.4, 8.1).
@@ -168,5 +178,32 @@ describe('what the editor holds', () => {
     expect(shown.live.map((o) => o.code)).toEqual(['food', 'socks']);
     expect(shown.retired.map((r) => [r.option.code, r.op.id])).toEqual([['none', 7]]);
     expect(shown.added.map((h) => h.id)).toEqual([3]);
+  });
+});
+
+describe('what the editor makes of a Publish’s answer', () => {
+  it('reloads only for a redirect it was not let follow, and keeps what it holds for any answer not its own (B-15)', () => {
+    expect(answerKind({ type: 'opaqueredirect', contentType: null })).toBe('session_ended');
+    expect(answerKind({ type: 'basic', contentType: 'application/json' })).toBe('answer');
+    // A gateway's error page, and the route handler's 500 when the API can't be reached.
+    expect(answerKind({ type: 'basic', contentType: 'text/html; charset=utf-8' })).toBe('unknown');
+    expect(answerKind({ type: 'basic', contentType: null })).toBe('unknown');
+  });
+
+  it('says a copy refused id_taken as one the note type has now, or held before, and asks for nothing it can’t do (B-3)', () => {
+    const sections = definition.sections;
+    expect(copyTakenWords(sections, 'needs')).toBe(ID_TAKEN.now);
+    expect(copyTakenWords(sections, 'water')).toBe(ID_TAKEN.before);
+    expect(ID_TAKEN.now).toBe('This note type already has this section, so it can’t be copied in again.');
+    expect(ID_TAKEN.before).toBe(
+      'This note type has held this section, or parts of it, before, so it can’t be copied in again.',
+    );
+    for (const words of Object.values(ID_TAKEN)) expect(words).not.toMatch(/Show the old one again/);
+  });
+
+  it('says the version now live after a Publish whose answer was lost, which may be its own (B-2)', () => {
+    expect(liveAfterDrop(4)).toBe(
+      'Version 4 is live now. It may be the Publish whose answer was lost on the way, or someone else’s. Load it to see which before you publish again.',
+    );
   });
 });

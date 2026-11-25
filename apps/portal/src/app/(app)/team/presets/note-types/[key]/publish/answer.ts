@@ -1,5 +1,5 @@
 import type { NoteTypeEdit } from '@/lib/presets';
-import { publishedSentence, publishRefusal, refusalRedirect } from '@/lib/refusals';
+import { publishedSentence, publishRefusal, refusalRedirect, type PublishRefusal } from '@/lib/refusals';
 
 /**
  * What the editor's Publish posts and is told (phase 5 design 8.1; D115): a route handler, since the
@@ -18,7 +18,8 @@ export type PublishRequest = { baseVersion: number; ops: NoteTypeEdit[]; reason:
 
 export type PublishAnswer =
   | { ok: true; version: number; alsoPublished: string[]; message: string }
-  | { ok: false; error: string; opIndex?: number; noteTypeKey?: string; fieldErrors?: Record<string, string> }
+  // `code` is the API's, where it answered: the route handler's own refusals have none.
+  | ({ ok: false; code?: string } & PublishRefusal)
   | { ok: false; redirect: string };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -57,5 +58,5 @@ export function publishAnswer(
   if (go) return { ok: false, redirect: go };
   const at = details?.opIndex;
   const op = typeof at === 'number' ? ops[at]?.op : undefined;
-  return { ok: false, ...publishRefusal(code, details, op) };
+  return { ok: false, code, ...publishRefusal(code, details, op) };
 }

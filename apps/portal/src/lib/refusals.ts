@@ -538,10 +538,28 @@ const OPERATION_REFUSALS: Readonly<Record<string, string>> = {
   last_section: 'A note type needs one section at least, so its last one can’t be hidden.',
   too_many_fields: 'This note type holds as many fields of your team’s own as it can.',
   too_many_sections: 'This note type holds as many sections of your team’s own as it can.',
-  id_taken:
-    'This note type has held this section, or parts of it, before, so it can’t be copied in again. Show the old one again instead.',
+  // Said of a section it no longer holds; one it holds now is said by the editor (ID_TAKEN.now).
+  id_taken: 'This note type has held this section, or parts of it, before, so it can’t be copied in again.',
   invalid: 'This change doesn’t fit the rest of the note type, so it can’t be made.',
 };
+
+/**
+ * A copy of a section refused id_taken (design 5.4, rule 3): the note type holds that section now, or
+ * held it, or a part of it, in an earlier version. Only the editor knows which, from the version it
+ * opened, so it says `now` of a section that version holds; the API's sentence is `before`.
+ */
+export const ID_TAKEN = {
+  now: 'This note type already has this section, so it can’t be copied in again.',
+  before: OPERATION_REFUSALS.id_taken!,
+} as const;
+
+/**
+ * A Publish sent again after its connection dropped, refused stale (D115): a version newer than the
+ * one the editor opened is live, which may be that Publish, whose answer was lost on the way.
+ */
+export function liveAfterDrop(version: number): string {
+  return `Version ${version} is live now. It may be the Publish whose answer was lost on the way, or someone else’s. Load it to see which before you publish again.`;
+}
 
 /** What a refused Publish says, and which held change it names, where the API names one. */
 export interface PublishRefusal {
@@ -551,6 +569,8 @@ export interface PublishRefusal {
   /** Another note type, where a field of it that the change reaches refused it (rule 5). */
   noteTypeKey?: string;
   fieldErrors?: Record<string, string>;
+  /** For stale: the version live now, as the API answered it. */
+  currentVersion?: number;
 }
 
 /** An answer a condition asks for, retired: what shows only for it would never show (in_use). */
@@ -592,8 +612,13 @@ export function publishRefusal(
       ...(typeof noteTypeKey === 'string' ? { noteTypeKey } : {}),
     };
   switch (code) {
-    case 'stale':
-      return { error: PRESET_SENTENCES.stale };
+    case 'stale': {
+      const current = details?.currentVersion;
+      return {
+        error: PRESET_SENTENCES.stale,
+        ...(typeof current === 'number' && Number.isSafeInteger(current) ? { currentVersion: current } : {}),
+      };
+    }
     case 'archived':
       return {
         error:
