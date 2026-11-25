@@ -2,10 +2,11 @@ import 'dart:convert';
 
 import '../api/generated/api.dart' as api;
 import '../api/transport.dart';
+import '../presets/current_flags.dart' show CurrentFlags;
 import '../sync/local_store.dart';
 import '../sync/sync_engine.dart';
 import 'access.dart';
-import 'patient_search.dart' show searchNamesOf;
+import 'patient_search.dart' show FoundPatient, searchNamesOf;
 
 /// The team search index on the phone (design section 6): every active patient's preferred name,
 /// street names, description, birth, usual area, last-seen date and allergies, so a field worker
@@ -120,6 +121,23 @@ class TeamIndex {
         ? null
         : api.IndexEntry.fromJson(jsonDecode(row['entry_json']! as String) as Map<String, Object?>);
   }
+
+  /// [patientId]'s current flags as the index gives them (phase 5 design 6.1), through the person's
+  /// flag rule (`flagHidden`, lib/patients/flags.dart): a flag the person may not see, or one the
+  /// phone's copy of the presets doesn't hold, is left out, whatever projection the index was
+  /// downloaded under. Null when the index holds no entry for the patient's canonical patient; an
+  /// entry from before flags holds none.
+  CurrentFlags? flagsOf(String patientId) => throw UnimplementedError('P5-phone-index');
+
+  /// The Patients tab's **Risk level** and **Conditions** filters (8.2; section 11, row 37), offline
+  /// from the index: its patients carrying [riskLevel] (a primary flag's ID) and every one of
+  /// [conditions] (secondary flags' IDs), as [flagsOf] gives each, as search rows (never a legal
+  /// name, D40). A list of patients, so audited before it returns, in the same transaction as the
+  /// read (D21): `patient.searched` from the team index, naming the patients shown and never a flag.
+  /// Empty with neither (no browsing), and for a flag the person may not see. Throws
+  /// [ChartingPaused] while the store is frozen.
+  List<FoundPatient> withFlags({String? riskLevel, Set<String> conditions = const {}}) =>
+      throw UnimplementedError('P5-phone-index');
 
   /// Checked at open, on every timer tick and before every search (6.3): an index not refreshed for
   /// [indexLifetime], or refreshed "later" than the phone's corrected clock (wound back), goes with

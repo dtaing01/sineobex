@@ -126,6 +126,18 @@ class ChartMeta {
     for (final v in json['recentVisits'] as List<Object?>? ?? const []) ?_read(v, VisitRead.fromJson),
   ];
 
+  /// The IDs of the group's flag changes the chart lists (phase 5 design 6.1): the chart answer's
+  /// `flagChanges`, imported as records with the chart. A change made here shows until the chart
+  /// lists it; a server copy the chart no longer lists is not counted. Empty for a partial copy or a
+  /// chart cached before phase 5.
+  List<String> get flagChangeIds => throw UnimplementedError('P5-chart-cache');
+
+  /// The patient's flags as the server worked them out for this person (6.1, 7): each flag's name,
+  /// tier, colour and rank as the flag is now, and the history, so the profile draws them where the
+  /// presets aren't held. Read for this person when the chart was, and replaced whole with it. Null
+  /// for a partial copy, a chart that came without them, or one that no longer reads.
+  ChartFlags? get flags => throw UnimplementedError('P5-chart-cache');
+
   /// The group's referrals as the timeline lists them, which the phone need not hold as records:
   /// each read on its own, so one that no longer reads leaves the rest.
   List<RecordSnapshot> get referrals => [

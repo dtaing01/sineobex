@@ -22,6 +22,7 @@ import 'chart_cache.dart';
 import 'consent_script.dart';
 import 'display.dart';
 import 'dob.dart';
+import 'flags.dart' show IntakeRiskLevel;
 import 'id_links.dart';
 import 'normalize.dart';
 import 'patient_search.dart' show addSearchName, writeSearchNames;
@@ -284,6 +285,7 @@ class Intake {
     this.allergies = const [],
     this.idCard = IdCardAnswer.askLater,
     this.matchCheck,
+    this.riskLevel,
   });
 
   final ConsentAnswer consent;
@@ -310,12 +312,21 @@ class Intake {
 
   /// [MatchRun.matchCheck] of the last check shown, with what was dismissed.
   final Map<String, Object?>? matchCheck;
+
+  /// The risk level picked, with its reason (phase 5 design 8.2): saved with the patient, in the
+  /// same transaction, as a flag change whose parent is the patient's create. None by default. While
+  /// the clock is paused, or where the presets aren't held, the patient saves without it.
+  final IntakeRiskLevel? riskLevel;
 }
 
 /// What Create made.
 class IntakeResult {
-  const IntakeResult({required this.patientId, this.cardId, this.cardWaitsForClock = false});
+  const IntakeResult({required this.patientId, this.cardId, this.cardWaitsForClock = false, this.riskLevelChangeId});
   final String patientId;
+
+  /// The risk level's flag change, when one was picked and saved with the patient; null when none
+  /// was, or it couldn't be (the clock paused, the presets not held).
+  final String? riskLevelChangeId;
 
   /// The new card, when they wanted one and the clock allowed it.
   final String? cardId;

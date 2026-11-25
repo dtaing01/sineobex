@@ -4,6 +4,9 @@ import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/patients/patient_repository.dart' show ChartCopy;
 import 'package:sineobex_field/patients/patient_search.dart' show FoundPatient;
 import 'package:sineobex_field/patients/team_index.dart';
+import 'package:sineobex_field/presets/preset_store.dart';
+import 'package:sineobex_field/presets/presets_refresher.dart';
+import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -308,6 +311,137 @@ void main() {
     expect(redirects.keys, [ids[1]]);
     expect([redirects[ids[1]]!.survivorId, redirects[ids[1]]!.origin], [ids[0], 'index']);
     expect(store().canonicalPatient(ids[2]), ids[2]);
+  });
+
+  // Phase 5 (design 6.1; section 11, rows 37 and 38; card P5-phone-index), written ahead of its code:
+  // each entry's current flags, IDs only, and the patient list's filters by them, offline, both
+  // tiers, a sensitive flag only for a reader the flag rule shows it to.
+  group('each entry’s flags (phase 5 design 6.1)', () {
+    late String high, medium, frost, pregnancy;
+
+    Map<String, Object?> flag(String name, String tier, String color, int rank, {bool sensitive = false}) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': sensitive,
+    };
+
+    void change(String patientId, String flagId, {String action = 'set'}) => server.seed(entityFlagChange, {
+      'patientId': patientId,
+      'flagId': flagId,
+      'action': action,
+      'reason': 'Demo: a reason',
+    });
+
+    setUp(() async {
+      high = server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      medium = server.addPreset(team, 'flag', flag('Demo: Medium', 'primary', 'yellow', 20));
+      frost = server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      pregnancy = server.addPreset(team, 'flag', flag('Demo: Pregnancy', 'secondary', 'purple', 30, sensitive: true));
+      await PresetsRefresher(
+        PresetStore(phone.store),
+        phone.engine.api,
+        current: () => true,
+      ).refresh(RefreshReason.manual);
+    });
+
+    String json() => [for (final r in phone.db.db.select('SELECT entry_json FROM team_index')) r['entry_json']].join();
+
+    test('each entry carries its patient’s flags as the server worked them out, IDs only, read offline', () async {
+      final ids = seed(3);
+      change(ids[0], medium);
+      change(ids[0], high);
+      change(ids[0], frost);
+      change(ids[1], frost);
+      change(ids[1], frost, action: 'clear');
+      await refresher.refresh(RefreshReason.manual);
+      server.offline = true;
+      expect(services.index.flagsOf(ids[0]), (primary: high, secondary: [frost]));
+      expect(services.index.flagsOf(ids[1]), (primary: null, secondary: <String>[]));
+      expect(services.index.flagsOf('e9e90000-0000-4000-8000-000000000001'), isNull);
+      // IDs only: no flag's name rests in the index.
+      expect(json(), allOf(contains(high), isNot(contains('Demo: High')), isNot(contains('Demo: a reason'))));
+    });
+
+    test('a flag set on another phone appears after one index refresh', () async {
+      final ids = seed(2);
+      await refresher.refresh(RefreshReason.manual);
+      expect(services.index.flagsOf(ids[1])?.primary, isNull);
+      change(ids[1], high);
+      advance(const Duration(minutes: 3));
+      await refresher.refresh(RefreshReason.manual);
+      expect(services.index.flagsOf(ids[1])?.primary, high);
+    });
+
+    test('the Risk level and Conditions filters list who carries them, both tiers, offline, logged without the '
+        'flag', () async {
+      final ids = seed(4);
+      change(ids[0], high);
+      change(ids[0], frost);
+      change(ids[1], high);
+      change(ids[2], medium);
+      change(ids[2], frost);
+      await refresher.refresh(RefreshReason.manual);
+      server.offline = true;
+
+      Set<String> listed({String? riskLevel, Set<String> conditions = const {}}) => {
+        for (final p in services.index.withFlags(riskLevel: riskLevel, conditions: conditions)) p.patientId,
+      };
+      expect(listed(riskLevel: high), {ids[0], ids[1]});
+      expect(listed(conditions: {frost}), {ids[0], ids[2]});
+      expect(listed(riskLevel: high, conditions: {frost}), {ids[0]});
+      expect(listed(riskLevel: medium, conditions: {frost}), {ids[2]});
+      // No filter lists no one: the list is never browsed whole.
+      expect(listed(), isEmpty);
+      final shown = services.index.withFlags(riskLevel: high).firstWhere((p) => p.patientId == ids[0]);
+      expect(shown.preferredName, 'Demo 0');
+
+      // Each list shown is logged before it returns, naming the patients and never a flag (CO-14).
+      final audits = [
+        for (final e in store().outbox())
+          if (e.entity == entityAudit) e.value! as Map<String, Object?>,
+      ];
+      final last = audits.last;
+      expect([last['action'], last['source'], last['resultCount']], ['patient.searched', 'team_index', 1]);
+      expect(last['patientIds'], [ids[0]]);
+      final logged = [for (final a in audits) a.toString()].join();
+      for (final f in [high, medium, frost]) {
+        expect(logged, isNot(contains(f)));
+      }
+
+      store().freeze('Your access to this team ended.');
+      expect(() => services.index.withFlags(riskLevel: high), throwsA(isA<ChartingPaused>()));
+    });
+
+    test('a sensitive flag is in the index only for a reader who may see it, and filters for no one else', () async {
+      final ids = seed(2);
+      change(ids[0], pregnancy);
+      change(ids[0], frost);
+      await refresher.refresh(RefreshReason.manual);
+      expect(services.index.state.version, endsWith('idx1+sens'));
+      expect(services.index.flagsOf(ids[0])?.secondary, [frost, pregnancy]);
+      expect(
+        {
+          for (final p in services.index.withFlags(conditions: {pregnancy})) p.patientId,
+        },
+        {ids[0]},
+      );
+
+      // The person's role lost sight of sensitive problems while the phone was offline: the copy
+      // downloaded under idx1+sens shows them none of it.
+      final chw = servicesFor(FakeSyncServer.chw.toList());
+      expect(chw.index.flagsOf(ids[0])?.secondary, [frost]);
+      expect(chw.index.withFlags(conditions: {pregnancy}), isEmpty);
+
+      // Their next download is under idx1, which never holds it.
+      server.permissions[alex] = FakeSyncServer.chw;
+      await TeamIndexRefresher(chw.index, phone.engine.api, wallNow: () => phone.wall).refresh(RefreshReason.manual);
+      expect(chw.index.state.version, endsWith('idx1'));
+      expect(json(), isNot(contains(pregnancy)));
+      expect(chw.index.flagsOf(ids[0])?.secondary, [frost]);
+    });
   });
 
   test('2,000 entries: staged size and the swap with FTS5 secure-delete on', () {

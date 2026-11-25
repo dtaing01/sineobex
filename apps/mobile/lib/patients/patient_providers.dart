@@ -13,6 +13,7 @@ import '../sync/sync_engine.dart';
 import 'access.dart';
 
 import 'chart_cache.dart';
+import 'flags.dart';
 import 'id_links.dart';
 import 'patient_repository.dart';
 import 'patient_search.dart';
@@ -44,6 +45,7 @@ class PatientServices extends ChangeNotifier {
     idLinks = IdLinks(store, copy: copy, now: corrected)..install();
     if (idLinkBaseUrl != null) IdLinks.rememberBaseUrl(store, idLinkBaseUrl);
     problems = Problems(store, permissions: permissions);
+    flags = PatientFlags(store, userId: userId, permissions: permissions)..onChanged = notifyListeners;
     search = PatientSearcher(store, team.api, index: index, now: corrected);
     patients = PatientRepository(
       store,
@@ -73,6 +75,10 @@ class PatientServices extends ChangeNotifier {
   late final ChartCache charts;
   late final IdLinks idLinks;
   late final Problems problems;
+
+  /// A patient's flags: the flags sheet's, intake's risk level's, the patient list's and Needs
+  /// attention's one way to them (phase 5 design 8.2).
+  late final PatientFlags flags;
   late final PatientSearcher search;
   late final PatientRepository patients;
   late final ServerNotices notices;

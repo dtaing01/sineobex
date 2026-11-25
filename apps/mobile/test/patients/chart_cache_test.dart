@@ -2,13 +2,14 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason, Timeline, VisitRead;
+import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason, FlagColor, Timeline, VisitRead;
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/patients/chart_cache.dart';
 import 'package:sineobex_field/patients/id_link_token.dart';
 import 'package:sineobex_field/patients/id_links.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
 import 'package:sineobex_field/patients/patient_repository.dart';
+import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
@@ -408,6 +409,109 @@ void main() {
       await services.charts.fetch([p], reason: FetchChartsReason.refresh);
       final bare = chartMetaOf(store(), p)!;
       expect([bare.timeline, bare.recentVisits, bare.referrals], [null, isEmpty, isEmpty]);
+    });
+  });
+
+  // Phase 5 (design 6.1; card P5-chart-cache), written ahead of its code: the chart answer's
+  // flagChanges come as records filed under the patient, their IDs and the worked-out flags kept in
+  // `_chart`, so the profile draws them offline and a change can be marked entered in error offline.
+  group('a chart’s flags (phase 5 design 6.1)', () {
+    Map<String, Object?> flag(String name, String tier, String color, int rank) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': false,
+    };
+
+    String change(String patientId, String flagId, String action, {Duration ago = Duration.zero}) => server.seed(
+      entityFlagChange,
+      {'patientId': patientId, 'flagId': flagId, 'action': action, 'reason': 'Demo: a reason'},
+      by: blair,
+      at: start.subtract(ago),
+    );
+
+    test('its flag changes come as records under the patient, and their IDs and the flags stay with the chart, '
+        'offline, for its 24 hours', () async {
+      final high = server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      final frost = server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      final p = seedChart();
+      final set = change(p, high, 'set', ago: const Duration(days: 1));
+      final cond = change(p, frost, 'set', ago: const Duration(hours: 2));
+      await services.patients.open(p);
+      link.offline = true;
+      // Read back from the store's database, as after the app is killed.
+      await phone.restart();
+
+      final meta = chartMetaOf(store(), p)!;
+      expect(meta.flagChangeIds.toSet(), {set, cond});
+      final flags = meta.flags!;
+      expect(
+        [flags.primary?.flagId, flags.primary?.name, flags.primary?.colorName, flags.primary?.color],
+        [high, 'Demo: High', 'Red', FlagColor.red],
+      );
+      expect([for (final f in flags.secondary) f.flagId], [frost]);
+      expect([for (final h in flags.history) h.changeId], [set, cond]);
+
+      // Each change is a record the phone holds, filed under the patient, so it can be marked
+      // entered in error offline.
+      final rec = store().record(set)!;
+      expect(
+        [rec.entity, rec.patientId, rec.authorUserId, rec.attributes['flagId'], rec.attributes['action']],
+        [entityFlagChange, p, blair, high, 'set'],
+      );
+      expect(rec.fields['enteredInError']?.value, isNull);
+      // None of it travels: it is the chart's.
+      expect(store().outbox().where((e) => e.entity == entityFlagChange), isEmpty);
+
+      // The chart's lifetime: they go with it.
+      advance(const Duration(hours: 25));
+      store().purge();
+      expect([store().record(set), store().record(cond), chartMetaOf(store(), p)], [null, null, null]);
+    });
+
+    test('a refresh replaces them whole: a change marked entered in error since, a level set since', () async {
+      final high = server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      final medium = server.addPreset(team, 'flag', flag('Demo: Medium', 'primary', 'yellow', 20));
+      final p = seedChart();
+      final set = change(p, high, 'set', ago: const Duration(days: 1));
+      await services.patients.open(p);
+      expect(chartMetaOf(store(), p)!.flags!.primary?.flagId, high);
+
+      server.serverEdit(set, 'enteredInError', {'reason': 'Demo: wrong patient'}, by: blair);
+      final later = change(p, medium, 'set');
+      // Offline, the phone keeps what it holds until it can refresh.
+      link.offline = true;
+      expect((await services.charts.fetch([p], reason: FetchChartsReason.refresh)).offline, isTrue);
+      expect(chartMetaOf(store(), p)!.flags!.primary?.flagId, high);
+
+      link.offline = false;
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      final meta = chartMetaOf(store(), p)!;
+      expect(meta.flagChangeIds.toSet(), {set, later});
+      expect(meta.flags!.primary?.flagId, medium);
+      expect(meta.flags!.history.firstWhere((h) => h.changeId == set).enteredInError, isNotNull);
+      // The record follows the server's: marked, and without the reasons this reader may not read.
+      final rec = store().record(set)!;
+      expect(rec.status, 'entered_in_error');
+      expect(rec.attributes.containsKey('reason'), isFalse);
+    });
+
+    test('a list-only copy opened from the index, and a chart cached before phase 5, hold no flag changes and no '
+        'flags', () async {
+      expect([const ChartMeta({}).flagChangeIds, const ChartMeta({}).flags], [isEmpty, null]);
+      final p = seedChart();
+      await services.patients.open(p);
+      final full = chartMetaOf(store(), p)!;
+      expect(
+        [full.flagChangeIds, full.flags?.primary, full.flags?.secondary, full.flags?.history],
+        [isEmpty, null, isEmpty, isEmpty],
+      );
+      final json = {...full.json}
+        ..remove('flagChangeIds')
+        ..remove('flags');
+      expect([ChartMeta(json).flagChangeIds, ChartMeta(json).flags], [isEmpty, null]);
     });
   });
 
