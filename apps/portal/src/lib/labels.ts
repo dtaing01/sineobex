@@ -93,6 +93,8 @@ const SYNC_ENTITY: Record<Schemas['ChangeEntity'], string> = {
   note_addendum: 'addendum',
   note_correction: 'correction',
   referral: 'referral',
+  // Phase 5: a patient's flag changes.
+  patient_flag_change: 'flag change',
 };
 
 export function syncEntityNoun(entity: string): string {
