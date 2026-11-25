@@ -20,7 +20,7 @@ import {
   type Permission,
 } from '../src/auth/permissions.ts';
 import { createHarness, type Harness } from './harness.ts';
-import { auditMark, createTeam, expectAudit, memberWith } from './patient-fixtures.ts';
+import { auditMark, createPatient, createTeam, expectAudit, memberWith } from './patient-fixtures.ts';
 import {
   auditAfter,
   bodies,
@@ -1300,6 +1300,222 @@ describe('phase 5 note type writes, with a stale sign-in', () => {
       expect(await revisionOf(h, team.teamId)).toBe(before.revision + 1);
     });
   }
+});
+
+/**
+ * Phase 5's flag routes (design 7, unit P5): the portal's two writes on a patient's flags, which need
+ * the key a phone's flag change needs, and its flag list. No other key stands in for one they need,
+ * alone or with every other: team.manage_users marks anyone's change, but only beside patients.edit
+ * (PL-19). Their team is made in the database, so it holds no patient and no flag: an ID below is no
+ * patient's, so a role past the check gets 404, and the list is empty.
+ */
+const VIEW: Permission = 'patients.view';
+const EDIT: Permission = 'patients.edit';
+const allBut = (key: Permission) => PERMISSION_KEYS.filter((k) => k !== key);
+const FLAG_REASON = 'Demo: out in the cold most nights this week';
+
+const FLAG_ROUTES: RouteCase[] = [
+  {
+    method: 'POST',
+    path: `/v1/patients/${id()}/flags`,
+    body: { id: id(), flagId: id(), action: 'set', reason: FLAG_REASON },
+    allowed: [VIEW, EDIT],
+    refused: allBut(EDIT),
+    logged: { permission: EDIT },
+  },
+  {
+    // A flag is a change of the chart, which only someone who may read the chart makes (design 7).
+    label: 'without patients.view',
+    method: 'POST',
+    path: `/v1/patients/${id()}/flags`,
+    body: { id: id(), flagId: id(), action: 'clear', reason: FLAG_REASON },
+    allowed: [VIEW, EDIT],
+    refused: allBut(VIEW),
+    logged: { permission: VIEW },
+  },
+  {
+    method: 'POST',
+    path: `/v1/patients/${id()}/flag-changes/${id()}/entered-in-error`,
+    body: { reason: 'Demo: set on the wrong patient' },
+    allowed: [EDIT],
+    refused: allBut(EDIT),
+    logged: { permission: EDIT },
+  },
+  {
+    method: 'GET',
+    path: '/v1/presets/flags',
+    allowed: [VIEW],
+    refused: allBut(VIEW),
+    logged: { permission: VIEW },
+  },
+];
+
+describe('phase 5 flag routes', () => {
+  let h: Harness;
+  let teamId: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    teamId = await createTeam(h, 'Flags Team (demo)');
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  checksEach(FLAG_ROUTES, () => ({ h, teamId }));
+
+  // None is an admin route (design 7): a flag is set at the desk on the sign-in the chart was opened
+  // with, as a phone sets one on a sign-in hours old.
+  for (const r of FLAG_ROUTES.filter((c) => !c.label)) {
+    const route = r.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, '{id}');
+    it(`${r.method} ${route} asks no recent sign-in`, async () => {
+      const member = await memberWith(h, teamId, r.allowed);
+      const [user] = await h.scratch.owner<{ email: string }[]>`
+        select email from sineobex.users where id = ${member.userId}`;
+      const stale = await h.tokenFor(user!.email, {
+        authTime: new Date(h.clock.now.getTime() - 60 * 60_000),
+      });
+      const mark = await auditMark(h);
+      const res = await h.request(r.path, {
+        method: r.method,
+        token: stale,
+        teamId,
+        ...(r.body === undefined ? {} : { json: r.body }),
+      });
+      expect(res.status).not.toBe(403);
+      expect(res.status).not.toBe(422);
+      const denied = await h.scratch.owner`
+        select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
+      expect(denied).toHaveLength(0);
+    });
+  }
+});
+
+/**
+ * A flag the flag rule hides from the caller (design 6.2, 7, 9; CO-14): a write naming one is refused
+ * 403 by whoever holds what the write needs, and a mark of a change of one is answered as a change
+ * the chart does not hold, 404. Each is logged as D98 (as amended) logs a request naming a record
+ * the caller may not read: access.denied with reason cannot_read and the patient, naming no flag, no
+ * change and no permission, since a reader of the log need not see sensitive flags. Their team is
+ * made as the owner console makes one, so it holds the platform's sensitive flag, Pregnancy.
+ */
+describe('phase 5 flag routes, a flag the caller may not see', () => {
+  const SET_ROUTE = '/v1/patients/:patientId/flags';
+  const MARK_ROUTE = '/v1/patients/:patientId/flag-changes/:changeId/entered-in-error';
+  /** Roles holding what a flag write needs, without sight of a sensitive flag. */
+  const UNSEEN: [string, Permission[]][] = [
+    [
+      'the community health worker preset',
+      vectors.cases.find((c) => c.name === 'Community health worker preset')!.permissions as Permission[],
+    ],
+    ['sensitive things without the problem list', [VIEW, EDIT, 'patients.view_sensitive']],
+    ['the problem list without sensitive things', [VIEW, EDIT, 'encounters.chart']],
+    ['a lead who marks anyone’s change, without sensitive things', [VIEW, EDIT, 'team.manage_users']],
+  ];
+
+  let h: Harness;
+  let team: PresetsTeam;
+  let patientId: string;
+  let pregnancy: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    team = await presetsTeam(h, 'Hidden Flags');
+    pregnancy = idOf(team, 'flag.pregnancy');
+    patientId = (await createPatient(h, team.teamId, team.admin.userId, { preferredName: 'Demo Wren' })).id;
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  const post = async (token: string, path: string, json: unknown) =>
+    call(h, path, { method: 'POST', token, teamId: team.teamId, json });
+  const changeOf = async (changeId: string) =>
+    (
+      await h.scratch.owner<{ status: string }[]>`
+        select status from sineobex.patient_flag_changes where id = ${changeId}`
+    )[0];
+
+  /** Each refusal is the one access.denied after `mark`, by `userId`, about the patient alone. */
+  async function expectRefusalLogged(mark: string, userId: string, route: string, unnamed: string[]) {
+    const [denied] = await expectAudit(h, 'access.denied', { after: mark, teamId: team.teamId, count: 1 });
+    expect(denied).toMatchObject({ actorUserId: userId, entity: null, entityId: null, patientId });
+    expect(denied!.details).toEqual({ reason: 'cannot_read', route });
+    for (const text of [...unnamed, 'sensitive']) expect(JSON.stringify(denied)).not.toContain(text);
+  }
+
+  it('refuses a set or a clear of it with 403, logged as cannot_read with the patient, naming no flag', async () => {
+    expect(
+      await h.scratch.owner`
+      select 1 from sineobex.team_presets
+      where id = ${pregnancy} and state = 'active' and kind = 'flag'`,
+    ).toHaveLength(1);
+    for (const [name, permissions] of UNSEEN) {
+      const member = await memberWith(h, team.teamId, permissions);
+      for (const action of ['set', 'clear'] as const) {
+        const changeId = id();
+        const mark = await auditMark(h);
+        const res = await post(member.token, `/v1/patients/${patientId}/flags`, {
+          id: changeId,
+          flagId: pregnancy,
+          action,
+          reason: FLAG_REASON,
+        });
+        expect(res.status, `${name}: ${action}`).toBe(403);
+        expect(JSON.stringify(res.body)).not.toContain(pregnancy);
+        await expectRefusalLogged(mark, member.userId, SET_ROUTE, [pregnancy, changeId]);
+        await expectAudit(h, 'patient_flag.changed', { after: mark, count: 0 });
+        expect(await changeOf(changeId), `${name}: ${action}`).toBeUndefined();
+      }
+    }
+    // Someone who sees sensitive things sets the same flag with the same request: the flag rule
+    // refused the others, and nothing else did.
+    const changeId = id();
+    const mark = await auditMark(h);
+    const taken = await post(await tokenOf(h, team.staff), `/v1/patients/${patientId}/flags`, {
+      id: changeId,
+      flagId: pregnancy,
+      action: 'set',
+      reason: FLAG_REASON,
+    });
+    expect(taken.status, JSON.stringify(taken.body)).toBe(201);
+    expect(await changeOf(changeId)).toEqual({ status: 'active' });
+    await expectAudit(h, 'access.denied', { after: mark, count: 0 });
+  });
+
+  it('answers a mark of a change of it as one the chart does not hold, logged alike, naming neither flag nor change', async () => {
+    const changeId = id();
+    const made = await post(await tokenOf(h, team.staff), `/v1/patients/${patientId}/flags`, {
+      id: changeId,
+      flagId: pregnancy,
+      action: 'set',
+      reason: FLAG_REASON,
+    });
+    expect(made.status).toBe(201);
+    const path = `/v1/patients/${patientId}/flag-changes/${changeId}/entered-in-error`;
+    const body = { reason: 'Demo: set on the wrong patient' };
+    // What a change nobody made is answered: what each refusal below must not tell apart.
+    const madeUp = await post(
+      await tokenOf(h, team.staff),
+      `/v1/patients/${patientId}/flag-changes/${id()}/entered-in-error`,
+      body,
+    );
+    expect(madeUp.status).toBe(404);
+    for (const [name, permissions] of UNSEEN) {
+      const member = await memberWith(h, team.teamId, permissions);
+      const mark = await auditMark(h);
+      const res = await post(member.token, path, body);
+      expect([res.status, res.body], name).toEqual([madeUp.status, madeUp.body]);
+      await expectRefusalLogged(mark, member.userId, MARK_ROUTE, [pregnancy, changeId]);
+      await expectAudit(h, 'patient_flag.entered_in_error', { after: mark, count: 0 });
+      expect(await changeOf(changeId), name).toEqual({ status: 'active' });
+    }
+    // Its author, who sees it, marks it.
+    const mark = await auditMark(h);
+    expect((await post(await tokenOf(h, team.staff), path, body)).status).toBe(200);
+    expect(await changeOf(changeId)).toEqual({ status: 'entered_in_error' });
+    await expectAudit(h, 'access.denied', { after: mark, count: 0 });
+  });
 });
 
 /**
