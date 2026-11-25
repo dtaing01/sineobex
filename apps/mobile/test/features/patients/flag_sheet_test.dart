@@ -307,6 +307,23 @@ void main() {
     expect(save(tester).onPressed, isNull);
   });
 
+  // Review finding F7: the reason box (the sheet's, intake's risk level's, Choose a flag's and Change
+  // the reason's) keeps at most 500 code points, so its counter stays true and Save never sends a
+  // reason the store refuses.
+  testWidgets('the reason box keeps 500 code points of 501 astral characters typed, and its counter says so', (
+    tester,
+  ) async {
+    final (:h, :f) = await openDel(tester);
+    await openSheet(tester);
+    await chooseLevel(tester, 'Red · Demo: High');
+    await typeReason(tester, '🧊' * 501);
+    final box = inSheet(find.byKey(const ValueKey('phi.flagReason')));
+    expect(tester.widget<TextField>(box).controller!.text, '🧊' * 500);
+    await revealInSheet(tester, inSheet(find.text('500 of 500 characters')));
+    await tapInSheet(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect(flagCreates(h).single, {'patientId': p1Id, 'flagId': f.high, 'action': 'set', 'reason': '🧊' * 500});
+  });
+
   testWidgets('where the presets aren’t held the sheet says to connect, and offers nothing', (tester) async {
     final (:h, f: _) = await openDel(tester);
     PresetStore(h.sync.store!).clear();
