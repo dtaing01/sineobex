@@ -28,6 +28,8 @@ const IN_USE = 'Another field’s question asks about this, or a field fills fro
 const NOT_COPYABLE =
   'This section comes from a note type for other visits or other readers, so it can’t be copied here.';
 const STALE = 'Someone else changed this while you were editing. Reload to see their version.';
+const DROPPED =
+  'The connection dropped, so we can’t tell whether this version went live. Press Publish again: if it did, you’ll be told which version is live, and nothing is published twice.';
 
 /**
  * The note type pages' addresses: the list, a note type's page by its key, and the notice of an act
@@ -774,6 +776,66 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await editor.publish.click();
     await expect(page).toHaveURL(new RegExp(`${LIST}/${key}\\?published=2$`));
     expect(await noteType(key)).toMatchObject({ version: 2, title: 'Demo: Late round, renamed' });
+  });
+
+  test('a Publish whose answer never comes keeps what is held and says so; sent again once it went live, it says which version is live, with a link that loads it', async ({
+    page,
+  }) => {
+    test.slow();
+    const key = await added({ title: 'Demo: Lost round', kinds: ['non_medical'], group: 'outreach' });
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(`${LIST}/${key}`);
+    const editor = editorOf(page);
+    await page.getByRole('button', { name: 'Rename the note type', exact: true }).click();
+    await page.getByLabel('New title').fill('Demo: Lost round, renamed');
+    await page.keyboard.press('Enter');
+    await editor.reason.fill('Demo: a plainer title');
+
+    // A gateway's error page instead of the editor's answer: nothing is reloaded or lost (B-15).
+    await page.route('**/publish', (route) =>
+      route.fulfill({
+        status: 502,
+        contentType: 'text/html',
+        body: '<!doctype html><title>Bad gateway</title><p>Bad gateway</p>',
+      }),
+    );
+    await editor.publish.click();
+    await expect(editor.alert).toBeFocused();
+    await expect(editor.alert).toHaveText(DROPPED);
+    await expect(editor.heldItems).toHaveCount(1);
+    await expect(editor.reason).toHaveValue('Demo: a plainer title');
+    expect((await noteType(key)).version).toBe(1);
+    await page.unroute('**/publish');
+
+    // The API publishes, and its answer is lost on the way back.
+    await page.route('**/publish', async (route) => {
+      await route.fetch();
+      await route.abort('connectionreset');
+    });
+    await editor.publish.click();
+    await expect(editor.alert).toHaveText(DROPPED);
+    await expect(editor.heldItems).toHaveCount(1);
+    expect((await noteType(key)).version).toBe(2);
+    await page.unroute('**/publish');
+
+    // Sent again: refused stale, it says version 2 is live and may be its own, not someone else's
+    // alone (B-2), and links to it. Nothing is published twice.
+    await editor.publish.click();
+    await expect(editor.alert).toBeFocused();
+    await expect(editor.alert).toContainText(
+      'Version 2 is live now. It may be the Publish whose answer was lost on the way, or someone else’s.',
+    );
+    await expect(editor.alert).not.toContainText(STALE);
+    await expectAccessible(page, 'Publish, its answer lost', { inPlace: true });
+    await expectReflow(page, 'Publish, its answer lost');
+    expect((await noteType(key)).version).toBe(2);
+    await editor.alert.getByRole('link', { name: 'Load version 2', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${key}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo: Lost round, renamed');
+    await expect(editorOf(page).held).toContainText('Nothing yet.');
+    await expectNothingStored(page, 'The editor after a lost answer');
+    expectOnlyKeys(traffic.addresses);
   });
 });
 

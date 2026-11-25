@@ -1,4 +1,5 @@
-import type { NoteTypeEdit, NoteTypeField, NoteTypeOption } from '@/lib/presets';
+import type { NoteTypeEdit, NoteTypeField, NoteTypeOption, NoteTypeSection } from '@/lib/presets';
+import { ID_TAKEN } from '@/lib/refusals';
 
 /**
  * What the note type editor holds until Publish (phase 5 design 5.4, 8.1): each change the person
@@ -124,4 +125,27 @@ export function kindOf(field: NoteTypeField): string {
 /** The new field an add holds, in words: "Text", "Choice, one answer". */
 export function newFieldKind(field: { kind: string; many?: unknown }): string {
   return kindOf(field as NoteTypeField);
+}
+
+/**
+ * What a Publish's answer is, from the response alone: a redirect the browser was not let follow
+ * (`opaqueredirect`, so the session ended on the way, and the page goes to sign-in), the route
+ * handler's own JSON answer, or anything else (a gateway's error page, the handler's 500 when the API
+ * can't be reached), which can't say whether the version went live: the editor keeps what it holds
+ * and says so, as for a dropped connection.
+ */
+export function answerKind(response: {
+  type: string;
+  contentType: string | null;
+}): 'session_ended' | 'answer' | 'unknown' {
+  if (response.type === 'opaqueredirect') return 'session_ended';
+  return response.contentType?.includes('json') ? 'answer' : 'unknown';
+}
+
+/**
+ * The words for a copy refused id_taken (design 5.4, rule 3): of a section the version opened holds,
+ * that it has it already; else that it held it, or a part of it, before.
+ */
+export function copyTakenWords(sections: readonly Pick<NoteTypeSection, 'id'>[], sectionId: unknown): string {
+  return sections.some((s) => s.id === sectionId) ? ID_TAKEN.now : ID_TAKEN.before;
 }

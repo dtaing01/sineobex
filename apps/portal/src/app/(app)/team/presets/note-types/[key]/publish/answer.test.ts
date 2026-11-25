@@ -47,6 +47,7 @@ describe('what Publish is told', () => {
       publishAnswer(KEY, { refused: { status: 422, code: 'protected', details: { opIndex: 2 } } }),
     ).toEqual({
       ok: false,
+      code: 'protected',
       error: 'This part can’t be changed.',
       opIndex: 2,
     });
@@ -57,6 +58,7 @@ describe('what Publish is told', () => {
       publishAnswer(KEY, { refused: { status: 422, code: 'not_copyable', details: { opIndex: 0 } } }),
     ).toEqual({
       ok: false,
+      code: 'not_copyable',
       error:
         'This section comes from a note type for other visits or other readers, so it can’t be copied here.',
       opIndex: 0,
@@ -68,7 +70,9 @@ describe('what Publish is told', () => {
       publishAnswer(KEY, { refused: { status: 409, code: 'stale', details: { currentVersion: 5 } } }),
     ).toEqual({
       ok: false,
+      code: 'stale',
       error: 'Someone else changed this while you were editing. Reload to see their version.',
+      currentVersion: 5,
     });
   });
 
@@ -90,6 +94,7 @@ describe('what Publish is told', () => {
       }),
     ).toEqual({
       ok: false,
+      code: 'validation_failed',
       error: 'Some fields need changing. Check each one below.',
       fieldErrors: { reason: 'Reason: Give a reason of 3 to 300 characters.' },
     });
@@ -104,7 +109,12 @@ describe('what Publish is told', () => {
           details: { fields: [{ path: 'ops.2.fields.0.min', problem: 'invalid_type' }] },
         },
       }),
-    ).toEqual({ ok: false, error: 'Enter numbers for the lowest and highest it takes.', opIndex: 2 });
+    ).toEqual({
+      ok: false,
+      code: 'validation_failed',
+      error: 'Enter numbers for the lowest and highest it takes.',
+      opIndex: 2,
+    });
   });
 
   it('says each operation’s refusal beside it, and names another note type a reached field is in', () => {
@@ -129,6 +139,7 @@ describe('what Publish is told', () => {
     }
     expect(said('protected', { opIndex: 0, noteTypeKey: 'wound_care' })).toEqual({
       ok: false,
+      code: 'protected',
       error: 'This part can’t be changed.',
       opIndex: 0,
       noteTypeKey: 'wound_care',
@@ -153,6 +164,7 @@ describe('what Publish is told', () => {
       publishAnswer(KEY, { refused: { status: 422, code: 'in_use', details: { opIndex: 1 } } }, ops),
     ).toEqual({
       ok: false,
+      code: 'in_use',
       error: 'Part of this note type is shown only for this answer, so it can’t be retired.',
       opIndex: 1,
     });
@@ -168,6 +180,7 @@ describe('what Publish is told', () => {
     };
     expect(publishAnswer(KEY, { refused: { status: 422, code: 'invalid', details: range } }, ops)).toEqual({
       ok: false,
+      code: 'invalid',
       error:
         'No number fits between the lowest and highest it takes, so it could never be answered. Undo it and add it again.',
       opIndex: 2,

@@ -6,8 +6,10 @@ import { CopySection, type CopySource } from '@/components/presets/CopySection';
 import { OptionEditor } from '@/components/presets/OptionEditor';
 import styles from '@/components/presets/presets.module.css';
 import type { NoteTypeEdit, NoteTypeField, NoteTypeRow, NoteTypeSection } from '@/lib/presets';
-import { NOTE_TYPE_SENTENCES } from '@/lib/refusals';
+import { liveAfterDrop, NOTE_TYPE_SENTENCES } from '@/lib/refusals';
 import {
+  answerKind,
+  copyTakenWords,
   domId,
   heldHide,
   heldRename,
@@ -25,9 +27,12 @@ import editor from './editor.module.css';
 /** The API's PresetReason: 3 to 300 characters once trimmed. The API counts it, and refuses. */
 const REASON_MAX = 300;
 
-/** What the editor says when the connection dropped on the way: only a second Publish can tell. */
-const DROPPED =
-  'The connection dropped, so we can’t tell whether this version went live. Press Publish again: if it did, you’ll be told this changed, and nothing is published twice.';
+/**
+ * What the editor says when no answer it can read came back (a dropped connection, a gateway's error
+ * page): only a second Publish can tell whether the version went live.
+ */
+export const DROPPED =
+  'The connection dropped, so we can’t tell whether this version went live. Press Publish again: if it did, you’ll be told which version is live, and nothing is published twice.';
 
 /** A Publish the API refused, as the editor shows it until the next one. */
 interface Refused {
@@ -39,6 +44,8 @@ interface Refused {
   fieldErrors?: Record<string, string>;
   /** A stale sign-in: where to confirm it's the person, in a tab of its own. */
   reauth?: string;
+  /** After a dropped connection, a newer version is live: the page loads it on request. */
+  load?: number;
 }
 
 /** What the editor knows of the note type: the list row its page first drew. */
@@ -442,6 +449,8 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
   const alert = useRef<HTMLDivElement>(null);
   const heldHeading = useRef<HTMLHeadingElement>(null);
   const undoButtons = useRef(new Map<number, HTMLButtonElement>());
+  // The last Publish got no answer the editor could read: the next stale answer may be its own.
+  const dropped = useRef(false);
   // Where focus goes once the list is drawn without the change an Undo took back.
   const focusAfterUndo = useRef<number | 'heading' | null>(null);
 
@@ -518,18 +527,25 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
           cache: 'no-store',
           redirect: 'manual',
         });
+        const kind = answerKind({ type: response.type, contentType: response.headers.get('content-type') });
         // Sent to sign-in on the way (the session ended): the page itself goes there.
-        if (response.type === 'opaqueredirect' || !response.headers.get('content-type')?.includes('json')) {
+        if (kind === 'session_ended') {
           setLeaving(true);
           window.location.reload();
           return;
         }
+        // Not the route handler's answer: whether the version went live can't be told, so what is
+        // held stays, as for a dropped connection.
+        if (kind === 'unknown') throw new Error('an answer that is not the editor’s');
         answer = (await response.json()) as PublishAnswer;
       } catch {
+        dropped.current = true;
         setRefused({ error: DROPPED });
         setTries((n) => n + 1);
         return;
       }
+      const afterDrop = dropped.current;
+      dropped.current = false;
       if (answer.ok) {
         // A full load, not a client navigation: the editor starts afresh on the version made.
         const also = answer.alsoPublished.length > 0 ? `&also=${answer.alsoPublished.join(',')}` : '';
@@ -544,9 +560,18 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
         setTries((n) => n + 1);
         return;
       }
+      // Sent again after a dropped connection, a newer version is live: it may be this Publish's own.
+      if (answer.code === 'stale' && afterDrop && (answer.currentVersion ?? 0) > opened.version) {
+        setRefused({ error: liveAfterDrop(answer.currentVersion!), load: answer.currentVersion! });
+        setTries((n) => n + 1);
+        return;
+      }
       const op = answer.opIndex === undefined ? undefined : sent[answer.opIndex];
       setRefused({
-        error: answer.error,
+        error:
+          answer.code === 'id_taken' && op?.op.op === 'copy_section'
+            ? copyTakenWords(definition.sections, valueOf(op, 'sectionId'))
+            : answer.error,
         ...(op ? { opId: op.id } : {}),
         ...(answer.noteTypeKey ? { reachedTitle: titles[answer.noteTypeKey] ?? answer.noteTypeKey } : {}),
         ...(answer.fieldErrors ? { fieldErrors: answer.fieldErrors } : {}),
@@ -602,6 +627,11 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
                 <a href={refused.reauth} target="_blank" rel="noopener noreferrer">
                   Confirm it’s you (opens in a new tab)
                 </a>
+              </p>
+            )}
+            {refused.load !== undefined && (
+              <p>
+                <a href={`/team/presets/note-types/${opened.key}`}>Load version {refused.load}</a>
               </p>
             )}
             {refused.fieldErrors && (
