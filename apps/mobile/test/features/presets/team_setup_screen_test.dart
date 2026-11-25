@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import 'package:sineobex_field/design/widgets/flag_pill.dart';
 import 'package:sineobex_field/features/encounters/home_tiles.dart' show EncounterTiles;
 import 'package:sineobex_field/features/presets/team_setup_screen.dart';
 import 'package:sineobex_field/features/sync/sync_cards.dart' show SyncStatusCard;
+import 'package:sineobex_field/patients/flags.dart' show flagHidden;
 import 'package:sineobex_field/patients/patient_providers.dart' show PatientServices;
 import 'package:sineobex_field/presets/models.dart';
 import 'package:sineobex_field/presets/preset_store.dart';
@@ -475,6 +478,31 @@ void main() {
       expect(find.text('Demo: Glucose test'), findsOneWidget);
     });
   }
+
+  // The second part's note 1, written ahead of its code: Team setup lists the team's flags through
+  // the phone's one copy of the flag rule (lib/patients/flags.dart), so the two never disagree, role
+  // by role, for every role access.json names.
+  group('Team setup lists a sensitive flag through the phone’s one flag rule', () {
+    final access =
+        jsonDecode(File('../../packages/contract/test-vectors/access.json').readAsStringSync()) as Map<String, Object?>;
+    for (final c in (access['cases']! as List<Object?>).cast<Map<String, Object?>>()) {
+      final role = c['name']! as String;
+      final permissions = (c['permissions']! as List<Object?>).cast<String>();
+      if (!permissions.contains('patients.view')) continue;
+      testWidgets('($role)', (tester) async {
+        final h = await signIn(tester, permissions: permissions);
+        final ids = await pulledEveryKind(tester, h);
+        h.server.offline = true;
+        await openTeamSetup(tester);
+        tester.view.physicalSize = const Size(1170, 3 * 6000);
+        await tester.pumpAndSettle();
+        final pregnancy = PresetStore(h.sync.store!).preset(ids['pregnancy']!)!.body as FlagBody;
+        final shown = !flagHidden(permissions, pregnancy);
+        expect(find.text('Purple · Demo: Pregnancy'), shown ? findsOneWidget : findsNothing);
+        expect(find.text('Teal · Demo: Frost risk'), findsOneWidget);
+      });
+    }
+  });
 
   testWidgets('while the team is handed over nothing of it shows, and Home has no row to it', (tester) async {
     const frozen = 'Your access to this team ended.';

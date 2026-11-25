@@ -485,5 +485,20 @@ void main() {
       serverTookAll(a);
       expect(server.records[byChrisToo]!.status, 'entered_in_error');
     });
+
+    // The second part's note 5, written ahead of its code: counted as the store and the server count.
+    test('its reason is 3 to 300 code points, so an astral character counts once', () async {
+      final a = phone(alex);
+      final patient = server.seedPatient();
+      final r = referrals(a);
+      final id = r.add(patient, referredOn: DateTime(2026, 10, 19), details: 'Demo: dental');
+      // Two astral characters are four UTF-16 units and two code points: too few, refused here.
+      expect(() => r.enterInError(id, '🧊🧊'), refused('reason'));
+      // Three hundred are six hundred units and three hundred code points: taken.
+      r.enterInError(id, '🧊' * 300);
+      expect(r.openReferrals(patient).single.enteredInError, '🧊' * 300);
+      await sync(a);
+      serverTookAll(a);
+    });
   });
 }

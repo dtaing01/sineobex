@@ -505,6 +505,58 @@ void main() {
   // Screens review V2: the edit form set records.open = 1 in the file and cleared it only from the
   // form's dispose, after a lock or sign-out had closed the store, so the chart (legal name
   // included) was never purged and kept downloading again.
+  // The second part's note 5, written ahead of its code: the repository's and the consent script's
+  // reason checks count code points, as the store and the server count them, so the person's words
+  // come from these layers and a reason the store would take is never refused here.
+  group('a reason is 3 to 300 code points, an astral character counting once', () {
+    const words = 'Give a short reason (3 to 300 characters).';
+    Matcher refusedHere() => throwsA(
+      isA<LocalValidationError>().having((e) => e.message, 'message', words).having((e) => e.paths, 'paths', {
+        'reason',
+      }),
+    );
+
+    test('a street name’s removal and an allergy marked entered in error', () async {
+      final a = phone(alex);
+      final p = server.seedPatient(preferredName: 'Demo Del');
+      await a.services.patients.open(p);
+      final alias = a.services.patients.addAlias(p, 'Demo: Smitty');
+      final allergy = a.services.patients.addAllergy(p, const NewAllergy(substance: 'Demo: dust'));
+      expect(() => a.services.patients.removeAlias(alias, '🧊🧊'), refusedHere());
+      expect(() => a.services.patients.allergyEnteredInError(allergy, '🧊🧊'), refusedHere());
+      a.services.patients.removeAlias(alias, '🧊' * 300);
+      a.services.patients.allergyEnteredInError(allergy, '🧊' * 300);
+      expect(
+        [for (final e in a.store.outbox().where((e) => e.op == 'set')) e.value],
+        [
+          {'reason': '🧊' * 300},
+          {'reason': '🧊' * 300},
+        ],
+      );
+      await a.phone.engine.syncAll(force: true);
+      expect(a.store.needsAttention(), isEmpty);
+    });
+
+    test('a privacy notice not given, at intake and later', () async {
+      final a = phone(alex);
+      Intake intake(String reason) => Intake(
+        consent: const ConsentGiven(),
+        privacyNotice: PrivacyNoticeDecision.notOffered,
+        privacyNoticeReason: reason,
+        preferredName: 'Demo Wren',
+      );
+      expect(() => a.services.patients.createPatient(intake('🧊🧊')), refusedHere());
+      final made = a.services.patients.createPatient(intake('🧊' * 300));
+      expect(
+        () => a.services.patients.recordPrivacyNotice(made.patientId, PrivacyNoticeDecision.unable, reason: '🧊🧊'),
+        refusedHere(),
+      );
+      a.services.patients.recordPrivacyNotice(made.patientId, PrivacyNoticeDecision.unable, reason: '🧊' * 300);
+      await a.phone.engine.syncAll(force: true);
+      expect(a.store.needsAttention(), isEmpty);
+    });
+  });
+
   group('an edit form keeps a chart only while it is open', () {
     test('a form open when the app is killed keeps nothing once the store opens again', () async {
       final a = phone(alex);

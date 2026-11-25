@@ -103,4 +103,33 @@ void main() {
       await cancel(tester);
     });
   }
+
+  // The second part's note 5, written ahead of its code: the dialog counts a reason as the store and
+  // the server do, in code points, so it never takes one the store then refuses, nor refuses one it
+  // would take.
+  testWidgets('phase 3’s reason dialog counts a reason in code points, an astral character once', (tester) async {
+    await signInToChart(tester, run: runs.first);
+    final context = tester.element(find.byType(Navigator).first);
+    String? answer = 'none yet';
+    unawaited(
+      askReason(context, title: 'Remove “Demo Del”?', body: 'Say why.', action: 'Remove').then((r) => answer = r),
+    );
+    await settle(tester);
+    final field = find.byKey(const ValueKey('phi.reason'));
+    final remove = find.widgetWithText(FilledButton, 'Remove');
+
+    // Two astral characters are four UTF-16 units and two code points: too few.
+    await tester.enterText(field, '🧊🧊');
+    await tester.tap(remove);
+    await settle(tester);
+    expect(find.text('Give a short reason (3 to 300 characters).'), findsOneWidget);
+    expect(answer, 'none yet');
+
+    // Three hundred are six hundred units and three hundred code points: taken.
+    await tester.enterText(field, '🧊' * 300);
+    await tester.tap(remove);
+    await settle(tester);
+    expect(answer, '🧊' * 300);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
 }

@@ -259,6 +259,27 @@ void main() {
     expect([problems().problem(here)!.encounterId, problems().problem(here)!.atVisit], [visit, false]);
   });
 
+  // The second part's note 5, written ahead of its code: the domain's own check counts what the store
+  // counts (code points, as the server's Zod does), so the screen's words come first and a reason the
+  // store would take is never refused here.
+  test(
+    'a reason to mark a problem entered in error is 3 to 300 code points, an astral character counting once',
+    () async {
+      final p = await openedPatient();
+      final burn = problems().add(p, title: 'Demo: burn', status: 'new');
+      // Two astral characters are four UTF-16 units and two code points: too few, in this layer's words.
+      expect(
+        () => problems().enteredInError(burn, '🧊🧊'),
+        throwsA(
+          isA<LocalValidationError>().having((e) => e.message, 'message', 'Give a short reason (3 to 300 characters).'),
+        ),
+      );
+      // Three hundred are six hundred units and three hundred code points: taken.
+      problems().enteredInError(burn, '🧊' * 300);
+      expect(store().outbox().last.value, {'reason': '🧊' * 300});
+    },
+  );
+
   test('a note’s problem status adds it as New or Ongoing; nothing in a note resolves one', () {
     expect(
       [
