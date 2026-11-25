@@ -281,6 +281,40 @@ test('@responsive a Program Admin’s Team setup pages, and a preset’s own pag
   expect(csp).toEqual([]);
 });
 
+// Phase 5's patient flags (design 8.1): the header's pills and the Flags panel on the seeded
+// patients that carry a flag (db/seed/demo-flags.ts), Entered in error open on a change of the
+// person's own, and the search's Risk level and Conditions, each in all three themes and at 320 px.
+// Nothing is sent: other specs read these patients as the seed left them.
+const SEEDED_HIGH = '/patients/5eed0000-0000-4000-8000-000000000021'; // High, set by Jordan Lee
+const SEEDED_FROST = '/patients/5eed0000-0000-4000-8000-000000000033'; // Frost risk, set by Robin Patel
+
+test('@responsive a patient’s flags and the Flags panel, Entered in error open, and the search’s flag filters are accessible in all three themes and reflow at 320 px', async ({
+  page,
+}) => {
+  await signIn(page, 'admin@example.com');
+  const csp = watchCsp(page);
+  const sweep = async (label: string, options: { inPlace?: boolean } = {}) => {
+    await expectAccessible(page, label, options);
+    await expectReflow(page, label);
+    await expectNothingStored(page, label);
+  };
+  await page.goto(SEEDED_HIGH);
+  await expect(page.getByRole('list', { name: 'Flags', exact: true })).toContainText('Red · High');
+  await expect(page.getByRole('form', { name: 'Set or clear a flag' })).toBeVisible();
+  await sweep('a patient’s flags');
+  await page.goto('/patients');
+  await expect(page.getByRole('group', { name: 'Conditions (optional)' })).toBeVisible();
+  await sweep('/patients with the flag filters');
+
+  await signIn(page, 'chw@example.com');
+  await page.goto(SEEDED_FROST);
+  const panel = page.getByRole('region', { name: 'Flags', exact: true });
+  await panel.getByRole('button', { name: /^Entered in error: Set Frost risk,/ }).click();
+  await expect(page.getByRole('form', { name: 'Mark entered in error' })).toBeVisible();
+  await sweep('Entered in error, open', { inPlace: true });
+  expect(csp).toEqual([]);
+});
+
 for (const [email, role, screens] of [
   ['clinician@example.com', 'Healthcare Staff', ['Patients', 'Reviews']],
   ['chw@example.com', 'the community health worker preset', ['Patients', 'Reviews']],
