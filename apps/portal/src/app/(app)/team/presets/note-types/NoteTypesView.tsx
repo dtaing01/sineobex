@@ -14,7 +14,7 @@ import { groupOf, noteTypeReviewRows, readersOf, visitsOf, whoseOf } from './wor
 export const editorPath = (key: string) => `/team/presets/note-types/${key}`;
 
 /** Sineobex's update to one note type, placed for every one the page shows: it draws nothing while none is on offer. */
-function Offer({ row }: { row: NoteTypeRow }) {
+export function Offer({ row }: { row: NoteTypeRow }) {
   const { update } = row;
   return (
     <NoteTypeOffer
@@ -47,14 +47,22 @@ function Offer({ row }: { row: NoteTypeRow }) {
  * A note type's history as the history route answers it, in the table every preset page draws: who,
  * when, the platform's or the team's, and the reason. A note type's event carries no body.
  */
-function History({ row, events }: { row: NoteTypeRow; events: readonly NoteTypeEvent[] }) {
+export function History({
+  row,
+  events,
+  flat = true,
+}: {
+  row: NoteTypeRow;
+  events: readonly NoteTypeEvent[];
+  flat?: boolean;
+}) {
   return (
     <HistoryTable
       events={events.map((e) => ({ ...e, body: {} }))}
       id={row.key}
-      heading={`History of ${row.title}`}
-      headingLevel={3}
-      flat
+      heading={flat ? `History of ${row.title}` : 'History'}
+      headingLevel={flat ? 3 : 2}
+      flat={flat}
     />
   );
 }
