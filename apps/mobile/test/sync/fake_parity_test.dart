@@ -5892,6 +5892,28 @@ void main() {
       },
     );
 
+    test('reads IDs in capitals as the database writes them, from a phone: stored and read in lowercase', () async {
+      // A patient of its own, so no other case reads this change.
+      final patient = server.seedPatient(preferredName: 'Demo Cedar');
+      final low = flags['flag.low']!;
+      final made = flagChange(patient.toUpperCase(), low.toUpperCase());
+      expect(await send(alex, [made]), [taken(made)]);
+      final row = server.records[idOf(made)]!;
+      expect([row.patientId, row.attributes['patientId'], row.attributes['flagId']], [patient, patient, low]);
+      final read =
+          (await server.handle(alex, team, 'POST', '/v1/sync/records', {
+                'records': [
+                  {'entity': entityFlagChange, 'id': idOf(made)},
+                ],
+              }))!
+              as Map<String, Object?>;
+      final [shown] = (read['records']! as List<Object?>).cast<Map<String, Object?>>();
+      expect(shown['attributes'], allOf(containsPair('patientId', patient), containsPair('flagId', low)));
+      // On the chart under its flag.
+      final chart = (await server.handle(alex, team, 'GET', '/v1/patients/$patient', null))! as Map<String, Object?>;
+      expect(((chart['flags']! as Map<String, Object?>)['primary']! as Map<String, Object?>)['flagId'], low);
+    });
+
     test('is never later than the server’s receipt: a phone clock ahead is taken at the receipt', () async {
       final ahead = flagChange(
         patientB,

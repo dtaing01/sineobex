@@ -1026,6 +1026,15 @@ class FakeSyncServer {
     final issues = rules.createIssues(value);
     if (issues.isNotEmpty) return _rejected('validation', _problems(issues));
     var v = value! as Map<String, Object?>;
+    // A flag change's patient and flag as the database writes a UUID, so an ID in capitals names the
+    // same ones, and is stored and read in lowercase (patient-flag-change.ts applyCreate; MR-3).
+    if (rules.entity == entityFlagChange) {
+      v = {
+        ...v,
+        'patientId': (v['patientId']! as String).toLowerCase(),
+        'flagId': (v['flagId']! as String).toLowerCase(),
+      };
+    }
     // An addendum or a correction naming a sign-off a reviewer rejected names none (records.ts
     // withoutRejectedSignoff, review finding PS-2).
     if ((rules.entity == entityAddendum || rules.entity == entityCorrection) &&
@@ -3966,11 +3975,13 @@ class FakeSyncServer {
   /// One of [teamId]'s flags as the team holds it now (read-rules.ts flagHead): the team it is in,
   /// and whether it is sensitive ([_teamFlags]). Null when [flagId] names no flag of the team: another
   /// kind of preset, another team's, nothing, or a head whose current version is missing. A seed names
-  /// no team, so its flag is whichever team's holds it.
+  /// no team, so its flag is whichever team's holds it. The ID is read in lowercase, as the database
+  /// compares a UUID, so one in capitals names the same flag (review finding MR-3).
   _FlagHead? _flagHead(String? teamId, Object? flagId) {
+    final key = flagId is String ? flagId.toLowerCase() : flagId;
     for (final id in presetTeams.keys) {
       if (teamId != null && id != teamId.toLowerCase()) continue;
-      if (_teamFlags(id)[flagId] case final flag?) return flag.head;
+      if (_teamFlags(id)[key] case final flag?) return flag.head;
     }
     return null;
   }
