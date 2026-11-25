@@ -267,6 +267,14 @@ function madeField(spec: NewField, next: () => string, at: string, definition: R
       if (typeof max !== 'number' || !Number.isFinite(max)) return shape('.max', 'is a number');
       if (decimals !== 0 && decimals !== 1 && decimals !== 2) return shape('.decimals', 'is 0, 1 or 2');
       if (unit !== undefined && !isWords(unit)) return shape('.unit', 'is words the schema takes');
+      // A range with no value at its decimals could never be answered: the validator's
+      // number_range_empty, which would refuse the whole publish, refused here by the field's index.
+      const scaled = (value: number) => Number((value * 10 ** decimals).toFixed(6));
+      if (Math.ceil(scaled(min)) > Math.floor(scaled(max)))
+        return shape(
+          '.max',
+          `no value with ${decimals} decimals lies from ${min} to ${max}, so the field could never be answered`,
+        );
       return {
         ok: true,
         field: {

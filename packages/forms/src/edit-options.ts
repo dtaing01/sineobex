@@ -2,7 +2,9 @@
  * The four option operations of a team's edit (phase 5 design 5.4): add an option to a choice
  * field (its code made by the server, rule 3), rename one, retire one, move one. Each is refused on
  * a protected field, and on an option carrying `exclusive`, `normal`, `unable`, `other`, `suggests`
- * or `sensitiveExam` (edit-protected.ts); a retire is refused when it would leave no option. Only a
+ * or `sensitiveExam` (edit-protected.ts); a retire is refused when it would leave no option, and
+ * when a condition asks for the option (`in_use`), which would then name an answer the field no
+ * longer has. Only a
  * choice field outside a grid's cell takes them. applyNoteTypeEdit (edit.ts) hands them here;
  * edit-fanout.ts carries each along `mapsTo` (rule 5), applying it here to each field it reaches,
  * with that field's path and every version of the note types it reaches as `taken`, so an added
@@ -12,9 +14,10 @@
  */
 import type { NoteTypeEdit, NoteTypeEditCode, NoteTypeEditContext, NoteTypeEditStep } from './edit.ts';
 import { fieldPlace, isProtected, isWords, madeIds, withFields } from './edit-protected.ts';
-import { SIDES } from './paths.ts';
+import { leafAt, pathModel, SIDES } from './paths.ts';
+import type { FieldNode, SectionNode } from './paths.ts';
 import type { ResolvedChoiceField, ResolvedNoteType } from './resolve.ts';
-import type { Option, Rename } from './types.ts';
+import type { Condition, Option, Rename } from './types.ts';
 
 const refused = (code: NoteTypeEditCode): NoteTypeEditStep => ({ ok: false, refusal: { code } });
 
@@ -63,6 +66,9 @@ export function applyOptionEdit(
     case 'retire_option': {
       // A definition has no empty lists (forms 2.2), and a choice with no option asks nothing.
       if (field.options.length === 1) return refused('last_option');
+      // Retired, it would leave the condition asking for an answer the field no longer has, which
+      // the validator refuses for the whole publish: refused here, by its index, as such a hide is.
+      if (askedFor(definition, field, edit.code)) return refused('in_use');
       return changedTo(withoutOption(field, option));
     }
     case 'move_option': {
@@ -73,6 +79,27 @@ export function applyOptionEdit(
       return changedTo({ ...field, options });
     }
   }
+}
+
+/**
+ * Whether a section's or a field's condition asks for `code` at `field` (`{field, is}` naming it),
+ * read from where each condition is written, as the validator reads it.
+ */
+function askedFor(definition: ResolvedNoteType, field: ResolvedChoiceField, code: string): boolean {
+  const model = pathModel(definition);
+  const asks = (condition: Condition | undefined, carrier: FieldNode | SectionNode): boolean => {
+    if (!condition) return false;
+    if ('all' in condition) return condition.all.some((c) => asks(c, carrier));
+    if ('any' in condition) return condition.any.some((c) => asks(c, carrier));
+    if ('not' in condition) return asks(condition.not, carrier);
+    if (!('is' in condition) || ![condition.is].flat().includes(code)) return false;
+    const found = leafAt(model, condition.field, carrier, null);
+    return 'leaf' in found && found.leaf.node.field === field;
+  };
+  return (
+    model.sections.some((s) => asks(s.section.showWhen, s)) ||
+    model.nodes.some((n) => asks(n.field.showWhen, n))
+  );
 }
 
 /**

@@ -1385,18 +1385,26 @@ describe('adding and copying (edit-add.ts)', () => {
     expect(fromTeam.ok && fromTeam.definition.sections[1]!.title).toBe('Demo: The team’s water');
   });
 
-  it('refuses a copy for what it brings, never for what an earlier operation of the publish left', () => {
-    // A retired code a condition names is the publish's check to report (the validator), not the copy's.
+  it('refuses a copy for what it brings, never for what the version held before it', () => {
+    // A condition that names a code the field no longer has (a version made by hand, since a retire of
+    // an answer a condition asks for is refused in_use) is the publish's check to report, not the copy's.
     const street = named('demo_street@1');
     const team = [named('t_000000000001@1')];
     const retire: NoteTypeEdit = { op: 'retire_option', path: 'route.stop', code: 'yes' };
+    expect(codeOf([retire], contextOf2([street], team))).toBe('in_use');
+    const left = nextOf2(street, (d) => {
+      const stop = d.sections.find((s) => s.id === 'route')!.fields.find((f) => f.id === 'stop') as {
+        options: { code: string }[];
+      };
+      stop.options = stop.options.filter((o) => o.code !== 'yes');
+    });
     const copy: NoteTypeEdit = {
       op: 'copy_section',
       fromKey: 't_000000000001',
       sectionId: 't_1',
       afterSectionId: 'notes',
     };
-    const outcome = applyNoteTypeEdits([retire, copy], contextOf2([street], team));
+    const outcome = applyNoteTypeEdits([copy], contextOf2([street, left], team));
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(validate(outcome.definition, { noteType: () => undefined }).map((p) => p.rule)).toEqual([
