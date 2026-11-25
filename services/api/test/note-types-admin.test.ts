@@ -21,6 +21,7 @@ import {
   auditMark,
   errorOf,
   memberOf,
+  presetsApi,
   presetsTeam,
   REASON,
   STALE_MINUTES,
@@ -1531,6 +1532,73 @@ describe('adding, removing, restoring and taking an update: what each checks', (
       expect(fieldOf(definition, 'outreach.new_need').label).toBe(
         fieldOf(next.definition, 'outreach.new_need').label,
       );
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('counts only active field supply maps: once its maps are removed, a note type can be removed', async () => {
+    const t = await presetsTeam(h, 'Note Types Maps');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const maps = await h.scratch.owner<{ id: string; version: number }[]>`
+      select p.id, p.current_version as version from sineobex.team_presets p
+      join sineobex.team_preset_versions v
+        on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
+      where p.team_id = ${t.teamId} and p.kind = 'field_supply_map' and p.state = 'active'
+        and v.body ->> 'noteTypeKey' = 'outreach'`;
+    expect(maps.length).toBeGreaterThan(0);
+    expect((await rowOf('outreach', theirs)).referencedBy).toEqual({ field_supply_map: maps.length });
+    const presets = presetsApi(h, t.teamId, t.admin);
+    for (const map of maps)
+      expect((await presets.archive('field_supply_map', map.id, map.version)).status).toBe(200);
+    const row = await rowOf('outreach', theirs);
+    expect(row.referencedBy).toEqual({});
+    expect((await theirs.archive('outreach', row.version)).status).toBe(200);
+  });
+
+  it('refuses a copied section the validator refuses where it lands, with what it found and its index', async () => {
+    // A general primary care exam section shows by the exam's systems, which a blank note type lacks.
+    const t = await presetsTeam(h, 'Note Types Copy Invalid');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const made = await theirs.create({
+      title: 'Demo: Exams of our own',
+      kinds: ['medical'],
+      group: 'clinical',
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const key = made.body.key as string;
+    const details = await refusedUnwritten(
+      () =>
+        theirs.publish(key, 1, [
+          { op: 'copy_section', fromKey: 'general_primary_care', sectionId: 'eyes', afterSectionId: 'notes' },
+        ]),
+      422,
+      'invalid',
+      t.teamId,
+    );
+    expect(details.opIndex).toBe(0);
+    expect((details.problems as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it('offers an update that only lists the same kinds in another order as one that changes nothing fixed', async () => {
+    const { theirs, next, unrelease, row } = await teamWithOffer(
+      'Note Types Kinds Order',
+      'outreach',
+      (d) => ({
+        ...d,
+        title: `${d.title}, again`,
+        kinds: [...d.kinds].reverse(),
+      }),
+    );
+    try {
+      expect(next.definition.kinds).toEqual(['non_medical', 'medical']);
+      expect([row.updateChangesFixed, row.update!.changesFixed]).toEqual([false, []]);
+      const r = await theirs.takeUpdate('outreach', {
+        baseVersion: row.version,
+        platformVersion: next.version,
+        asNew: false,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
     } finally {
       unrelease();
     }
