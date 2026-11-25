@@ -561,6 +561,23 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await page.keyboard.press('Enter');
     await expect(section.getByLabel('A new answer for “Support provided”')).toBeFocused();
     await expect(editor.heldItems).toHaveCount(5);
+    // Undo of an added answer: focus goes on to the next added one's Undo, else to the box (B-5).
+    await section.getByLabel('A new answer for “Support provided”').fill('Demo: Gloves');
+    await page.keyboard.press('Enter');
+    const undoAdded = (words: string) =>
+      section.getByRole('button', {
+        name: `Undo Add the answer “${words}” to “Support provided”`,
+        exact: true,
+      });
+    await undoAdded('Demo: Blankets').focus();
+    await page.keyboard.press('Enter');
+    await expect(undoAdded('Demo: Gloves')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(section.getByLabel('A new answer for “Support provided”')).toBeFocused();
+    await expect(editor.heldItems).toHaveCount(4);
+    await section.getByLabel('A new answer for “Support provided”').fill('Demo: Blankets');
+    await page.keyboard.press('Enter');
+    await expect(editor.heldItems).toHaveCount(5);
 
     // A field of the team's own: Yes or No.
     await section
