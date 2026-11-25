@@ -11,6 +11,7 @@ import { registerEncounterRoutes } from './routes/encounters.ts';
 import { IMMUTABLE_NO_PHI, registerFormRoutes } from './routes/forms.ts';
 import { registerMeRoutes } from './routes/me.ts';
 import { registerMemberRoutes } from './routes/members.ts';
+import { registerNoteTypeAdminRoutes } from './routes/note-types-admin.ts';
 import { registerOwnerRoutes } from './routes/owner.ts';
 import { registerPatientRoutes } from './routes/patients.ts';
 import { registerPresetAdminRoutes } from './routes/presets-admin.ts';
@@ -117,6 +118,7 @@ export function createApp(deps: Deps): App {
   registerEncounterRoutes(app, deps);
   registerPresetRoutes(app, deps);
   registerPresetAdminRoutes(app, deps);
+  registerNoteTypeAdminRoutes(app, deps);
 
   if (deps.config.APP_ENV !== 'production') {
     app.doc31('/openapi.json', openApiInfo);
