@@ -4,6 +4,7 @@ import type { Schemas } from '@sineobex/contract';
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react';
 import styles from '@/app/(app)/patients/patients.module.css';
 import type { FlagAnswer, FlagChoice } from '@/lib/flags';
+import local from './FlagsPanel.module.css';
 import { formatDateTime } from '@/lib/labels';
 import { flagRefusalSentence } from '@/lib/refusals';
 
@@ -135,7 +136,11 @@ export function FlagsPanel({
     returnTo.current = null;
   }, [marking]);
 
-  /** A full load of the patient at the panel, not a client navigation: the chart is read again, whole. */
+  /**
+   * A full load of the patient, not a client navigation: the chart is read again, whole, and the
+   * notice takes focus at the panel. No fragment: from an address that already says the same, a
+   * fragment would only scroll, and the page would never be read again.
+   */
   function leave(to: string) {
     setLeaving(true);
     window.location.assign(to);
@@ -173,7 +178,7 @@ export function FlagsPanel({
       if (answer === null) {
         setProblem(DROPPED);
       } else if (answer.ok) {
-        leave(`/patients/${patientId}?flag=saved#flags`);
+        leave(`/patients/${patientId}?flag=saved`);
         return;
       } else if ('redirect' in answer) {
         leave(answer.redirect);
@@ -223,7 +228,7 @@ export function FlagsPanel({
         setMarkError('');
         setMarkProblem(DROPPED_MARK);
       } else if (answer.ok) {
-        leave(`/patients/${patientId}?flag=marked#flags`);
+        leave(`/patients/${patientId}?flag=marked`);
         return;
       } else if ('redirect' in answer) {
         leave(answer.redirect);
@@ -317,8 +322,10 @@ export function FlagsPanel({
                           onClick={() => openMark(row)}
                           disabled={busy}
                           aria-disabled={busy}
+                          // Its words first, then which change: every row's button reads the same.
+                          aria-label={`Entered in error: ${changeWords(row)}`}
                         >
-                          Entered in error<span className="sr-only">: {changeWords(row)}</span>
+                          Entered in error
                         </button>
                       )}
                     </td>
@@ -431,7 +438,7 @@ export function FlagsPanel({
                 <select
                   id="flags-flagId"
                   name="flagId"
-                  className="px-select"
+                  className={`px-select ${local.choice}`}
                   defaultValue=""
                   required
                   aria-invalid={fieldErrors.flagId ? true : undefined}
