@@ -17,6 +17,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/note-types/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Publish an edit of a note type as its next version, through fixed operations, with a reason (recent sign-in) */
+        put: operations["publishNoteType"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/preset-order/flag": {
         parameters: {
             query?: never;
@@ -2063,6 +2080,45 @@ export interface components {
             /** @enum {string} */
             teamStatus: "active" | "suspended";
         };
+        NewChoiceField: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "choice";
+            /** @description Words: not empty, not only spaces */
+            label: string;
+            /** @description Choose any number, else one */
+            many: boolean;
+            /** @description The options’ labels, one at least; their codes are made by the server */
+            options: string[];
+        };
+        NewNumberField: {
+            decimals: 0 | 1 | 2;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "number";
+            /** @description Words: not empty, not only spaces */
+            label: string;
+            max: number;
+            min: number;
+            unit?: string;
+        };
+        NewTextField: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "text";
+            /** @description Words: not empty, not only spaces */
+            label: string;
+            /** @enum {string} */
+            lines: "one" | "many";
+            /** @description 1 to 4000 characters */
+            maxLength: number;
+        };
         /** @description Every note of the visit that waits for this act and that the caller may act on, each with the hash of what they read */
         NoteActInput: {
             notes: {
@@ -2141,6 +2197,94 @@ export interface components {
              */
             key: string;
             version: number;
+        };
+        /** @description One operation of a publish (phase 5 design 5.4), applied in the order sent */
+        NoteTypeEditOp: {
+            /** @enum {string} */
+            op: "rename_type";
+            title: string;
+        } | {
+            /** @description Hidden leaves it out of the new version; shown copies it back from the last one that had it */
+            hidden: boolean;
+            /** @enum {string} */
+            op: "set_hidden";
+            /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
+            path: string;
+        } | {
+            /** @description Words: not empty, not only spaces */
+            label: string;
+            /** @enum {string} */
+            op: "rename_label";
+            /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
+            path: string;
+        } | {
+            /** @description Words: not empty, not only spaces */
+            label: string;
+            /** @enum {string} */
+            op: "add_option";
+            /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
+            path: string;
+        } | {
+            /** @description An option’s code */
+            code: string;
+            /** @description Words: not empty, not only spaces */
+            label: string;
+            /** @enum {string} */
+            op: "rename_option";
+            /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
+            path: string;
+        } | {
+            /** @description An option’s code */
+            code: string;
+            /** @enum {string} */
+            op: "retire_option";
+            /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
+            path: string;
+        } | {
+            /** @description The option it goes just before; null for the end */
+            before: string | null;
+            /** @description An option’s code */
+            code: string;
+            /** @enum {string} */
+            op: "move_option";
+            /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
+            path: string;
+        } | ((components["schemas"]["NewTextField"] & {
+            /** @enum {string} */
+            op: "add_field";
+            /** @description A section’s id */
+            sectionId: string;
+        }) | (components["schemas"]["NewChoiceField"] & {
+            /** @enum {string} */
+            op: "add_field";
+            /** @description A section’s id */
+            sectionId: string;
+        }) | (components["schemas"]["NewNumberField"] & {
+            /** @enum {string} */
+            op: "add_field";
+            /** @description A section’s id */
+            sectionId: string;
+        })) | {
+            /** @description null puts it first */
+            afterSectionId: string | null;
+            /** @description The fields it starts with, one at least */
+            fields: (components["schemas"]["NewTextField"] | components["schemas"]["NewChoiceField"] | components["schemas"]["NewNumberField"])[];
+            /** @enum {string} */
+            op: "add_section";
+            /** @description Words: not empty, not only spaces */
+            title: string;
+        } | {
+            /** @description null puts it first */
+            afterSectionId: string | null;
+            /**
+             * @description A note type’s key, as migration 0017 allows it
+             * @example wound_care
+             */
+            fromKey: string;
+            /** @enum {string} */
+            op: "copy_section";
+            /** @description A section’s id */
+            sectionId: string;
         };
         NoteTypeEntry: {
             /**
@@ -2523,6 +2667,19 @@ export interface components {
             status: components["schemas"]["ProblemStatus"];
             statusHistory: components["schemas"]["ProblemStatusEvent"][];
             title: string;
+        };
+        PublishNoteType: {
+            /** @description The version you opened: any other is refused as stale, with the current one */
+            baseVersion: number;
+            ops: components["schemas"]["NoteTypeEditOp"][];
+            /** @description Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log. */
+            reason: string;
+        };
+        PublishNoteTypeResult: {
+            /** @description The other note types the publish gave their next version, by key: an option change carried along mapsTo */
+            alsoPublished: string[];
+            /** @description The version now live */
+            version: number;
         };
         PulledPreset: {
             /** @description Its current version’s body, in the shape of @sineobex/presets for its kind */
@@ -3253,6 +3410,78 @@ export interface operations {
             };
             /** @description Not allowed; the refusal is logged */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    publishNoteType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A note type’s key, as migration 0017 allows it */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishNoteType"];
+            };
+        };
+        responses: {
+            /** @description Its next version is live */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishNoteTypeResult"];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation failed */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

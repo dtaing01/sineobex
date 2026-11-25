@@ -2617,6 +2617,127 @@
         ],
         "type": "object"
       },
+      "NewChoiceField": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "choice"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "description": "Words: not empty, not only spaces",
+            "type": "string"
+          },
+          "many": {
+            "description": "Choose any number, else one",
+            "type": "boolean"
+          },
+          "options": {
+            "description": "The options’ labels, one at least; their codes are made by the server",
+            "items": {
+              "description": "Words: not empty, not only spaces",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "many",
+          "options"
+        ],
+        "type": "object"
+      },
+      "NewNumberField": {
+        "additionalProperties": false,
+        "properties": {
+          "decimals": {
+            "anyOf": [
+              {
+                "enum": [
+                  0
+                ],
+                "type": "number"
+              },
+              {
+                "enum": [
+                  1
+                ],
+                "type": "number"
+              },
+              {
+                "enum": [
+                  2
+                ],
+                "type": "number"
+              }
+            ]
+          },
+          "kind": {
+            "enum": [
+              "number"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "description": "Words: not empty, not only spaces",
+            "type": "string"
+          },
+          "max": {
+            "type": "number"
+          },
+          "min": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "min",
+          "max",
+          "decimals"
+        ],
+        "type": "object"
+      },
+      "NewTextField": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "text"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "description": "Words: not empty, not only spaces",
+            "type": "string"
+          },
+          "lines": {
+            "enum": [
+              "one",
+              "many"
+            ],
+            "type": "string"
+          },
+          "maxLength": {
+            "description": "1 to 4000 characters",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "lines",
+          "maxLength"
+        ],
+        "type": "object"
+      },
       "NoteActInput": {
         "additionalProperties": false,
         "description": "Every note of the visit that waits for this act and that the caller may act on, each with the hash of what they read",
@@ -2845,6 +2966,382 @@
           "definition"
         ],
         "type": "object"
+      },
+      "NoteTypeEditOp": {
+        "description": "One operation of a publish (phase 5 design 5.4), applied in the order sent",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "enum": [
+                  "rename_type"
+                ],
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "title"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "hidden": {
+                "description": "Hidden leaves it out of the new version; shown copies it back from the last one that had it",
+                "type": "boolean"
+              },
+              "op": {
+                "enum": [
+                  "set_hidden"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "A field’s path, the entry part of a repeating section left out, or a section’s id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "path",
+              "hidden"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "description": "Words: not empty, not only spaces",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "rename_label"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "A field’s path, the entry part of a repeating section left out, or a section’s id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "path",
+              "label"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "description": "Words: not empty, not only spaces",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "add_option"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "A field’s path, the entry part of a repeating section left out, or a section’s id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "path",
+              "label"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "description": "An option’s code",
+                "type": "string"
+              },
+              "label": {
+                "description": "Words: not empty, not only spaces",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "rename_option"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "A field’s path, the entry part of a repeating section left out, or a section’s id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "path",
+              "code",
+              "label"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "description": "An option’s code",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "retire_option"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "A field’s path, the entry part of a repeating section left out, or a section’s id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "path",
+              "code"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before": {
+                "anyOf": [
+                  {
+                    "description": "An option’s code",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The option it goes just before; null for the end"
+              },
+              "code": {
+                "description": "An option’s code",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "move_option"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "A field’s path, the entry part of a repeating section left out, or a section’s id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "path",
+              "code",
+              "before"
+            ],
+            "type": "object"
+          },
+          {
+            "oneOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/NewTextField"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "add_field"
+                        ],
+                        "type": "string"
+                      },
+                      "sectionId": {
+                        "description": "A section’s id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "sectionId"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/NewChoiceField"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "add_field"
+                        ],
+                        "type": "string"
+                      },
+                      "sectionId": {
+                        "description": "A section’s id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "sectionId"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/NewNumberField"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "add_field"
+                        ],
+                        "type": "string"
+                      },
+                      "sectionId": {
+                        "description": "A section’s id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "sectionId"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "afterSectionId": {
+                "anyOf": [
+                  {
+                    "description": "A section’s id",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "null puts it first"
+              },
+              "fields": {
+                "description": "The fields it starts with, one at least",
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "choice": "#/components/schemas/NewChoiceField",
+                      "number": "#/components/schemas/NewNumberField",
+                      "text": "#/components/schemas/NewTextField"
+                    },
+                    "propertyName": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/NewTextField"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NewChoiceField"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NewNumberField"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "op": {
+                "enum": [
+                  "add_section"
+                ],
+                "type": "string"
+              },
+              "title": {
+                "description": "Words: not empty, not only spaces",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "title",
+              "afterSectionId",
+              "fields"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "afterSectionId": {
+                "anyOf": [
+                  {
+                    "description": "A section’s id",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "null puts it first"
+              },
+              "fromKey": {
+                "description": "A note type’s key, as migration 0017 allows it",
+                "example": "wound_care",
+                "pattern": "^[a-z][a-z0-9_]{1,60}$",
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "copy_section"
+                ],
+                "type": "string"
+              },
+              "sectionId": {
+                "description": "A section’s id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "fromKey",
+              "sectionId",
+              "afterSectionId"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "NoteTypeEntry": {
         "properties": {
@@ -4127,6 +4624,57 @@
           "enteredInError",
           "createdAt",
           "author"
+        ],
+        "type": "object"
+      },
+      "PublishNoteType": {
+        "properties": {
+          "baseVersion": {
+            "description": "The version you opened: any other is refused as stale, with the current one",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "ops": {
+            "items": {
+              "$ref": "#/components/schemas/NoteTypeEditOp"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          },
+          "reason": {
+            "description": "Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.",
+            "maxLength": 300,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseVersion",
+          "ops",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "PublishNoteTypeResult": {
+        "properties": {
+          "alsoPublished": {
+            "description": "The other note types the publish gave their next version, by key: an option change carried along mapsTo",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "description": "The version now live",
+            "minimum": 2,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "alsoPublished"
         ],
         "type": "object"
       },
@@ -6371,6 +6919,106 @@
           }
         ],
         "summary": "Every note type of the team, removed ones too, with its current definition, what is protected in it and any update on offer",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
+    "/v1/admin/note-types/{key}": {
+      "put": {
+        "operationId": "publishNoteType",
+        "parameters": [
+          {
+            "description": "A note type’s key, as migration 0017 allows it",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "A note type’s key, as migration 0017 allows it",
+              "example": "wound_care",
+              "pattern": "^[a-z][a-z0-9_]{1,60}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishNoteType"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishNoteTypeResult"
+                }
+              }
+            },
+            "description": "Its next version is live"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflicts with the current state"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Publish an edit of a note type as its next version, through fixed operations, with a reason (recent sign-in)",
         "tags": [
           "presets"
         ]

@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import {
   canonicalJson,
+  MAX_DEFINITION_BYTES,
   PRESETS,
   protectedParts,
   sha256Hex,
+  takeRevision,
+  type InstallSql,
   type NoteTypeEdit,
   type Preset,
   type ResolvedNoteType,
@@ -22,6 +25,7 @@ import {
   REASON,
   STALE_MINUTES,
   tokenOf,
+  whileLocked,
   type Answer,
   type Person,
   type PresetsTeam,
@@ -747,6 +751,126 @@ describe('PUT /v1/admin/note-types/{key}', () => {
         422,
         'validation_failed',
       );
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// What a publish checks before it stores a version (card P4-publish)
+// ------------------------------------------------------------------------------------------------
+
+describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a version', () => {
+  it('waits for the team lock before it reads or writes any table, then publishes', async () => {
+    const row = await rowOf('harm_reduction');
+    const { waited, relations, answer } = await whileLocked(h, team.teamId, () =>
+      api.publish('harm_reduction', row.version, [
+        { op: 'rename_label', path: row.definition.sections[0]!.id, label: 'Demo: Under the lock' },
+      ]),
+    );
+    expect(waited, 'the publish waits for the team lock').toBe(true);
+    expect(relations, 'the publish touched no table before the team lock').toEqual([]);
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    await readBack('harm_reduction', row.version + 1);
+  });
+
+  it('refuses a version over the size limit, as the validator measures it, writing nothing', async () => {
+    const row = await rowOf('outreach');
+    const label = `Demo: ${'long '.repeat(Math.ceil(MAX_DEFINITION_BYTES / 5))}`;
+    const details = await refusedUnwritten(
+      () =>
+        api.publish('outreach', row.version, [
+          {
+            op: 'add_field',
+            sectionId: row.definition.sections[0]!.id,
+            kind: 'text',
+            label,
+            lines: 'one',
+            maxLength: 10,
+          },
+        ]),
+      422,
+      'invalid',
+    );
+    expect((details.problems as { rule: string }[]).map((p) => p.rule)).toEqual(['validate.too_large']);
+  });
+
+  it('refuses a publish that changes nothing, as a preset edit is refused: no version for nothing', async () => {
+    const row = await rowOf('outreach');
+    for (const ops of [
+      [{ op: 'rename_type', title: row.title }],
+      [
+        { op: 'rename_type', title: 'Demo: Outreach, for a moment' },
+        { op: 'rename_type', title: row.title },
+      ],
+    ] as NoteTypeEdit[][])
+      await refusedUnwritten(() => api.publish('outreach', row.version, ops), 422, 'no_change');
+  });
+
+  it('refuses a new title another active note type holds, whatever its case, and keeps its own', async () => {
+    const row = await rowOf('outreach');
+    const other = await rowOf('wound_care');
+    await refusedUnwritten(
+      () => api.publish('outreach', row.version, [{ op: 'rename_type', title: other.title.toUpperCase() }]),
+      409,
+      'name_taken',
+    );
+    // Its own title in another case is its own.
+    const r = await api.publish('outreach', row.version, [
+      { op: 'rename_type', title: row.title.toUpperCase() },
+    ]);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    await readBack('outreach', row.version + 1);
+  });
+
+  it('refuses no operations, too many, and an operation carrying a mark, before anything is asked', async () => {
+    const row = await rowOf('outreach');
+    const rename: NoteTypeEdit = { op: 'rename_type', title: 'Demo: Outreach, many' };
+    for (const ops of [
+      [],
+      Array.from({ length: 201 }, () => rename),
+      [
+        {
+          op: 'add_field',
+          sectionId: 'outreach',
+          kind: 'text',
+          label: 'Demo: x',
+          lines: 'one',
+          maxLength: 9,
+          required: true,
+        },
+      ],
+      [{ op: 'rename_label', path: 'outreach.new_need', label: 'Demo: x', sensitiveExam: true }],
+    ])
+      await refusedUnwritten(
+        () =>
+          api.send('PUT', '/v1/admin/note-types/outreach', { baseVersion: row.version, ops, reason: REASON }),
+        422,
+        'validation_failed',
+      );
+  });
+
+  it('never edits from a stored version that is not the row it says, nor lists one', async () => {
+    // A row written by hand, its hash another definition's: the list and a publish answer a fault
+    // and write nothing, rather than make the next version from it (D79).
+    const t = await presetsTeam(h, 'Note Types Rows');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const [v1] = await versionsOf(t.teamId, 'social_needs');
+    await h.scratch.owner.begin(async (tx) => {
+      const revision = await takeRevision(tx as unknown as InstallSql, t.teamId);
+      await tx`
+        insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
+        values (${t.teamId}, 'social_needs', 2, ${tx.json({ ...v1!.definition, version: 2, title: 'Demo: By hand' } as never)},
+                ${v1!.hash}, 'team')`;
+      await tx`
+        update sineobex.note_types set current_version = 2, revision = ${revision}
+        where team_id = ${t.teamId} and key = 'social_needs'`;
+    });
+    expect((await theirs.list()).status).toBe(500);
+    await refusedUnwritten(
+      () => theirs.publish('social_needs', 2, [{ op: 'rename_type', title: 'Demo: From a bad row' }]),
+      500,
+      'internal',
+      t.teamId,
+    );
   });
 });
 
