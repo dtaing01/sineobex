@@ -64,6 +64,7 @@ class PatientServices extends ChangeNotifier {
       now: corrected,
     )..onChanged = notifyListeners;
     notices = ServerNotices(store, team.api)..onChanged = notifyListeners;
+    store.onConfirmed.add(_keepStatusCheck);
     refreshers = [
       TeamIndexRefresher(index, team.api, wallNow: wallNow),
       ChartCacheRefresher(charts, now: wallNow),
@@ -125,7 +126,8 @@ class PatientServices extends ChangeNotifier {
   /// row 21): New or Ongoing, not entered in error, and its status not checked within the team's
   /// window, by the settings preset this phone holds, offline ([problemCheckDue]). Never where the
   /// presets aren't held, whatever a chart said, nor where they hold no settings preset: the phone
-  /// doesn't know the team's window then. A problem made here is checked once the server has it.
+  /// doesn't know the team's window then. A problem made here is checked once the server has it, and
+  /// one whose status this phone set or confirmed since the chart came is checked then ([_lastChecked]).
   bool statusCheckDue(ProblemView problem) {
     final presets = PresetStore(store);
     if (!presets.downloaded) return false;
@@ -137,11 +139,49 @@ class PatientServices extends ChangeNotifier {
     if (days == null) return false;
     final check = (
       status: problem.status,
-      statusCheckedAt: problem.statusCheckedAt,
+      statusCheckedAt: _lastChecked(problem),
       enteredInError: problem.enteredInError != null,
     );
     return problemCheckDue(check, now(), days);
   }
+
+  /// When [problem]'s status was last checked, as this phone knows it: the chart's time, or later a
+  /// status set or confirmation of this phone's, still waiting for its receipt or confirmed since and
+  /// not yet on a chart, at its own time (the corrected clock's, else the device's, as the server's
+  /// check time reads it). Every status set counts, a confirmation of the same status included, so
+  /// **Still ongoing** pressed offline checks it at once (section 11, row 21).
+  DateTime? _lastChecked(ProblemView problem) {
+    final kept = int.tryParse(store.kv('$_checkedKvPrefix${problem.id}') ?? '');
+    final times = [
+      ?problem.statusCheckedAt,
+      for (final e in store.outbox())
+        if (e.recordId == problem.id && e.op == 'set' && e.field == 'status' && e.state == ChangeState.pending)
+          e.correctedTime ?? e.deviceTime,
+      if (kept != null) DateTime.fromMillisecondsSinceEpoch(kept, isUtc: true),
+    ];
+    return times.isEmpty ? null : times.reduce((a, b) => a.isAfter(b) ? a : b);
+  }
+
+  /// A status set or confirmation of this phone's that a receipt confirms, applied on the server (not
+  /// held for review, nor kept beside another value): its own time is kept, since its outbox entry goes
+  /// now, so the problem stays checked until a chart gives the server's time. In the receipt's
+  /// transaction; what it kept of a problem the phone no longer holds goes too.
+  void _keepStatusCheck(OutboxEntry e, AcceptedReceipt receipt) {
+    if (e.entity != entityProblem || e.op != 'set' || e.field != 'status') return;
+    if (receipt.inReview || receipt.server != null) return;
+    final at = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
+    final kept = int.tryParse(store.kv('$_checkedKvPrefix${e.recordId}') ?? '');
+    if (kept == null || at > kept) store.setKv('$_checkedKvPrefix${e.recordId}', '$at');
+    store.database.execute(
+      'DELETE FROM kv WHERE substr(key, 1, ${_checkedKvPrefix.length}) = ? '
+      'AND substr(key, ${_checkedKvPrefix.length + 1}) NOT IN (SELECT id FROM records)',
+      [_checkedKvPrefix],
+    );
+  }
+
+  /// Where [_keepStatusCheck] keeps when this phone last checked a problem's status (IDs and times
+  /// only, `kv` by the problem's ID).
+  static const _checkedKvPrefix = 'statusCheck.';
 }
 
 /// For `SyncController(refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: ...))`: makes

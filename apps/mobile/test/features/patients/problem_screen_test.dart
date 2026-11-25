@@ -236,5 +236,30 @@ void main() {
       await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
       expect(find.text('Status check due'), findsNothing);
     });
+
+    // Review finding F5: a confirmation of the same status is a check (section 11, row 21), counted
+    // offline, and after its receipt until a chart gives the server's time.
+    testWidgets('Still ongoing pressed offline checks it at once, on the problem and the profile, and after its '
+        'receipt', (tester) async {
+      final handle = tester.ensureSemantics();
+      final (:h, :cough, rash: _) = await problemsWithWindow(tester);
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      await expectShown(tester, find.text('Status check due'));
+      await tapOn(tester, find.text('Still ongoing'));
+      await settle(tester);
+      expect(find.text('Status check due', skipOffstage: false), findsNothing);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      final row = find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing'));
+      await reveal(tester, row);
+      expect(tester.getSemantics(row).label, isNot(contains('status check due')));
+
+      h.server.offline = false;
+      await syncAndRefresh(tester, h);
+      expect(h.sync.store!.outbox().where((e) => e.recordId == cough), isEmpty, reason: 'confirmed');
+      expect(h.patients.statusCheckDue(h.patients.problems.problem(cough)!), isFalse);
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
   });
 }
