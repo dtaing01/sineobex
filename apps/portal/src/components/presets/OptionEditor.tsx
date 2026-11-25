@@ -20,6 +20,9 @@ export interface HeldActs {
   undo: (h: HeldOp, said?: string) => void;
 }
 
+/** Where focus goes once the last added answer is undone: the box for a new one. */
+const ADD_BOX = 'add-box';
+
 /** "1st", "2nd", "3rd", "4th": where an answer now is, said after a move. */
 function nth(n: number): string {
   const rem = n % 100;
@@ -103,7 +106,8 @@ function WordsForm({
  * answer the list marks protected; the answers held to be retired, with Keep it; the ones held to be
  * added, with Undo; and Add an answer. Every change is held until Publish, and shown where it puts
  * the answer. Keyboard first: an answer moved keeps focus on its own Move button, or the other one
- * at an end; a retired one gives focus to its Keep it, and Keep it gives it back to Retire; Rename
+ * at an end; a retired one gives focus to its Keep it, and Keep it gives it back to Retire; an
+ * added one's Undo gives it to the next added one's Undo, else to the box for a new answer; Rename
  * opens a box with its words and gives focus back once kept or cancelled. The API applies each
  * change, also to every field mapped to this one (rule 5), and refuses any it may not make (D114).
  */
@@ -137,7 +141,8 @@ export function OptionEditor({
     const to = focusNext.current;
     if (to === null) return;
     focusNext.current = null;
-    buttons.current.get(to)?.focus();
+    if (to === ADD_BOX) document.getElementById(`add-answer-${id}`)?.focus();
+    else buttons.current.get(to)?.focus();
   });
 
   const button = (key: string) => (el: HTMLButtonElement | null) => {
@@ -292,11 +297,22 @@ export function OptionEditor({
             <>
               <p className={editor.held}>Added at the end when you publish.</p>
               <ul className={editor.options}>
-                {added.map((h) => (
+                {added.map((h, i) => (
                   <li key={h.id} className={editor.option}>
                     <span>{String(valueOf(h, 'label'))}</span>
                     <div className={styles.moves}>
-                      <button type="button" className="sx-btn sx-btn--secondary" onClick={() => acts.undo(h)}>
+                      <button
+                        ref={button(`added:${h.id}`)}
+                        type="button"
+                        className="sx-btn sx-btn--secondary"
+                        onClick={() => {
+                          // The button goes with it: focus moves on to the next added answer's Undo,
+                          // else to the box for a new one, never to the page.
+                          const next = added[i + 1];
+                          focusNext.current = next ? `added:${next.id}` : ADD_BOX;
+                          acts.undo(h);
+                        }}
+                      >
                         Undo<span className="sr-only"> {h.said}</span>
                       </button>
                     </div>
