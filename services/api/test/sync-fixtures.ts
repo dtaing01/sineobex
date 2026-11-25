@@ -137,7 +137,7 @@ export async function installNoteTypes(h: Harness, teamId: string, definitions: 
       definition,
     })),
   );
-  await installPresets(h.scratch.owner as unknown as InstallSql, teamId, { presets });
+  await h.scratch.owner.begin((tx) => installPresets(tx as unknown as InstallSql, teamId, { presets }));
 }
 
 /** Installs the test-only note types in a team, as the presets are installed. */

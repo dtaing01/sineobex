@@ -1,4 +1,4 @@
-import { installPresets, takeRevision, type InstallSql } from '@sineobex/forms';
+import { installPresets, PRESETS, takeRevision, type InstallSql } from '@sineobex/forms';
 import {
   BODY_SCHEMAS,
   installTeamPresets,
@@ -297,12 +297,13 @@ describe('installing the platform presets', () => {
           originVersion: e.platformVersion,
           platformLatest: e.platformVersion,
           customized: false,
-          revision: 1,
+          // The note type installer took the team's first revision, this one its second.
+          revision: 2,
           createdBy: null,
           updatedBy: null,
         });
       }
-      expect(await revisionOf(team)).toBe(1);
+      expect(await revisionOf(team)).toBe(2);
 
       // Each body as the platform wrote it, every origin key it names put as the team's own id.
       const ids = new Map(heads.map((h) => [h.originKey!, h.id]));
@@ -315,8 +316,9 @@ describe('installing the platform presets', () => {
         expect(BODY_SCHEMAS[h.kind].parse(v.body), h.originKey!).toEqual(v.body);
       }
 
-      // An installed event for each, with no reason and no author.
-      const events = await eventsOf(team);
+      // An installed event for each, with no reason and no author. The note type installer's events
+      // are its own (install-presets.test.ts).
+      const events = (await eventsOf(team)).filter((e) => e.presetId !== null);
       expect(events.map((e) => e.presetId).sort()).toEqual(heads.map((h) => h.id).sort());
       for (const e of events)
         expect(e).toMatchObject({
@@ -715,8 +717,18 @@ describe('installing the platform presets', () => {
         const revision = await takeRevision(tx, teamId);
         await tx`
           insert into sineobex.note_types (team_id, key, title, state, current_version, revision)
-          values (${teamId}, 'wound_care', 'Wound care', ${state}, 1, ${revision})`;
+          values (${teamId}, 'wound_care', 'Wound care', ${state}, 1, ${revision})
+          on conflict (team_id, key) do update
+            set state = excluded.state, current_version = excluded.current_version, revision = excluded.revision`;
       });
+    /** The platform's note types as phase 4's installer wrote them: their versions, and no head. */
+    const versionsWithoutHeads = async (teamId: string) => {
+      for (const p of PRESETS)
+        await db.owner`
+          insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin, preset_version)
+          values (${teamId}, ${p.key}, ${p.version}, ${JSON.stringify(p.definition)}::text::jsonb, ${p.hash},
+                  'preset', ${p.version})`;
+    };
 
     it('installs no map on a note type the team archived', async () => {
       const team = await makeTeam(db.owner, 'Install Presets Archived Note Type Team');
@@ -733,7 +745,7 @@ describe('installing the platform presets', () => {
 
     it('reads its head’s current version, and for a key with no head its newest', async () => {
       const team = await makeTeam(db.owner, 'Install Presets Note Type Version Team');
-      await asPlatform((tx) => installPresets(tx, team));
+      await versionsWithoutHeads(team);
       // A version 2 with no sections, newer than the version the maps name fields of.
       await db.owner`
         insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
@@ -848,12 +860,13 @@ describe('the seed', () => {
     for (const team of first) {
       // Every entry, the maps among them: the seed installs the note types first.
       expect(team.heads.map((h) => h.originKey)).toEqual(newest.map((e) => e.originKey).sort());
-      expect(team.heads.every((h) => h.currentVersion === 1 && h.revision === '1')).toBe(true);
+      expect(team.heads.every((h) => h.currentVersion === 1 && h.revision === '2')).toBe(true);
       expect(team.versions).toEqual([{ n: newest.length }]);
       expect(team.events).toEqual([{ n: newest.length }]);
     }
-    // The install took one revision, which the neighbouring team, given nothing else, holds.
-    expect(first[1]!.state).toEqual([{ revision: '1' }]);
+    // The note types' install took one revision and the presets' the next, which the neighbouring
+    // team, given nothing else, holds.
+    expect(first[1]!.state).toEqual([{ revision: '2' }]);
     await seed(db.owner);
     expect([await snapshot(DEMO_TEAM_ID), await snapshot(NEIGHBOUR_TEAM_ID)]).toEqual(first);
   });

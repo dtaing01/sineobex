@@ -94,7 +94,8 @@ describe('creating a team', () => {
           originVersion: e.platformVersion,
           platformLatest: e.platformVersion,
           customized: false,
-          revision: 1,
+          // The note type installer took the team's first revision, the preset installer its second.
+          revision: 2,
           createdBy: null,
         })),
     );
@@ -105,9 +106,10 @@ describe('creating a team', () => {
     const [rows] = await h.scratch.owner<{ versions: number; events: number; revision: string }[]>`
       select (select count(*)::int from sineobex.team_preset_versions where team_id = ${teamId}) as versions,
              (select count(*)::int from sineobex.team_preset_events
-              where team_id = ${teamId} and act = 'installed' and reason is null and created_by is null) as events,
+              where team_id = ${teamId} and preset_id is not null and act = 'installed' and reason is null
+                and created_by is null) as events,
              (select revision::text from sineobex.team_preset_state where team_id = ${teamId}) as revision`;
-    expect(rows).toEqual({ versions: newest.length, events: newest.length, revision: '1' });
+    expect(rows).toEqual({ versions: newest.length, events: newest.length, revision: '2' });
 
     // Audited in the team's chain, by the owner who made the team, beside the note types' event.
     const [event] = await expectAudit(h, 'preset.platform_installed', { teamId, count: 1 });

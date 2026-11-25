@@ -1471,8 +1471,9 @@ describe('a tier’s flag order (design 5.1, 5.3, 7)', () => {
         createdBy: t.admin.userId,
       });
     }
-    // The flag that kept its rank is untouched.
-    expect(await headOf(h, medium)).toMatchObject({ customized: false, currentVersion: 1, revision: 1 });
+    // The flag that kept its rank is untouched: at the presets' install, the team's second revision
+    // (the note types' install took the first).
+    expect(await headOf(h, medium)).toMatchObject({ customized: false, currentVersion: 1, revision: 2 });
     expect(await eventsOf(h, medium)).toEqual([expect.objectContaining({ act: 'installed' })]);
     expect(await revisionOf(h, t.teamId)).toBe(r0 + 1);
   });

@@ -252,11 +252,17 @@ describe('the demo team’s own presets in the seed', () => {
 
   it('stamps all three with one revision, the next after the platform’s install, leaving no gap', async () => {
     const platform = heads.filter((h) => h.originKey !== null);
-    expect(new Set(platform.map((h) => h.revision))).toEqual(new Set([1]));
-    expect(heads.filter((h) => DEMO.includes(h.id)).map((h) => h.revision)).toEqual([2, 2, 2]);
-    expect(await revisionOf(db.owner, DEMO_TEAM_ID)).toBe(2);
-    // Every revision the team has taken is one a head carries: none was taken for nothing.
-    expect([...new Set(heads.map((h) => h.revision))].sort((a, b) => a - b)).toEqual([1, 2]);
+    // The note type installer takes the team's first revision, the preset installer its second.
+    expect(new Set(platform.map((h) => h.revision))).toEqual(new Set([2]));
+    expect(heads.filter((h) => DEMO.includes(h.id)).map((h) => h.revision)).toEqual([3, 3, 3]);
+    expect(await revisionOf(db.owner, DEMO_TEAM_ID)).toBe(3);
+    // Every revision the team has taken is one a head carries, a note type's or a preset's: none was
+    // taken for nothing.
+    const noteTypes = await db.owner<{ revision: number }[]>`
+      select revision::int as revision from sineobex.note_types where team_id = ${DEMO_TEAM_ID}`;
+    expect([...new Set([...noteTypes, ...heads].map((h) => h.revision))].sort((a, b) => a - b)).toEqual([
+      1, 2, 3,
+    ]);
   });
 
   it('writes nothing on a second run: no row, no event, no revision', async () => {
@@ -266,7 +272,7 @@ describe('the demo team’s own presets in the seed', () => {
 
   it('gives the neighbouring team none of them, and audits none of it', async () => {
     expect((await headsOf(db.owner, NEIGHBOUR_TEAM_ID)).filter((h) => h.originKey === null)).toEqual([]);
-    expect(await revisionOf(db.owner, NEIGHBOUR_TEAM_ID)).toBe(1);
+    expect(await revisionOf(db.owner, NEIGHBOUR_TEAM_ID)).toBe(2);
     const audited = await db.owner<{ n: number }[]>`
       select count(*)::int as n from sineobex.audit_events
       where action like 'preset.%' or entity = 'preset' or entity_id in ${db.owner(DEMO)}`;
@@ -433,8 +439,8 @@ describe('where the seed writes none of them', () => {
     // and met the writer's bag at the unique name, failing the seed.
     expect(await run).toEqual({ presets: 0, skipped: 'the bag would be refused (name_taken)' });
     expect(await demoHeldBy(db.owner, team)).toEqual([]);
-    // The installer's step, then the writer's, and none of the seed's.
-    expect(await revisionOf(db.owner, team)).toBe(2);
+    // The two installers' steps, then the writer's, and none of the seed's.
+    expect(await revisionOf(db.owner, team)).toBe(3);
   });
 
   // The seed's IDs are fixed, and a preset's ID is its own across every team: this case writes
@@ -445,8 +451,9 @@ describe('where the seed writes none of them', () => {
     await asPlatform((tx) => archiveAsTeam(tx, team, bag));
     expect(await demoPresets(team)).toEqual({ presets: 3 });
     expect(await demoHeldBy(db.owner, team)).toEqual(DEMO);
-    // Installed at 1, the bag made at 2 and archived at 3, and the three at 4.
-    expect(await revisionOf(db.owner, team)).toBe(4);
+    // The note types installed at 1 and the presets at 2, the bag made at 3 and archived at 4, and
+    // the three at 5.
+    expect(await revisionOf(db.owner, team)).toBe(5);
   });
 });
 
