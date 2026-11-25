@@ -968,6 +968,26 @@ void main() {
     expect([view.riskLevel, view.sentForReview, view.history], [null, false, isEmpty]);
   });
 
+  test('this phone’s own changes on one instant count in the order they were made', () async {
+    final p = await openedPatient();
+    final more = [
+      for (var i = 0; i < 10; i++) server.addPreset(team, 'flag', flag('Demo: Extra $i', 'secondary', 'teal', 100 + i)),
+    ];
+    await pullPresets();
+    // The clock stands still, so each set and its clear fall on one instant: only the order they were
+    // made in says which came last. Ordered by ID, about half of them would stay set.
+    for (final f in more) {
+      flags().record(p, flagId: f, action: 'set', reason: 'Demo: by the river');
+      flags().record(p, flagId: f, action: 'clear', reason: 'Demo: moved indoors');
+    }
+    final view = flags().flagsOf(p);
+    expect(view.conditions, isEmpty);
+    expect(
+      [for (final h in view.history.take(2)) (h.flag.flagId, h.action)],
+      [(more.last, 'clear'), (more.last, 'set')],
+    );
+  });
+
   test('Save takes a risk level only from the risk levels, and conditions only from the conditions', () async {
     final p = await openedPatient();
     expect(() => flags().save(p, riskLevel: frost, conditions: const {}, reason: 'Demo: x'), refused('unknown_flag'));
