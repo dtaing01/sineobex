@@ -1283,6 +1283,9 @@ describe('POST /v1/admin/note-types/{key}/take-update', () => {
         ['note_type.archived', 'harm_reduction', undefined],
         ['note_type.platform_update_taken', key, 'harm_reduction'],
       ]);
+      // The old one, removed by the take, offers that update no more.
+      const old = await rowOf('harm_reduction');
+      expect([old.update, old.updateOnOffer]).toEqual([null, false]);
       await readBack(key, 1);
     } finally {
       unrelease();
@@ -1539,7 +1542,20 @@ describe('adding, removing, restoring and taking an update: what each checks', (
       });
       const made = await rowOf(key, theirs);
       expect([made.update, made.updateOnOffer]).toEqual([null, false]);
-      expect((await rowOf('social_needs', theirs)).state).toBe('archived');
+      // The removed one no longer offers the update it gave the new one, and can't give it twice.
+      const old = await rowOf('social_needs', theirs);
+      expect([old.state, old.update, old.updateOnOffer]).toEqual(['archived', null, false]);
+      await refusedUnwritten(
+        () =>
+          theirs.takeUpdate('social_needs', {
+            baseVersion: old.version,
+            platformVersion: next.version,
+            asNew: true,
+          }),
+        409,
+        'no_update',
+        t.teamId,
+      );
       await storedAs(key, 1, t.teamId);
     } finally {
       unrelease();
