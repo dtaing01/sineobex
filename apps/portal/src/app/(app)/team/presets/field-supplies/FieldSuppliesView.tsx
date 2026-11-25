@@ -22,9 +22,12 @@ import {
   describeAnswer,
   placeAt,
   placesOf,
+  retiredRowAt,
   type AnswerPlace,
+  type Holds,
 } from './fields';
 import { EditAnswer, FiresOn, type OfferedNoteType } from './FiresOn';
+import supplies from './supplies.module.css';
 
 export type FieldSupply = PresetRow<'field_supply_map'>;
 
@@ -50,6 +53,9 @@ export const WARNINGS = {
   fieldHidden: 'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
   answerRetired:
     'This answer was retired from the note type’s current version, so this mapping suggests nothing.',
+  /** A grid's row picked from an answer since retired: the field is there, the row is not. */
+  rowRetired:
+    'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing.',
 } as const;
 
 /** What a mapping fires on, in the words of its note type's current version. */
@@ -57,6 +63,8 @@ interface Read {
   noteType: NoteTypeRow | undefined;
   /** Null for a mapping on every note of the type, or one whose field the version lacks. */
   place: AnswerPlace | null;
+  /** What the field holds, where the version still has it: on a retired row, its cell's. */
+  holds: Holds | null;
   noteTypeWords: string;
   fieldWords: string;
   answerWords: string | null;
@@ -66,7 +74,10 @@ interface Read {
 function readMapping(body: FieldSupplyBody, noteTypes: readonly NoteTypeRow[]): Read {
   const noteType = noteTypes.find((n) => n.key === body.noteTypeKey);
   const place = noteType && body.path !== undefined ? placeAt(noteType.definition, body.path) : null;
-  const holds = place?.holds ?? null;
+  // A grid's row gone while its cell stays: the cell's words and answers still name what it fires on.
+  const rowGone =
+    noteType && body.path !== undefined && !place ? retiredRowAt(noteType.definition, body.path) : null;
+  const holds = (place ?? rowGone)?.holds ?? null;
   const code =
     body.when === undefined
       ? null
@@ -81,16 +92,20 @@ function readMapping(body: FieldSupplyBody, noteTypes: readonly NoteTypeRow[]): 
     : noteType.state === 'archived'
       ? WARNINGS.noteTypeRemoved
       : body.path !== undefined && !place
-        ? WARNINGS.fieldHidden
+        ? rowGone
+          ? WARNINGS.rowRetired
+          : WARNINGS.fieldHidden
         : retired
           ? WARNINGS.answerRetired
           : null;
+  const named = place ?? rowGone;
   return {
     noteType,
     place,
-    // A key the list doesn't hold is shown as it is stored.
+    holds,
+    // A key the list doesn't hold is shown as it is stored, as is a field the version has no words for.
     noteTypeWords: noteType?.title ?? body.noteTypeKey,
-    fieldWords: body.path === undefined ? EVERY_NOTE : place ? `${place.section}: ${place.label}` : body.path,
+    fieldWords: body.path === undefined ? EVERY_NOTE : named ? `${named.section}: ${named.label}` : body.path,
     answerWords: body.when === undefined ? null : describeAnswer(body.when, holds),
     warning,
   };
@@ -146,10 +161,7 @@ export function EditMapping({
         hint="Which field a mapping fires on can’t be changed later."
       />
       {body.when !== undefined && (
-        <EditAnswer
-          answers={answerChoices(read.place?.holds ?? null, body.when)}
-          current={choiceKey(choiceOf(body.when))}
-        />
+        <EditAnswer answers={answerChoices(read.holds, body.when)} current={choiceKey(choiceOf(body.when))} />
       )}
       {counted ? (
         <ItemLines
@@ -203,14 +215,16 @@ function MappingSection({
           <dt>{LABELS.noteTypeKey}</dt>
           <dd>{read.noteTypeWords}</dd>
         </div>
+        {/* A stored path or code, shown where the version has no words for it, breaks anywhere
+            rather than push the page sideways at 320 px or 200% zoom (WCAG 1.4.10). */}
         <div>
           <dt>{LABELS.path}</dt>
-          <dd>{read.fieldWords}</dd>
+          <dd className={supplies.breaks}>{read.fieldWords}</dd>
         </div>
         {read.answerWords !== null && (
           <div>
             <dt>{LABELS.when}</dt>
-            <dd>{read.answerWords}</dd>
+            <dd className={supplies.breaks}>{read.answerWords}</dd>
           </div>
         )}
         <div>

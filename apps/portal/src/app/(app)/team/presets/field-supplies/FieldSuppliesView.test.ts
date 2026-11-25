@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -240,5 +241,115 @@ describe('the field supplies page, further', () => {
       map(RETIRED, 'Demo: Film given', { path: 'wound.dressing', when: { includes: 'film' } }),
     );
     expect(html).toContain('<option value="includes:film" selected="">film</option>');
+  });
+});
+
+describe('a mapping on a grid’s row its picker no longer offers (B-13), and a stored path (B-6)', () => {
+  const VACCINE = '30f10000-0000-4000-8000-000000000006';
+  const LONG = '30f10000-0000-4000-8000-000000000007';
+  const clinic: NoteTypeDefinition = {
+    key: 'general_primary_care',
+    version: 2,
+    title: 'Demo: Clinic visit',
+    kinds: ['medical'],
+    group: 'clinical',
+    sensitivity: 'none',
+    sections: [
+      {
+        id: 'preventive',
+        title: 'Demo: Preventive care',
+        fields: [
+          // Pneumococcal was retired from the vaccines, so the grid no longer has its row.
+          {
+            id: 'vaccines',
+            kind: 'choice',
+            label: 'Demo: Vaccines',
+            many: true,
+            options: [{ code: 'flu', label: 'Demo: Flu' }],
+          },
+          {
+            id: 'vaccine_status',
+            kind: 'grid',
+            label: 'Demo: Status for each vaccine',
+            rows: { pickedIn: 'preventive.vaccines' },
+            cell: {
+              id: 'status',
+              kind: 'choice',
+              label: 'Demo: Status',
+              options: [
+                { code: 'given_today', label: 'Demo: Given today' },
+                { code: 'declined', label: 'Demo: Declined' },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const clinicRow: NoteTypeRow = {
+    ...noteTypes[0]!,
+    key: 'general_primary_care',
+    title: 'Demo: Clinic visit',
+    definition: clinic,
+  };
+  const rows = [
+    map(VACCINE, 'Demo: Pneumococcal vaccine given', {
+      noteTypeKey: 'general_primary_care',
+      path: 'preventive.vaccine_status.pneumococcal',
+      when: { equals: 'given_today' },
+    }),
+    map(LONG, 'Demo: Long hidden field', {
+      path: 'wound.a_field_whose_stored_path_is_one_very_long_word_with_no_space',
+      when: { answered: true },
+    }),
+  ];
+  const html = renderToStaticMarkup(
+    createElement(FieldSuppliesView, {
+      rows,
+      noteTypes: [...noteTypes, clinicRow],
+      items: [item],
+      histories: {},
+    }),
+  );
+  const facts = (name: string) => {
+    const section = sectionOf(html, name);
+    return Object.fromEntries(
+      [...section.matchAll(/<dt>([^<]+)<\/dt><dd([^>]*)>([^<]*)<\/dd>/g)].map((m) => [
+        m[1],
+        { attrs: m[2], text: m[3] },
+      ]),
+    );
+  };
+
+  it('says the row was retired, names the field in the version’s words, and its answer by the cell’s', () => {
+    const vaccine = sectionOf(html, 'Demo: Pneumococcal vaccine given');
+    expect(vaccine).toContain(
+      'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing.',
+    );
+    expect(vaccine).not.toContain('This field is hidden');
+    const { Field, Answer } = facts('Demo: Pneumococcal vaccine given');
+    expect(Field!.text).toBe('Demo: Preventive care: Demo: Status for each vaccine: pneumococcal');
+    expect(Answer!.text).toBe('Demo: Given today');
+  });
+
+  it('offers the cell’s answers in words in its Edit form', () => {
+    const edit = renderToStaticMarkup(
+      createElement(EditMapping, {
+        row: rows[0]!,
+        noteTypes: [clinicRow],
+        items: [{ id: GAUZE, name: 'Demo: Gauze pad' }],
+        names: {},
+      }),
+    );
+    expect(edit).toContain('>Demo: Given today</option>');
+    expect(edit).not.toContain('>given_today</option>');
+  });
+
+  it('lets a field or an answer shown as stored break anywhere, so it never pushes the page sideways', () => {
+    const { Field, Answer } = facts('Demo: Long hidden field');
+    expect(Field!.text).toBe('wound.a_field_whose_stored_path_is_one_very_long_word_with_no_space');
+    for (const dd of [Field!, Answer!]) expect(dd.attrs).toMatch(/class="[^"]+"/);
+    const css = readFileSync(new URL('./supplies.module.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.breaks\s*\{[^}]*overflow-wrap:\s*anywhere/);
   });
 });

@@ -94,6 +94,48 @@ function walk(
   }
 }
 
+/**
+ * A grid's cell at a row the grid no longer has, such as a row picked from an answer since retired
+ * (`rows: {pickedIn}`), or null when the path names no such cell. The grid and its cell are still
+ * in the version, so the cell is named, and its answers described, in the version's words; the row,
+ * which the version no longer names, by its code.
+ */
+export function retiredRowAt(definition: NoteTypeDefinition, path: string): AnswerPlace | null {
+  const [sectionId, ...ids] = path.split('.');
+  const section = definition.sections.find((s) => s.id === sectionId);
+  let fields: readonly NoteTypeField[] = section?.fields ?? [];
+  const within: string[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const field = fields.find((f) => f.id === ids[i]);
+    if (!section || !field) return null;
+    if (field.kind === 'group') {
+      within.push(field.label);
+      fields = field.fields ?? [];
+      continue;
+    }
+    const cell = field.cell as NoteTypeField | undefined;
+    const row = ids[i + 1];
+    if (field.kind !== 'grid' || !cell || row === undefined) return null;
+    if (rowsOf(definition, field).some((r) => r.code === row)) return null;
+    // The cell itself, or a field of a group cell, by the ids after the row's code.
+    let target: NoteTypeField | undefined = cell;
+    const labels: string[] = [];
+    for (const id of ids.slice(i + 2)) {
+      target = target?.kind === 'group' ? target.fields?.find((f) => f.id === id) : undefined;
+      if (!target) return null;
+      labels.push(target.label);
+    }
+    if (target.kind === 'group') return null;
+    return {
+      path,
+      section: section.title,
+      label: [...within, field.label, row, ...labels].join(': '),
+      holds: holdsOf(target, field.sides === true),
+    };
+  }
+  return null;
+}
+
 /** A grid's rows: its own, or the options of the field that picks them (`rows: {pickedIn}`). */
 function rowsOf(definition: NoteTypeDefinition, grid: NoteTypeField): readonly NoteTypeOption[] {
   const rows = grid.rows as NoteTypeOption[] | { pickedIn?: unknown } | undefined;

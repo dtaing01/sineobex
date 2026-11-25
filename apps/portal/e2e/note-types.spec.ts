@@ -1254,6 +1254,44 @@ test.describe('field supplies, /team/presets/field-supplies', () => {
       'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
     );
     await expect(fact(notes, 'Field')).toHaveText('outreach.notes');
+
+    // A clinic note's vaccine whose answer is retired: its grid keeps its cell, so the mapping on that
+    // row is named in the version's words, the row by its code, the answer by the cell's (B-13). And
+    // a grid hidden whole: a mapping on one of its cells shows its long stored path, which breaks
+    // rather than push the page sideways at 320 px (B-6).
+    const clinic = await added({ title: 'Demo: Long clinic', copyOf: 'general_primary_care' });
+    await mapped({
+      name: 'Demo: Food for a vaccine given',
+      noteTypeKey: clinic,
+      path: 'preventive.vaccine_status.pneumococcal',
+      when: { equals: 'given_today' },
+      lines: [{ itemId: items['Food kit']!, qty: 1 }],
+    });
+    await mapped({
+      name: 'Demo: Socks for an enlarged node',
+      noteTypeKey: clinic,
+      path: 'lymphatic.node_findings.supraclavicular.findings',
+      when: { includes: 'enlarged' },
+      lines: [{ itemId: items.Socks!, qty: 1 }],
+    });
+    await publishedMeanwhile(clinic, [
+      { op: 'retire_option', path: 'preventive.vaccines', code: 'pneumococcal' },
+      { op: 'set_hidden', path: 'lymphatic.node_findings', hidden: true },
+    ]);
+    await page.reload();
+    const vaccine = section('Demo: Food for a vaccine given');
+    await expect(vaccine).toContainText(
+      'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing.',
+    );
+    await expect(fact(vaccine, 'Field')).toHaveText(
+      'Preventative care: Status for each vaccine: pneumococcal',
+    );
+    await expect(fact(vaccine, 'Answer')).toHaveText('Given today');
+    const node = section('Demo: Socks for an enlarged node');
+    await expect(node).toContainText(
+      'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
+    );
+    await expect(fact(node, 'Field')).toHaveText('lymphatic.node_findings.supraclavicular.findings');
     await expectAccessible(page, 'Field supplies, a field hidden and an answer retired');
     await expectReflow(page, 'Field supplies, a field hidden and an answer retired');
 
