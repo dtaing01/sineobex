@@ -79,9 +79,10 @@ function same(a: unknown, b: unknown): boolean {
 
 /**
  * The review of a note type's update on offer (8.1): what the note type is, then each section with
- * its fields' words, the team's version now beside Sineobex's new one, each row the update changes
- * marked. A section either holds is shown, so nothing the update adds or leaves out goes unshown;
- * a change below a field's words (an option, a mark) marks its section.
+ * its title and its fields' words, the team's version now beside Sineobex's new one, each row the
+ * update changes marked. A section either holds is shown, so nothing the update adds or leaves out
+ * goes unshown; a title the update gives a section is shown beside the one it has now, and a change
+ * below a field's words (an option, a mark) marks its section.
  */
 export function noteTypeReviewRows(now: NoteTypeDefinition, update: NoteTypeDefinition): ReviewRow[] {
   const facts: ReviewRow[] = [
@@ -121,8 +122,8 @@ export function noteTypeReviewRows(now: NoteTypeDefinition, update: NoteTypeDefi
     return {
       field: `section:${id}`,
       label: `Section: ${(b ?? a)!.title}`,
-      now: a ? fieldLines(a.fields) : 'Not in it',
-      update: b ? fieldLines(b.fields) : 'Not in it',
+      now: a ? [`Its title: ${a.title}`, ...fieldLines(a.fields)] : 'Not in it',
+      update: b ? [`Its title: ${b.title}`, ...fieldLines(b.fields)] : 'Not in it',
       changes: !same(a, b),
     };
   });
