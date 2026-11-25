@@ -75,9 +75,25 @@ describe('Set or clear', () => {
     outcome = { refused: { status: 409, code: 'archived' } };
     const answer = await post(body);
     expect(answer.status).toBe(409);
-    const said = (await answer.json()) as { ok: boolean; error: string };
+    const said = (await answer.json()) as { ok: boolean; error: string; field?: string };
     expect(said.ok).toBe(false);
     expect(said.error).not.toContain('The API’s words.');
     expect(said.error.length).toBeGreaterThan(0);
+    // The panel's sentence for the refusal, and the field it is said beside (lib/refusals.ts).
+    expect(said).toMatchObject({
+      error: 'This flag is no longer on your team’s list, so it can only be cleared.',
+      field: 'flagId',
+    });
+  });
+
+  it('sends the browser to sign in again for a session the API ended, and says a 403 in words', async () => {
+    outcome = { refused: { status: 401, code: 'unauthorized' } };
+    expect(await (await post(body)).json()).toEqual({ ok: false, redirect: '/sign-in?ended=expired' });
+    outcome = { refused: { status: 403, code: 'forbidden' } };
+    const answer = await post(body);
+    expect(answer.status).toBe(403);
+    expect(((await answer.json()) as { error: string }).error).toBe(
+      'Your role doesn’t let you change flags. Reload the page to see what you can do.',
+    );
   });
 });

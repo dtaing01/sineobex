@@ -69,5 +69,8 @@ describe('Entered in error', () => {
       true,
       false,
     ]);
+    expect(said.error).toBe(
+      'Only the person who made this change, or a Program Admin, can mark it entered in error.',
+    );
   });
 });
