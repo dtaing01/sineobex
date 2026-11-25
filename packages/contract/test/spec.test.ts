@@ -244,4 +244,34 @@ describe('openapi.json, patient data in requests and refusals', () => {
     for (const [method, path, operationId] of routes)
       expect(spec.paths[path]?.[method]?.operationId, `${method} ${path}`).toBe(operationId);
   });
+
+  it('defines every admin note type route, under the name its clients call', async () => {
+    // The portal's pages call each by its path (apps/portal/src/lib/presets.ts), and the phone's
+    // client would name a method after its operation ID, as for the preset routes.
+    const spec = await loadSpec();
+    const routes: [string, string, string][] = [
+      ['get', '/v1/admin/note-types', 'listAdminNoteTypes'],
+      ['post', '/v1/admin/note-types', 'createNoteType'],
+      ['put', '/v1/admin/note-types/{key}', 'publishNoteType'],
+      ['post', '/v1/admin/note-types/{key}/archive', 'archiveNoteType'],
+      ['post', '/v1/admin/note-types/{key}/restore', 'restoreNoteType'],
+      ['post', '/v1/admin/note-types/{key}/take-update', 'takeNoteTypeUpdate'],
+    ];
+    for (const [method, path, operationId] of routes)
+      expect(spec.paths[path]?.[method]?.operationId, `${method} ${path}`).toBe(operationId);
+  });
+
+  it('holds every field a note type write takes required, as its route refuses one left out', async () => {
+    // Each write's reason, and the version a publish, a Remove and a take were opened at (design 7):
+    // the portal's types must not let one be left out. An add is a copy or a blank one, so only
+    // its title and reason are required of both.
+    const spec = await loadSpec();
+    const required = (name: string) =>
+      [...((spec.components.schemas[name] as { required?: string[] }).required ?? [])].sort();
+    expect(required('CreateNoteType')).toEqual(['reason', 'title']);
+    expect(required('PublishNoteType')).toEqual(['baseVersion', 'ops', 'reason']);
+    expect(required('ArchiveNoteType')).toEqual(['baseVersion', 'reason']);
+    expect(required('RestoreNoteType')).toEqual(['reason']);
+    expect(required('TakeNoteTypeUpdate')).toEqual(['asNew', 'baseVersion', 'platformVersion', 'reason']);
+  });
 });
