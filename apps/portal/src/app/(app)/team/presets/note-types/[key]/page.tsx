@@ -113,7 +113,7 @@ export default async function NoteTypePage({
         <div>
           <dt>Whose version</dt>
           <dd>
-            {whoseOf(row)}, version {row.version}
+            {whoseOf(row, history)}, version {row.version}
           </dd>
         </div>
       </dl>

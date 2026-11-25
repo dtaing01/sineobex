@@ -160,6 +160,31 @@ describe('the note types page', () => {
     expect(draw(ROWS, { refused: 'archived', noteType: 'outreach' })).toMatch(/wasn’t saved|was removed/);
   });
 
+  it('says whose version each one is at from its history: Sineobex’s for one removed and restored, never edited', () => {
+    const platform = {
+      version: 1,
+      source: 'platform' as const,
+      by: null,
+      at: '2026-11-25T10:00:00.000Z',
+      reason: null,
+    };
+    const restored = noteType('social_needs', 'Demo: Social needs', { customized: true });
+    const html = renderToStaticMarkup(
+      createElement(NoteTypesView, {
+        rows: [restored],
+        histories: {
+          social_needs: [
+            { ...platform, act: 'installed' },
+            { ...platform, act: 'archived' },
+            { ...platform, act: 'restored' },
+          ],
+        },
+      }),
+    );
+    expect(sectionOf(html, 'social_needs')).toContain('Sineobex’s, used as is, version 1');
+    expect(sectionOf(html, 'social_needs')).not.toContain('Your team’s');
+  });
+
   it('says so when the team has no note types to show', () => {
     expect(draw([])).toMatch(/no note types/i);
   });
