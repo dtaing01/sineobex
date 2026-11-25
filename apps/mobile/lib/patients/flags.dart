@@ -12,6 +12,7 @@ library;
 
 import '../presets/models.dart' show FlagBody, FlagColor, FlagTier;
 import '../sync/local_store.dart';
+import 'access.dart' show mayViewProblems;
 
 // ------------------------------------------------------------------------------------------------
 // The flag rule
@@ -20,13 +21,15 @@ import '../sync/local_store.dart';
 /// Whether a person with [permissions] sees a sensitive flag: the reader half of the flag rule (6.2,
 /// D136), the server's `Projection.sensitive` for a sensitive problem, `mayViewProblems` (access.dart)
 /// and `patients.view_sensitive`, held to it role by role in flags_test.dart through access.json.
-bool seesSensitiveFlags(Iterable<String> permissions) => throw UnimplementedError('P5-phone-domain');
+bool seesSensitiveFlags(Iterable<String> permissions) =>
+    mayViewProblems(permissions) && permissions.contains('patients.view_sensitive');
 
 /// The flag rule (6.2): true when [flag] is not one of the team's flags (null: the phone's copy of the
 /// presets doesn't hold it) or is sensitive and [permissions] don't see sensitive flags
 /// ([seesSensitiveFlags]). A hidden flag, and every change of it, is absent wherever the phone
 /// shows flags: never offered, never answered, never blanked. Team setup lists the team's flags by it.
-bool flagHidden(Iterable<String> permissions, FlagBody? flag) => throw UnimplementedError('P5-phone-domain');
+bool flagHidden(Iterable<String> permissions, FlagBody? flag) =>
+    flag == null || (flag.sensitive && !seesSensitiveFlags(permissions));
 
 // ------------------------------------------------------------------------------------------------
 // The two refusals a worker can fix (6.2, D121)

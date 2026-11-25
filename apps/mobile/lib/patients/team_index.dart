@@ -3,9 +3,15 @@ import 'dart:convert';
 import '../api/generated/api.dart' as api;
 import '../api/transport.dart';
 import '../presets/current_flags.dart' show CurrentFlags;
+import '../presets/models.dart' show FlagBody, PresetKind;
+import '../presets/preset_store.dart';
 import '../sync/local_store.dart';
 import '../sync/sync_engine.dart';
 import 'access.dart';
+import 'display.dart' show allergyBadge;
+import 'dob.dart' show Birth;
+import 'flags.dart' show flagHidden;
+import 'match_constants.dart' show searchMax;
 import 'patient_search.dart' show FoundPatient, searchNamesOf;
 
 /// The team search index on the phone (design section 6): every active patient's preferred name,
@@ -127,7 +133,33 @@ class TeamIndex {
   /// phone's copy of the presets doesn't hold, is left out, whatever projection the index was
   /// downloaded under. Null when the index holds no entry for the patient's canonical patient; an
   /// entry from before flags holds none.
-  CurrentFlags? flagsOf(String patientId) => throw UnimplementedError('P5-phone-index');
+  CurrentFlags? flagsOf(String patientId) {
+    final e = entry(patientId);
+    return e == null ? null : _shown(e.flags?.toJson(), _flagBodies());
+  }
+
+  /// The team's flags the phone's copy of the presets holds, archived ones included, by ID: what the
+  /// flag rule reads of each.
+  Map<String, FlagBody> _flagBodies() => {
+    for (final p in PresetStore(store).presets(kind: PresetKind.flag))
+      if (p.body case final FlagBody body) p.id: body,
+  };
+
+  /// An entry's `flags` (`{primary, secondary}`, flag IDs) less every flag the person's flag rule
+  /// hides ([flagHidden]), with [bodies] the flags the phone holds: the server's order kept. An entry
+  /// from before flags carries none.
+  CurrentFlags _shown(Object? flags, Map<String, FlagBody> bodies) {
+    bool shown(Object? id) => id is String && !flagHidden(permissions, bodies[id]);
+    final f = flags is Map<String, Object?> ? flags : const <String, Object?>{};
+    final primary = f['primary'];
+    return (
+      primary: shown(primary) ? primary! as String : null,
+      secondary: [
+        for (final id in f['secondary'] as List<Object?>? ?? const [])
+          if (shown(id)) id! as String,
+      ],
+    );
+  }
 
   /// The Patients tab's **Risk level** and **Conditions** filters (8.2; section 11, row 37), offline
   /// from the index: its patients carrying [riskLevel] (a primary flag's ID) and every one of
@@ -136,8 +168,84 @@ class TeamIndex {
   /// read (D21): `patient.searched` from the team index, naming the patients shown and never a flag.
   /// Empty with neither (no browsing), and for a flag the person may not see. Throws
   /// [ChartingPaused] while the store is frozen.
-  List<FoundPatient> withFlags({String? riskLevel, Set<String> conditions = const {}}) =>
-      throw UnimplementedError('P5-phone-index');
+  ///
+  /// Most recently seen first, then by preferred name, at most [searchMax] (what one audit entry
+  /// names, as Show more lists). The index is the server's word as of its last refresh: a change made
+  /// on this phone moves a patient in or out of a list once it has synced and the index has been
+  /// downloaded again.
+  List<FoundPatient> withFlags({String? riskLevel, Set<String> conditions = const {}}) {
+    if (store.frozen) throw ChartingPaused(store.frozenMessage!);
+    if (riskLevel == null && conditions.isEmpty) return const [];
+    expireIfStale();
+    final bodies = _flagBodies();
+    if ([?riskLevel, ...conditions].any((id) => flagHidden(permissions, bodies[id]))) return const [];
+    if (!state.present) return const [];
+    return store.transaction(() {
+      final matched = <(String, Map<String, Object?>)>[];
+      for (final row in store.database.select('SELECT patient_id, entry_json FROM team_index')) {
+        final id = row['patient_id']! as String;
+        // A record the phone knows was merged since is its survivor's to list, as [flagsOf] reads it.
+        if (store.canonicalPatient(id) != id) continue;
+        final e = jsonDecode(row['entry_json']! as String) as Map<String, Object?>;
+        final flags = _shown(e['flags'], bodies);
+        if (riskLevel != null && flags.primary != riskLevel) continue;
+        if (!conditions.every(flags.secondary.contains)) continue;
+        matched.add((id, e));
+      }
+      matched.sort((a, b) => _seenFirst(a.$1, a.$2, b.$1, b.$2));
+      final shown = [for (final (id, e) in matched.take(searchMax)) _row(id, e)];
+      store.appendAudit(
+        'patient.searched',
+        patientIds: [for (final r in shown) r.patientId],
+        resultCount: shown.length,
+        // Which flags were chosen is never logged (CO-14): the list names the patients shown only.
+        criteria: const [],
+        source: 'team_index',
+      );
+      return shown;
+    });
+  }
+
+  /// Index entries [x] of [a] and [y] of [b], most recently seen first (unseen last), then by preferred
+  /// name whatever its case, then by ID.
+  static int _seenFirst(String a, Map<String, Object?> x, String b, Map<String, Object?> y) {
+    final seen = (y['lastSeenOn'] as String? ?? '').compareTo(x['lastSeenOn'] as String? ?? '');
+    if (seen != 0) return seen;
+    String name(Map<String, Object?> e) => (e['preferredName'] as String? ?? '').toLowerCase();
+    final byName = name(x).compareTo(name(y));
+    return byName != 0 ? byName : a.compareTo(b);
+  }
+
+  /// One index entry [e] as a search row: the patient record's own fields where the phone holds them
+  /// (an edit made here is newer than the index), else the entry's; its street names, allergies and
+  /// duplicate hint from the entry, never the reviewer's note (D40, review P7). No legal name is read.
+  FoundPatient _row(String patientId, Map<String, Object?> e) {
+    final held = store.record(patientId)?.fields ?? const <String, LocalField>{};
+    String? pick(String field) => held.containsKey(field) ? held[field]!.value as String? : e[field] as String?;
+    List<Map<String, Object?>> listOf(String key) => [...?(e[key] as List<Object?>?)?.cast<Map<String, Object?>>()];
+    final allergies = [
+      for (final a in listOf('allergies')) (substance: a['substance']! as String, severity: a['severity'] as String?),
+    ];
+    final hint = e['duplicate'];
+    final duplicate = hint is Map<String, Object?> ? api.DuplicateHint.fromJson({...hint}..remove('note')) : null;
+    return FoundPatient(
+      patientId: patientId,
+      score: 0,
+      band: api.MatchBand.weak,
+      reasons: const [],
+      preferredName: pick('preferredName'),
+      aliases: [for (final a in listOf('aliases')) a['alias']! as String].take(5).toList(),
+      visualDescriptor: pick('visualDescriptor'),
+      birth: Birth.fromJson(held['birth']?.value ?? e['birth']),
+      usualArea: pick('usualArea'),
+      lastSeenOn: e['lastSeenOn'] as String?,
+      badge: allergyBadge(allergies, screen: (held['allergyScreen']?.value ?? e['allergyScreen']) as String?),
+      allergyCount: allergies.length,
+      severeAllergy: allergies.any((a) => a.severity == 'severe'),
+      possibleDuplicate: duplicate != null,
+      duplicate: duplicate,
+    );
+  }
 
   /// Checked at open, on every timer tick and before every search (6.3): an index not refreshed for
   /// [indexLifetime], or refreshed "later" than the phone's corrected clock (wound back), goes with
