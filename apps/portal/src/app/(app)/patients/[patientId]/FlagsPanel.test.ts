@@ -98,6 +98,10 @@ const props = (over: Partial<FlagsPanelProps> = {}): FlagsPanelProps => ({
 
 const draw = (over: Partial<FlagsPanelProps> = {}) =>
   renderToStaticMarkup(createElement(FlagsPanel, props(over)));
+
+/** Whether [html] holds an opening <[tag]> with every one of [attrs], in any order. */
+const hasTag = (html: string, tag: string, attrs: string[]) =>
+  [...html.matchAll(new RegExp(`<${tag}\\b[^>]*>`, 'g'))].some((m) => attrs.every((a) => m[0].includes(a)));
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
 describe('the Flags panel’s history', () => {
@@ -143,8 +147,11 @@ describe('the Flags panel’s history', () => {
 
   it('offers Entered in error only on the changes the person may mark', () => {
     const html = draw();
-    expect(html.match(/>Entered in error</g) ?? []).toHaveLength(1);
-    expect(draw({ markable: [] }).match(/>Entered in error</g) ?? []).toHaveLength(0);
+    // Its button, a form's or a plain one; the history's own words for a change marked are not one.
+    const buttons = (h: string) =>
+      h.match(/<button[^>]*>(?:(?!<\/button>).)*Entered in error(?:(?!<\/button>).)*<\/button>/gs) ?? [];
+    expect(buttons(html)).toHaveLength(1);
+    expect(buttons(draw({ markable: [] }))).toHaveLength(0);
   });
 });
 
@@ -152,17 +159,17 @@ describe('the Flags panel’s form', () => {
   it('offers each choice by its pill’s words, a removed flag only to clear, a private reason, and Save', () => {
     const html = draw();
     expect(html).toContain('<form');
-    expect(html).toMatch(/<select[^>]*name="flagId"/);
+    expect(hasTag(html, 'select', ['name="flagId"'])).toBe(true);
     for (const words of ['Red · Demo: High', 'Blue · Demo: Frost risk', 'Orange · Demo: Heat risk']) {
       expect(html).toContain(words);
     }
     expect(text(html)).toContain('No longer on the team’s list');
-    expect(html).toMatch(/<input[^>]*type="radio"[^>]*name="action"[^>]*value="set"/);
-    expect(html).toMatch(/<input[^>]*type="radio"[^>]*name="action"[^>]*value="clear"/);
-    expect(html).toMatch(/<textarea[^>]*name="reason"[^>]*>/);
-    expect(html).toMatch(/<textarea[^>]*autocomplete="off"/);
-    expect(html).toMatch(/<textarea[^>]*required=""/);
-    expect(html).toMatch(/<button[^>]*type="submit"[^>]*>Save<\/button>/);
+    expect(hasTag(html, 'input', ['type="radio"', 'name="action"', 'value="set"'])).toBe(true);
+    expect(hasTag(html, 'input', ['type="radio"', 'name="action"', 'value="clear"'])).toBe(true);
+    expect(hasTag(html, 'textarea', ['name="reason"', 'autocomplete="off"', 'required=""'])).toBe(true);
+    expect(html).toMatch(
+      /<button[^>]*type="submit"[^>]*>(?:(?!<\/button>).)*Save(?:(?!<\/button>).)*<\/button>/s,
+    );
     // The change's ID lives with the form, never in the address.
     expect(html).not.toContain(`?${FORM_ID}`);
   });

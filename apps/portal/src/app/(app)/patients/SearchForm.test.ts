@@ -61,10 +61,13 @@ describe('the search’s flag fields', () => {
     expect(select![1]).toContain('Red · Demo: High');
     expect(select![1]).toContain('Yellow · Demo: Medium');
     expect(select![1]).not.toContain('Demo: Frost risk');
+    const inputs = [...form.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
     for (const f of flags.slice(2)) {
-      expect(form).toMatch(
-        new RegExp(`<input[^>]*type="checkbox"[^>]*name="conditions"[^>]*value="${f.flagId}"`),
-      );
+      const attrs = ['type="checkbox"', 'name="conditions"', `value="${f.flagId}"`];
+      expect(
+        inputs.some((i) => attrs.every((a) => i.includes(a))),
+        f.name,
+      ).toBe(true);
     }
     expect(form).toContain('Blue · Demo: Frost risk');
     expect(form).toContain('Teal · Demo: Wet feet');
