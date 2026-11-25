@@ -208,18 +208,6 @@ class _FlagSheetState extends ConsumerState<FlagSheet> {
     super.dispose();
   }
 
-  /// Cut at the limit as it is typed, in code points, as the store and the server count it.
-  void _typed(String typed) {
-    final limited = limitCodePoints(typed, flagReasonMax);
-    if (limited != typed) {
-      _reason.value = TextEditingValue(
-        text: limited,
-        selection: TextSelection.collapsed(offset: limited.length),
-      );
-    }
-    setState(() {});
-  }
-
   String? _levelOf(PatientFlagsView now) => _level == null ? now.riskLevel?.flagId : _level!.flagId;
 
   Set<String> _conditionsOf(PatientFlagsView now) {
@@ -420,7 +408,7 @@ class _FlagSheetState extends ConsumerState<FlagSheet> {
                       ),
                     ),
                     const SizedBox(height: FieldSpace.s4),
-                    FlagReasonBox(controller: _reason, onChanged: _typed),
+                    FlagReasonBox(controller: _reason, onChanged: (_) => setState(() {})),
                   ],
 
                   // ---- the history ----
@@ -469,21 +457,44 @@ class _FlagSheetState extends ConsumerState<FlagSheet> {
 /// A change the sheet listed that the phone no longer holds by the time it was marked (a purge).
 const flagChangeGone = 'This change isn’t on this phone any more. Open the flags again.';
 
-/// The flags sheet's and Needs attention's reason box: a private box (D126) whose text is cut at
-/// [flagReasonMax] code points as it is typed, with its count under it.
+/// A flag change's reason box, in the flags sheet, intake and Needs attention: a private box (D126)
+/// named `phi.<name>`, whose text is cut at [flagReasonMax] code points as it is typed, as the store
+/// and the server count it, with its count under it.
 class FlagReasonBox extends StatelessWidget {
-  const FlagReasonBox({super.key, required this.controller, required this.onChanged, this.focusNode});
+  const FlagReasonBox({
+    super.key,
+    required this.controller,
+    this.name = 'flagReason',
+    this.label = 'Reason',
+    this.onChanged,
+    this.focusNode,
+  });
   final TextEditingController controller;
-  final ValueChanged<String> onChanged;
+  final String name;
+  final String label;
+
+  /// Called with the text as kept, after a cut.
+  final ValueChanged<String>? onChanged;
   final FocusNode? focusNode;
+
+  void _typed(String typed) {
+    final limited = limitCodePoints(typed, flagReasonMax);
+    if (limited != typed) {
+      controller.value = TextEditingValue(
+        text: limited,
+        selection: TextSelection.collapsed(offset: limited.length),
+      );
+    }
+    onChanged?.call(limited);
+  }
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       PhiField(
-        name: 'flagReason',
-        label: 'Reason',
+        name: name,
+        label: label,
         controller: controller,
         focusNode: focusNode,
         maxLines: 4,
@@ -491,12 +502,15 @@ class FlagReasonBox extends StatelessWidget {
         showCounter: false,
         capitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.newline,
-        onChanged: onChanged,
+        onChanged: _typed,
       ),
       const SizedBox(height: FieldSpace.s1),
-      Text(
-        '${count(controller.text.runes.length)} of ${count(flagReasonMax)} characters',
-        style: Theme.of(context).textTheme.bodyMedium,
+      ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => Text(
+          '${count(controller.text.runes.length)} of ${count(flagReasonMax)} characters',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ),
     ],
   );

@@ -17,13 +17,17 @@ import '../../design/widgets/form_bits.dart';
 import '../../design/widgets/status_chip.dart';
 import '../../patients/consent_script.dart';
 import '../../patients/dob.dart';
+import '../../patients/flags.dart' show FlagView;
 import '../../patients/match_constants.dart' show estimateRange;
 import '../../patients/patient_providers.dart';
 import '../../patients/patient_repository.dart';
 import '../../patients/patient_search.dart';
+import '../../presets/models.dart' show FlagTier;
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
 import '../../sync/sync_controller.dart' show SyncController;
+import '../presets/team_setup_screen.dart' show setupNotDownloaded;
 import 'duplicate_panel.dart';
+import 'flag_sheet.dart';
 import 'patient_labels.dart';
 import 'patient_row.dart';
 import 'patient_widgets.dart';
@@ -83,6 +87,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   final _substance = TextEditingController();
   final _reaction = TextEditingController();
   final _noticeReason = TextEditingController();
+  final _riskReason = TextEditingController();
 
   final _preferredFocus = FocusNode();
   final _aliasFocus = FocusNode();
@@ -93,6 +98,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   final _livingOtherFocus = FocusNode();
   final _substanceFocus = FocusNode();
   final _noticeReasonFocus = FocusNode();
+  final _riskReasonFocus = FocusNode();
   final _errorsKey = GlobalKey();
   final _consentKey = GlobalKey();
 
@@ -114,6 +120,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   String? _category;
   String? _severity;
   IdCardAnswer _card = IdCardAnswer.askLater;
+
+  /// The risk level picked (a flag ID), or null for None (phase 5 design 8.2).
+  String? _riskLevel;
 
   MatchRun? _match;
   String? _matchKey;
@@ -207,6 +216,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       _substance,
       _reaction,
       _noticeReason,
+      _riskReason,
     ]) {
       c.dispose();
     }
@@ -220,6 +230,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       _livingOtherFocus,
       _substanceFocus,
       _noticeReasonFocus,
+      _riskReasonFocus,
       ..._aliasRemoveFocus,
       ..._allergyRemoveFocus,
     ]) {
@@ -288,6 +299,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       );
     }
     _card = IdCardAnswer.values.where((c) => c.name == d['card']).firstOrNull ?? _card;
+    // A level the team's list no longer offers isn't picked again.
+    final level = d['riskLevel'];
+    if (_s.flags.teamFlags(FlagTier.primary).any((f) => f.flagId == level)) _riskLevel = level as String?;
+    _riskReason.text = text('riskLevelReason');
   }
 
   bool get _legalNameTyped => _given.text.trim().isNotEmpty || _family.text.trim().isNotEmpty;
@@ -330,6 +345,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         {'substance': a.substance, 'category': a.category, 'severity': a.severity, 'reaction': a.reaction},
     ],
     'card': _card.name,
+    'riskLevel': _riskLevel,
+    'riskLevelReason': _riskReason.text,
   };
 
   List<TextEditingController> get _textControllers => [
@@ -343,6 +360,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     _substance,
     _reaction,
     _noticeReason,
+    _riskReason,
   ];
 
   /// Something worth a draft: typed text (a name the form filled in doesn't count), a list item, a
@@ -358,13 +376,15 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
         _livingOther,
         _substance,
         _reaction,
+        _riskReason,
       ].any((c) => c.text.trim().isNotEmpty) ||
       _aliases.isNotEmpty ||
       !_birth.isEmpty ||
       _allergies.isNotEmpty ||
       _consent != null ||
       _living != null ||
-      _language != null;
+      _language != null ||
+      _riskLevel != null;
 
   /// A person who declines is not recorded (11.2), so neither is a draft of their details.
   bool get _declined => _consent == _Consent.declines;
@@ -518,6 +538,8 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       (message: 'Say what “Other” means for their living situation.', focus: _livingOtherFocus, key: null),
     if (_substance.text.trim().isNotEmpty)
       (message: 'Add the allergy you started, or clear it.', focus: _substanceFocus, key: null),
+    if (_riskLevelToSave() != null && _riskReason.text.trim().isEmpty)
+      (message: 'Give a reason for the risk level.', focus: _riskReasonFocus, key: null),
   ];
 
   /// Errors listed at the top in a live region, each linked to its field; focus to the first.
@@ -539,6 +561,37 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
     } else if (e.key?.currentContext case final ctx?) {
       unawaited(Scrollable.ensureVisible(ctx));
     }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The risk level (phase 5 design 8.2)
+  // ---------------------------------------------------------------------------------------------
+
+  /// Where intake can't set a risk level, why, in the design's words; null where it can. The patient
+  /// saves without one either way.
+  String? _riskLevelBlocked(bool paused) => !_s.flags.presetsHeld
+      ? setupNotDownloaded
+      : paused
+      ? 'A risk level can be set once the phone’s clock is right.'
+      : null;
+
+  /// The risk level picked, as the team's list offers it now: none for a level it no longer does.
+  FlagView? _pickedLevel() =>
+      _riskLevel == null ? null : _s.flags.teamFlags(FlagTier.primary).where((f) => f.flagId == _riskLevel).firstOrNull;
+
+  /// The risk level Create saves with the patient: the one picked, where intake can set one now.
+  FlagView? _riskLevelToSave() => _riskLevelBlocked(_sync.snapshot.clock.paused) == null ? _pickedLevel() : null;
+
+  Future<void> _chooseRiskLevel() async {
+    final chosen = await showRiskLevelChooser(
+      context,
+      _s,
+      levels: _s.flags.teamFlags(FlagTier.primary),
+      current: _pickedLevel()?.flagId,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _riskLevel = chosen.flagId);
+    if (chosen.flagId != null) WidgetsBinding.instance.addPostFrameCallback((_) => _riskReasonFocus.requestFocus());
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -597,6 +650,10 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
           allergies: List.of(_allergies),
           idCard: _card,
           matchCheck: run?.matchCheck(dismissed: _dismissed),
+          riskLevel: switch (_riskLevelToSave()) {
+            final level? => (flagId: level.flagId, reason: _riskReason.text),
+            null => null,
+          },
         ),
       );
       // The create took the draft with it.
@@ -902,6 +959,7 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
                       ..._lookSection(),
                       ..._livingSection(),
                       ..._allergySection(),
+                      if (!_isEdit) _riskLevelSection(sync.snapshot.clock.paused),
                       if (!_isEdit) ..._cardSection(sync.snapshot.clock.paused),
                       if (!_isEdit) ...[
                         const SectionHeading('Photo'),
@@ -1428,6 +1486,52 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
       ],
     ];
   }
+
+  // ---- the risk level (phase 5 design 8.2) ----
+
+  /// A new patient's risk level: optional, None by default; once one is picked, its reason, required
+  /// (a private box). No conditions here: the profile's flags row sets them. Where the presets aren't
+  /// held, or while the clock is paused, the row says why and offers nothing, and the patient saves
+  /// without one. It hears the team's services, so a pull or a cleared copy shows at once.
+  Widget _riskLevelSection(bool paused) => ListenableBuilder(
+    listenable: _s,
+    builder: (context, _) {
+      final text = Theme.of(context).textTheme;
+      final blocked = _riskLevelBlocked(paused);
+      final level = _pickedLevel();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SectionHeading(riskLevelLabel),
+          if (blocked != null)
+            Text(blocked, style: text.bodyLarge)
+          else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: level == null ? Text(noRiskLevelText, style: text.bodyLarge) : FlagMark(flag: level),
+            ),
+            const SizedBox(height: FieldSpace.s2),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton(
+                onPressed: () => unawaited(_chooseRiskLevel()),
+                child: const Text(chooseRiskLevelAction),
+              ),
+            ),
+            if (level != null) ...[
+              const SizedBox(height: FieldSpace.s3),
+              FlagReasonBox(
+                name: 'riskLevelReason',
+                label: 'Reason for the risk level',
+                controller: _riskReason,
+                focusNode: _riskReasonFocus,
+              ),
+            ],
+          ],
+        ],
+      );
+    },
+  );
 
   // ---- the ID card question ----
 
