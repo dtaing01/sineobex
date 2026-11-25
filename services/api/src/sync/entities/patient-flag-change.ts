@@ -215,8 +215,9 @@ export const flagChangeRules: EntityRules<Value> = {
     const stored = await insertFlagChange(ctx.tx, ctx.audit, {
       id: c.recordId,
       teamId: ctx.actor.teamId,
-      patientId: v.patientId,
-      flagId: v.flagId,
+      // IDs as the database writes them, so its event names the flag as stored, as the route's does.
+      patientId: v.patientId.toLowerCase(),
+      flagId: v.flagId.toLowerCase(),
       action: v.action,
       reason: v.reason,
       authorUserId: ctx.actor.authorId,

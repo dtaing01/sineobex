@@ -375,6 +375,32 @@ describe('phase 5 sync: flag changes', () => {
     expect(text).not.toContain(presetId('flag.pregnancy'));
   });
 
+  it('reads IDs in capitals as the database writes them, from a phone: stored and read in lowercase', async () => {
+    // A patient of its own, so no other case reads this change.
+    const patient = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Cedar' })).id;
+    const low = presetId('flag.low');
+    const made = await flagChange(kim, patient.toUpperCase(), low.toUpperCase());
+    const before = await auditMark(h);
+    expect(await kim.send(made)).toEqual([taken(made)]);
+    expect(await row(made.recordId)).toMatchObject({ patientId: patient, flagId: low });
+    // Logged by the flag's ID as stored, as the route logs it.
+    const [event] = await expectAudit(h, 'patient_flag.changed', { after: before, count: 1 });
+    expect(event).toMatchObject({ patientId: patient, details: { flagId: low } });
+    const read = await call(h, '/v1/sync/records', {
+      method: 'POST',
+      token: kim.token,
+      teamId: t.teamId,
+      json: { records: [{ entity: FLAG_CHANGE, id: made.recordId }] },
+    });
+    expect((read.body.records as { attributes: Record<string, unknown> }[])[0]!.attributes).toMatchObject({
+      patientId: patient,
+      flagId: low,
+    });
+    // On the chart under its flag.
+    const chart = await call(h, `/v1/patients/${patient}`, { token: kim.token, teamId: t.teamId });
+    expect((chart.body.flags as { primary: { flagId: string } | null }).primary!.flagId).toBe(low);
+  });
+
   it('is never later than the server’s receipt: a phone clock ahead is taken at the receipt', async () => {
     const ahead = await flagChange(kim, patientB, presetId('flag.low'), {
       deviceTime: fromNow(24 * 60),
