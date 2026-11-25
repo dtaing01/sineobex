@@ -415,11 +415,11 @@ test.describe('note types, /team/presets/note-types', () => {
     expectOnlyKeys(traffic.addresses);
   });
 
-  test('staff without the permission are refused Note types and a note type’s page at a typed address, each logged once', async ({
+  test('staff without the permission are refused Note types, a note type’s page and Field supplies at a typed address, each logged once', async ({
     page,
   }) => {
     await signIn(page, 'clinician@example.com');
-    for (const address of [LIST, `${LIST}/outreach`]) {
+    for (const address of [LIST, `${LIST}/outreach`, '/team/presets/field-supplies']) {
       const before = (await deniedOf('clinician@example.com')).length;
       await page.goto(address);
       await expect(page).toHaveURL(/\/home\?denied=1$/);
@@ -767,5 +767,506 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await editor.publish.click();
     await expect(page).toHaveURL(new RegExp(`${LIST}/${key}\\?published=2$`));
     expect(await noteType(key)).toMatchObject({ version: 2, title: 'Demo: Late round, renamed' });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Field supplies: a mapping from a field, a grid's cell or every note of a type to the items it
+// suggests, named in the words of its note type's current version (design 4.4, 8.1)
+// ------------------------------------------------------------------------------------------------
+
+const SUPPLIES = '/team/presets/field-supplies';
+const SENSITIVE = 'Only some people may read this answer, so it can’t suggest supplies.';
+const FIELD_HINT = 'Map the answer that means something was given, not the question that asks about it.';
+const LINES_HINT =
+  'Suggested on the supply screen after the note, for staff to confirm or change before they sign.';
+
+/**
+ * Field supplies' addresses: the page, and the notice of an act on a mapping, by its ID only, with
+ * the field an error summary's link moved to.
+ */
+function expectOnlyIds(addresses: string[]) {
+  for (const address of addresses)
+    expect(address).toMatch(
+      /\/team\/presets(\/field-supplies)?(\?(done|refused)=[a-z_]+&preset=[0-9a-f-]{36})?(#[A-Za-z0-9.-]+)?$|\/(home(\?denied=1)?|sign-in.*|reauth.*)$/,
+    );
+}
+
+type Mapping = {
+  id: string;
+  name: string;
+  state: 'active' | 'archived';
+  version: number;
+  body: {
+    name: string;
+    noteTypeKey: string;
+    path?: string;
+    when?: Record<string, unknown>;
+    lines: { itemId: string; qty: number | { fromPath: string } }[];
+  };
+};
+
+/** The team's field supply mappings as the API lists them, removed ones included. */
+async function mappings(): Promise<Mapping[]> {
+  const res = await apiCall(await admin(), 'GET', '/v1/admin/presets/field_supply_map');
+  expect(res.status).toBe(200);
+  return (await res.json()) as Mapping[];
+}
+const mapping = async (id: string) => (await mappings()).find((m) => m.id === id)!;
+
+/** The team's active items, by name. */
+async function itemIds(): Promise<Record<string, string>> {
+  const res = await apiCall(await admin(), 'GET', '/v1/admin/presets/item');
+  expect(res.status).toBe(200);
+  const rows = (await res.json()) as { id: string; name: string; state: string }[];
+  return Object.fromEntries(rows.filter((r) => r.state === 'active').map((r) => [r.name, r.id]));
+}
+
+/** A mapping added as another admin would add it; its ID. */
+async function mapped(body: Mapping['body']): Promise<string> {
+  const res = await apiCall(await admin(), 'POST', '/v1/admin/presets/field_supply_map', {
+    body,
+    reason: 'Demo: set up for a test',
+  });
+  expect(res.status, body.name).toBe(201);
+  return ((await res.json()) as { id: string }).id;
+}
+
+/** Another admin's edit of a mapping, at the version it is at now; its new version. */
+async function mappingChangedMeanwhile(id: string, change: (body: Mapping['body']) => Mapping['body']) {
+  const now = await mapping(id);
+  const res = await apiCall(await admin(), 'PUT', `/v1/admin/presets/field_supply_map/${id}`, {
+    baseVersion: now.version,
+    body: change(now.body),
+    reason: 'Demo: another admin’s change',
+  });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { version: number }).version;
+}
+
+const byName = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+
+test.describe('field supplies, /team/presets/field-supplies', () => {
+  test('@responsive a Program Admin opens Field supplies from the hub and finds each mapping in its note type’s words, with its items, accessible in all three themes', async ({
+    page,
+  }) => {
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+    await page.goto('/team/presets');
+    const all = await mappings();
+    const active = all
+      .filter((m) => m.state === 'active')
+      .sort((a, b) => byName.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
+    const removed = all.length - active.length;
+    const card = page.getByRole('main').getByRole('listitem').filter({ hasText: 'Field supplies' });
+    await expect(card).toContainText(`${active.length} ${active.length === 1 ? 'mapping' : 'mappings'}`);
+    await card.getByRole('link', { name: 'Field supplies', exact: true }).click();
+    await expect(page).toHaveURL(/\/team\/presets\/field-supplies$/);
+    await expect(page).toHaveTitle('Field supplies · Sineobex');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Field supplies');
+    await expect(portalNav(page).getByRole('link', { name: 'Presets', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    // Each mapping A to Z, as the API sorts names, then Add a mapping, then Removed when any is.
+    const main = page.getByRole('main');
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText([
+      ...active.map((m) => m.name),
+      'Add a mapping',
+      ...(removed > 0 ? [`Removed (${removed})`] : []),
+    ]);
+    const titles = Object.fromEntries((await noteTypes()).map((n) => [n.key, n.title]));
+    for (const m of active) {
+      const section = main.getByRole('region', { name: m.name, exact: true });
+      await expect(fact(section, 'Note type')).toHaveText(titles[m.body.noteTypeKey]!);
+      if (m.body.path === undefined)
+        await expect(fact(section, 'Field')).toHaveText('Every note of this type');
+      await expect(fact(section, 'Items').getByRole('listitem')).toHaveCount(m.body.lines.length);
+      await expect(section.getByRole('button', { name: `Edit ${m.name}`, exact: true })).toBeVisible();
+      await expect(section.getByRole('button', { name: `Remove ${m.name}`, exact: true })).toBeVisible();
+      await expect(section.getByRole('region', { name: `History of ${m.name}` })).toBeVisible();
+      // Sineobex's own fire on fields of the versions the team holds.
+      if (!m.name.startsWith('Demo:')) await expect(section).not.toContainText('suggests nothing');
+    }
+    // Sineobex's own, from the PRD's examples (main 424-431): a grid's cell, a choose-many's answer,
+    // and any answer at all.
+    const flu = main.getByRole('region', { name: 'General / primary care: Flu vaccine given', exact: true });
+    await expect(fact(flu, 'Field')).toHaveText('Preventative care: Status for each vaccine: Flu');
+    await expect(fact(flu, 'Answer')).toHaveText('Given today');
+    await expect(fact(flu, 'Items').getByRole('listitem')).toHaveText(['Flu vaccine × 1']);
+    const xeroform = main.getByRole('region', { name: 'Wound care: Xeroform applied', exact: true });
+    await expect(fact(xeroform, 'Field')).toHaveText('Wound: Wound treatment: Dressing');
+    await expect(fact(xeroform, 'Answer')).toHaveText('Xeroform');
+    const dressing = main.getByRole('region', { name: 'Wound care: dressing applied', exact: true });
+    await expect(fact(dressing, 'Answer')).toHaveText('Any answer');
+    await expect(fact(dressing, 'Items').getByRole('listitem')).toHaveText(['Gauze × 1', 'Bandage × 1']);
+    await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+
+    // Add a mapping: its note type from the team's active ones, as the list orders them; 8.1's hint
+    // under the field.
+    const add = page.getByRole('form', { name: 'Add a mapping' });
+    const offered = (await noteTypes()).filter((n) => n.state === 'active').map((n) => n.title);
+    await expect(add.getByLabel('Note type', { exact: true }).getByRole('option')).toHaveText([
+      'Choose a note type',
+      ...offered,
+    ]);
+    await expect(add.getByLabel('Field', { exact: true })).toHaveAccessibleDescription(FIELD_HINT);
+    await expect(add.getByLabel('Field', { exact: true }).getByRole('option')).toHaveText([
+      'Every note of this type',
+    ]);
+    await expect(add.getByLabel('Name', { exact: true })).toHaveAccessibleDescription(
+      /Don’t put patient names here\.$/,
+    );
+    await expect(add.getByRole('group', { name: 'Items' })).toHaveAccessibleDescription(LINES_HINT);
+
+    await expectAccessible(page, SUPPLIES);
+    await expectReflow(page, SUPPLIES);
+    await expectNothingStored(page, SUPPLIES);
+    expectOnlyIds(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('adding a mapping asks a reason first, then says each field beside it, refuses an answer only some people may read, keeps what was chosen, and adds one on a field and one on every note', async ({
+    page,
+  }) => {
+    test.slow();
+    const items = await itemIds();
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(SUPPLIES);
+    const form = page.getByRole('form', { name: 'Add a mapping' });
+    const name = form.getByLabel('Name', { exact: true });
+    const noteType = form.getByLabel('Note type', { exact: true });
+    const field = form.getByLabel('Field', { exact: true });
+    const answer = form.getByLabel('Answer', { exact: true });
+    const reason = form.getByLabel('Reason');
+    const add = form.getByRole('button', { name: 'Add mapping' });
+    const alert = form.getByRole('alert');
+    const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+
+    // Nothing chosen: the reason is asked first, as the API reads the request before the body.
+    await add.click();
+    await expect(alert).toBeFocused();
+    await expect(alert.getByRole('link')).toHaveText([REASON_LINE]);
+
+    // A reason, and nothing else: each field said beside it.
+    await reason.fill('Demo: what the night round gives out');
+    await add.click();
+    await expect(alert.locator('.px-alert__title')).toHaveText(FIELDS_TITLE);
+    await expect(alert.getByRole('link')).toHaveText([
+      'Name: Enter a name of 1 to 80 characters.',
+      'Note type: Choose a note type.',
+      'Items: Give the mapping 1 to 10 items.',
+    ]);
+    await expectAccessible(page, 'Add a mapping, refused', { inPlace: true });
+    await expectReflow(page, 'Add a mapping, refused');
+    await alert.getByRole('link', { name: 'Note type: Choose a note type.' }).click();
+    await expect(noteType).toBeFocused();
+
+    // A field in a sensitive exam: 8.1's sentence, in the summary and beside the field, and every
+    // choice kept.
+    await name.fill('Demo: Gloves for an exam');
+    await noteType.selectOption({ label: 'General / primary care' });
+    await field.selectOption('gu.performed');
+    await expect(answer.getByRole('option')).toHaveText(['Ticked']);
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(1).getByLabel('Item').selectOption({ label: 'Gauze' });
+    await add.click();
+    await expect(alert.locator('.px-alert__title')).toHaveText(SENSITIVE);
+    await expect(alert.getByRole('link')).toHaveText([`Field: ${SENSITIVE}`]);
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(noteType).toHaveValue('general_primary_care');
+    await expect(field).toHaveValue('gu.performed');
+    await expect(name).toHaveValue('Demo: Gloves for an exam');
+    await expect(line(1).getByLabel('Item')).toHaveValue(items.Gauze!);
+    await expectAccessible(page, 'Add a mapping, refused sensitive_path', { inPlace: true });
+    await expectReflow(page, 'Add a mapping, refused sensitive_path');
+
+    // A note type only some people may read, on every note of it: refused as a whole, beside it.
+    await noteType.selectOption({ label: 'Harm reduction' });
+    await expect(field).toHaveValue('');
+    await expect(answer).toHaveCount(0);
+    await add.click();
+    await expect(alert.getByRole('link')).toHaveText([`Note type: ${SENSITIVE}`]);
+    expect((await mappings()).some((m) => m.name === 'Demo: Gloves for an exam')).toBe(false);
+
+    // On an answer of a choose-many: added, with its history, and the form ready for the next one.
+    await name.fill('Demo: Socks with clothing');
+    await noteType.selectOption({ label: 'Outreach' });
+    await field.selectOption({ label: 'Support provided' });
+    await expect(answer.getByRole('option')).toHaveText([
+      'Any answer',
+      'Food',
+      'Clothing',
+      'Hygiene',
+      'Phone',
+      'Charging',
+      'Transportation',
+      'Supplies',
+      'Information',
+    ]);
+    await answer.selectOption({ label: 'Clothing' });
+    await line(1).getByLabel('Item').selectOption({ label: 'Socks' });
+    await line(1).getByLabel('Quantity').fill('2');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: Socks with clothing. It’s on the phones after their next sync.',
+    );
+    const socks = (await mappings()).find((m) => m.name === 'Demo: Socks with clothing')!;
+    expect(socks).toMatchObject({
+      version: 1,
+      body: {
+        noteTypeKey: 'outreach',
+        path: 'outreach.support',
+        when: { includes: 'clothing' },
+        lines: [{ itemId: items.Socks, qty: 2 }],
+      },
+    });
+    const section = page.getByRole('region', { name: 'Demo: Socks with clothing', exact: true });
+    await expect(fact(section, 'Note type')).toHaveText('Outreach');
+    await expect(fact(section, 'Field')).toHaveText('Outreach / community encounter: Support provided');
+    await expect(fact(section, 'Answer')).toHaveText('Clothing');
+    await expect(fact(section, 'Items')).toHaveText('Socks × 2');
+    const made = section
+      .getByRole('region', { name: 'History of Demo: Socks with clothing' })
+      .getByRole('row', { name: /Added, version 1/ });
+    await expect(made).toContainText('Demo: what the night round gives out');
+    await expect(name).toHaveValue('');
+    await expect(noteType).toHaveValue('');
+    await expect(field).toHaveValue('');
+    await expect(form.getByRole('group', { name: 'Items' })).toContainText('None yet.');
+    await expect(reason).toHaveValue('');
+
+    // On every note of a type: no field, no answer.
+    await name.fill('Demo: A hygiene kit with every needs note');
+    await noteType.selectOption({ label: 'Social needs' });
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(1).getByLabel('Item').selectOption({ label: 'Hygiene kit' });
+    await reason.fill('Demo: every needs visit gets one');
+    await add.click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Added: Demo: A hygiene kit with every needs note. It’s on the phones after their next sync.',
+    );
+    const every = (await mappings()).find((m) => m.name === 'Demo: A hygiene kit with every needs note')!;
+    expect(every.body).toEqual({
+      name: 'Demo: A hygiene kit with every needs note',
+      noteTypeKey: 'social_needs',
+      lines: [{ itemId: items['Hygiene kit'], qty: 1 }],
+    });
+    await expect(
+      fact(
+        page.getByRole('region', { name: 'Demo: A hygiene kit with every needs note', exact: true }),
+        'Field',
+      ),
+    ).toHaveText('Every note of this type');
+
+    await expectNothingStored(page, 'Field supplies after an add');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('editing a mapping changes its answer and items at its next version and stays stale until reloaded; a field hidden and an answer retired since are each said to suggest nothing', async ({
+    page,
+  }) => {
+    test.slow();
+    const items = await itemIds();
+    const key = await added({ title: 'Demo: Supply round', copyOf: 'outreach' });
+    const id = await mapped({
+      name: 'Demo: Food on the supply round',
+      noteTypeKey: key,
+      path: 'outreach.support',
+      when: { includes: 'food' },
+      lines: [{ itemId: items['Food kit']!, qty: 1 }],
+    });
+    await mapped({
+      name: 'Demo: Notes on the supply round',
+      noteTypeKey: key,
+      path: 'outreach.notes',
+      when: { answered: true },
+      lines: [{ itemId: items.Socks!, qty: 1 }],
+    });
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    await page.goto(SUPPLIES);
+    const section = (name: string) => page.getByRole('region', { name, exact: true });
+    const food = section('Demo: Food on the supply round');
+    await food.getByRole('button', { name: 'Edit Demo: Food on the supply round', exact: true }).click();
+    const form = food.getByRole('form', { name: 'Edit Demo: Food on the supply round' });
+    const line = (n: number) => form.getByRole('group', { name: `Line ${n}`, exact: true });
+    // Its note type and field are shown, and can't be changed: only the answer at the field can.
+    await expect(form.getByLabel('Note type', { exact: true })).toHaveValue('Demo: Supply round');
+    await expect(form.getByLabel('Note type', { exact: true })).toHaveAttribute('readonly', '');
+    await expect(form.getByLabel('Note type', { exact: true })).toHaveAccessibleDescription(
+      'Which note type a mapping is for can’t be changed later.',
+    );
+    await expect(form.getByLabel('Field', { exact: true })).toHaveValue(
+      'Outreach / community encounter: Support provided',
+    );
+    await expect(form.getByLabel('Answer', { exact: true })).toHaveValue('includes:food');
+    await expect(line(1).getByLabel('Item')).toHaveValue(items['Food kit']!);
+
+    // Another answer, a count and another line: saved at version 2, with its history.
+    await form.getByLabel('Answer', { exact: true }).selectOption({ label: 'Hygiene' });
+    await line(1).getByLabel('Quantity').fill('2');
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await line(2).getByLabel('Item').selectOption({ label: 'Hygiene kit' });
+    await form.getByLabel('Reason').fill('Demo: hygiene kits go with food');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('status')).toHaveText(
+      'Saved: Demo: Food on the supply round. It’s on the phones after their next sync.',
+    );
+    expect(await mapping(id)).toMatchObject({
+      version: 2,
+      body: {
+        noteTypeKey: key,
+        path: 'outreach.support',
+        when: { includes: 'hygiene' },
+        lines: [
+          { itemId: items['Food kit'], qty: 2 },
+          { itemId: items['Hygiene kit'], qty: 1 },
+        ],
+      },
+    });
+    await expect(fact(food, 'Answer')).toHaveText('Hygiene');
+    await expect(fact(food, 'Items').getByRole('listitem')).toHaveText(['Food kit × 2', 'Hygiene kit × 1']);
+    await expect(
+      food
+        .getByRole('region', { name: 'History of Demo: Food on the supply round' })
+        .getByRole('row', { name: /Edited, version 2/ }),
+    ).toContainText('Demo: hygiene kits go with food');
+
+    // Another admin edits it meanwhile: this form, at version 2, is stale, keeps what was chosen, and
+    // stays so.
+    expect(await mappingChangedMeanwhile(id, (b) => ({ ...b, lines: b.lines.slice(0, 1) }))).toBe(3);
+    await form.getByLabel('Answer', { exact: true }).selectOption({ label: 'Any answer' });
+    await form.getByLabel('Reason').fill('Demo: any support given');
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    await expect(form.getByLabel('Answer', { exact: true })).toHaveValue('answered:');
+    await expectAccessible(page, 'Edit a mapping, stale', { inPlace: true });
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(form.getByRole('alert')).toHaveText(STALE);
+    expect(await mapping(id)).toMatchObject({ version: 3, body: { when: { includes: 'hygiene' } } });
+
+    // Another admin retires the answer and hides the other mapping's field: the page says each
+    // mapping suggests nothing now, and names the hidden field as stored.
+    await publishedMeanwhile(key, [
+      { op: 'retire_option', path: 'outreach.support', code: 'hygiene' },
+      { op: 'set_hidden', path: 'outreach.notes', hidden: true },
+    ]);
+    await page.reload();
+    await expect(food).toContainText(
+      'This answer was retired from the note type’s current version, so this mapping suggests nothing.',
+    );
+    await expect(fact(food, 'Answer')).toHaveText('hygiene');
+    const notes = section('Demo: Notes on the supply round');
+    await expect(notes).toContainText(
+      'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
+    );
+    await expect(fact(notes, 'Field')).toHaveText('outreach.notes');
+    await expectAccessible(page, 'Field supplies, a field hidden and an answer retired');
+    await expectReflow(page, 'Field supplies, a field hidden and an answer retired');
+
+    await expectNothingStored(page, 'Field supplies after an edit');
+    expectOnlyIds(traffic.addresses);
+  });
+
+  test('a note type a mapping names can’t be removed until the mapping is; a removed mapping goes to Removed and comes back with Restore', async ({
+    page,
+  }) => {
+    test.slow();
+    const items = await itemIds();
+    const key = await added({ title: 'Demo: Mapped round', copyOf: 'outreach' });
+    const id = await mapped({
+      name: 'Demo: Socks on every mapped round',
+      noteTypeKey: key,
+      lines: [{ itemId: items.Socks!, qty: 1 }],
+    });
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+
+    // The note type: Remove is refused while the mapping names it.
+    await page.goto(LIST);
+    const round = page.getByRole('region', { name: 'Demo: Mapped round', exact: true });
+    await expect(fact(round, 'Used by')).toHaveText('1 mapping');
+    await round.getByRole('button', { name: 'Remove Demo: Mapped round', exact: true }).click();
+    const removeRound = round.getByRole('form', { name: 'Remove Demo: Mapped round' });
+    await removeRound.getByLabel('Reason').fill('Demo: not run any more');
+    await removeRound.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(removeRound.getByRole('alert')).toHaveText(
+      'Still used by 1 mapping. Take it out of that first.',
+    );
+    await expectAccessible(page, 'Remove a note type a mapping names, refused', { inPlace: true });
+
+    // The mapping: removed, and listed under Removed.
+    await page.goto(SUPPLIES);
+    await page.getByRole('button', { name: 'Remove Demo: Socks on every mapped round', exact: true }).click();
+    const remove = page.getByRole('form', { name: 'Remove Demo: Socks on every mapped round' });
+    await remove.getByLabel('Reason').fill('Demo: the round is ending');
+    await remove.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${SUPPLIES}\\?done=removed&preset=${id}$`));
+    await expect(
+      page.getByRole('heading', { name: 'Removed: Demo: Socks on every mapped round' }),
+    ).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'Demo: Socks on every mapped round', exact: true }),
+    ).toHaveCount(0);
+    const removed = page.getByRole('region', { name: /^Removed \(\d+\)$/ });
+    await expect(removed).toContainText('Demo: Socks on every mapped round');
+    await expectAccessible(page, 'Field supplies after a remove');
+    await expectReflow(page, 'Field supplies after a remove');
+    expect(await mapping(id)).toMatchObject({ state: 'archived', version: 1 });
+
+    // Restored at the version it was removed at, with both acts in its history.
+    await removed
+      .getByRole('button', { name: 'Restore Demo: Socks on every mapped round', exact: true })
+      .click();
+    const restore = removed.getByRole('form', { name: 'Restore Demo: Socks on every mapped round' });
+    await restore.getByLabel('Reason').fill('Demo: the round goes on');
+    await restore.getByRole('button', { name: 'Restore', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${SUPPLIES}\\?done=restored&preset=${id}$`));
+    await expect(
+      page.getByRole('heading', { name: 'Restored: Demo: Socks on every mapped round' }),
+    ).toBeFocused();
+    const history = page.getByRole('region', { name: 'History of Demo: Socks on every mapped round' });
+    await expect(history.getByRole('row', { name: /Removed, version 1/ })).toContainText(
+      'Demo: the round is ending',
+    );
+    await expect(history.getByRole('row', { name: /Restored, version 1/ })).toContainText(
+      'Demo: the round goes on',
+    );
+    expect(await mapping(id)).toMatchObject({ state: 'active', version: 1 });
+
+    await expectNothingStored(page, 'Field supplies after a restore');
+    expectOnlyKeys(traffic.addresses.filter((a) => a.includes('/note-types')));
+    expectOnlyIds(traffic.addresses.filter((a) => !a.includes('/note-types')));
+  });
+
+  test('a stale sign-in on Add goes through /reauth and back, and nothing is added', async ({ page }) => {
+    const stale = await fetch(`${IDP}/test/stale-sign-in`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@example.com', minutes: 60 }),
+    });
+    expect(stale.status).toBe(200);
+    await signIn(page, 'admin@example.com');
+    await page.goto(SUPPLIES);
+    const form = page.getByRole('form', { name: 'Add a mapping' });
+    await form.getByLabel('Name', { exact: true }).fill('Demo: Never mapped');
+    await form.getByLabel('Note type', { exact: true }).selectOption({ label: 'Outreach' });
+    await form.getByRole('button', { name: 'Add an item' }).click();
+    await form
+      .getByRole('group', { name: 'Line 1', exact: true })
+      .getByLabel('Item')
+      .selectOption({ label: 'Socks' });
+    await form.getByLabel('Reason').fill('Demo: an old sign-in');
+    await form.getByRole('button', { name: 'Add mapping' }).click();
+    await expect(page).toHaveURL(/\/reauth\?next=%2Fteam%2Fpresets%2Ffield-supplies$/);
+    await page.getByLabel('6-digit code').fill(MFA_CODE);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page).toHaveURL(new RegExp(`${SUPPLIES}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Field supplies');
+    expect((await mappings()).some((m) => m.name === 'Demo: Never mapped')).toBe(false);
   });
 });
