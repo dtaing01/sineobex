@@ -76,11 +76,21 @@ function searchRow(hit: Schemas['PatientHit'], today: string): SearchRow {
 const whole = (text: string) => (/^\d+$/.test(text) ? Number(text) : Number.NaN);
 
 /**
- * Finds patients by a name, street name or description, a birth date, or both. Called by the
- * search form with the form only, so earlier results never travel back to the server.
+ * Finds patients by a name, street name or description, a birth date, or both, narrowed by a risk
+ * level and conditions (phase 5 design 7, 8.1) to patients carrying every flag chosen. Called by
+ * the search form with the form only, so earlier results never travel back to the server; the
+ * flags travel in the POST body as `flagIds`, never the address, and a flag alone searches nothing
+ * (section 11, row 37), as a year alone doesn't. The API refuses a flag the person may not see.
  */
 export async function searchPatients(form: FormData): Promise<SearchState> {
-  const values = formValues(form, 'name', 'month', 'day', 'year');
+  const values = formValues(form, 'name', 'month', 'day', 'year', 'riskLevel');
+  const riskLevel = (values.riskLevel ?? '').trim();
+  const conditions = form.getAll('conditions').filter((v): v is string => typeof v === 'string' && v !== '');
+  const flagIds = [...new Set([...(riskLevel ? [riskLevel] : []), ...conditions])];
+  // Kept with the answer, so the form draws the conditions ticked as they were searched.
+  if (conditions.length > 0) values.conditions = conditions.join(',');
+  // The form offers flag IDs only: anything else is a page from before a change, or no page of ours.
+  if (flagIds.some((id) => !UUID.test(id))) return { error: 'Reload the page and search again.', values };
   const name = (values.name ?? '').trim();
   const monthText = (values.month ?? '').trim();
   const dayText = (values.day ?? '').trim();
@@ -119,6 +129,7 @@ export async function searchPatients(form: FormData): Promise<SearchState> {
           ...(yearText
             ? { birth: { year, ...(monthText ? { month } : {}), ...(dayText ? { day } : {}) } }
             : {}),
+          ...(flagIds.length > 0 ? { flagIds } : {}),
           limit: SEARCH_LIMIT,
           surface: 'portal',
         },
@@ -127,7 +138,9 @@ export async function searchPatients(form: FormData): Promise<SearchState> {
     const count = result.hits.length;
     const message =
       count === 0
-        ? 'No one found. Try part of a name, a street name, or the full date of birth.'
+        ? flagIds.length > 0
+          ? 'No one found with every flag chosen. Choose fewer, or try part of a name or the full date of birth.'
+          : 'No one found. Try part of a name, a street name, or the full date of birth.'
         : `${count} ${count === 1 ? 'person' : 'people'} found` +
           (result.truncated ? '. More matched than these: add more letters or a birth year.' : '.');
     return { ok: true, message, values, rows: result.hits.map((h) => searchRow(h, today)) };

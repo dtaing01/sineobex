@@ -76,3 +76,24 @@ describe('a search narrowed by flags', () => {
     expect(requests).toEqual([]);
   });
 });
+
+describe('what a search narrowed by flags gives back', () => {
+  it('keeps the conditions searched for the form to tick again, and says when the flags found no one', async () => {
+    const state = await searchPatients(
+      form([
+        ['name', 'Demo Wren'],
+        ['riskLevel', HIGH],
+        ['conditions', FROST],
+        ['conditions', WET],
+      ]),
+    );
+    expect(state.values).toMatchObject({ name: 'Demo Wren', riskLevel: HIGH, conditions: `${FROST},${WET}` });
+    expect(state.message).toBe(
+      'No one found with every flag chosen. Choose fewer, or try part of a name or the full date of birth.',
+    );
+    // Without flags, phase 3's words.
+    expect((await searchPatients(form([['name', 'Demo Wren']]))).message).toBe(
+      'No one found. Try part of a name, a street name, or the full date of birth.',
+    );
+  });
+});

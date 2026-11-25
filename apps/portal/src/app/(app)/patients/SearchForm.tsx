@@ -3,7 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { searchPatients, type SearchState } from '@/app/actions/patients';
-import { ActionForm, SubmitButton, TextField, useFieldId, useFormState } from '@/components/ActionForm';
+import {
+  ActionForm,
+  SelectField,
+  SubmitButton,
+  TextField,
+  useFieldId,
+  useFormState,
+} from '@/components/ActionForm';
+import { FlagPill } from '@/components/presets/FlagPill';
 import type { ListedFlag } from '@/lib/flags';
 import styles from './patients.module.css';
 
@@ -68,12 +76,64 @@ function Results() {
 }
 
 /**
+ * Risk level and Conditions (phase 5 design 7, 8.1; section 11, row 37): fields of the search's own
+ * POST form, so neither reaches the address, each flag by its pill's words. Their choices are the
+ * flags the API lists for the person (D114), so a flag hidden from them is never offered. They
+ * narrow a name or birth search to patients carrying every flag chosen; a flag alone searches
+ * nothing, as phase 3's search never browses the list.
+ */
+function FlagFilters({ flags }: { flags: readonly ListedFlag[] }) {
+  const state = useFormState();
+  const id = useFieldId('conditions');
+  const levels = flags.filter((f) => f.tier === 'primary');
+  const conditions = flags.filter((f) => f.tier === 'secondary');
+  // The conditions a search was sent with, which the form keeps ticked (actions/patients.ts).
+  const ticked = new Set((state.values?.conditions ?? '').split(',').filter(Boolean));
+  if (levels.length === 0 && conditions.length === 0) return null;
+  return (
+    <>
+      <p className="sx-help">A risk level or a condition narrows a search by name or date of birth.</p>
+      {levels.length > 0 && (
+        <SelectField
+          name="riskLevel"
+          label="Risk level (optional)"
+          options={[
+            { value: '', label: 'Any risk level' },
+            ...levels.map((f) => ({ value: f.flagId, label: `${f.colorName} · ${f.name}` })),
+          ]}
+        />
+      )}
+      {conditions.length > 0 && (
+        <fieldset className="px-fieldset">
+          <legend>Conditions (optional)</legend>
+          <p className="sx-help">Only patients with every condition ticked.</p>
+          {conditions.map((f) => (
+            // Keyed by what was sent, so the ticks drawn afresh with each answer are the ones searched.
+            <div key={`${f.flagId}-${ticked.has(f.flagId)}`} className="px-check">
+              <input
+                id={`${id}-${f.flagId}`}
+                type="checkbox"
+                name="conditions"
+                value={f.flagId}
+                defaultChecked={ticked.has(f.flagId)}
+              />
+              <label htmlFor={`${id}-${f.flagId}`}>
+                <FlagPill color={f.color} colorName={f.colorName} name={f.name} />
+              </label>
+            </div>
+          ))}
+        </fieldset>
+      )}
+    </>
+  );
+}
+
+/**
  * Patient search (design 12.2). The search is a POST and its answer lives only in this form's
- * state: the address stays /patients, so names and birth dates never reach the history.
+ * state: the address stays /patients, so names and birth dates, and the flags a search is narrowed
+ * by, never reach the history.
  */
 export function SearchForm({ flags = [] }: { flags?: readonly ListedFlag[] }) {
-  // The flags' fields are written ahead of their code (card P5-tests; P5-portal-filters draws them).
-  void flags;
   return (
     <ActionForm id="search" action={search} label="Search patients">
       <TextField
@@ -92,6 +152,7 @@ export function SearchForm({ flags = [] }: { flags?: readonly ListedFlag[] }) {
           <TextField name="year" label="Year" inputMode="numeric" autoComplete="off" maxLength={4} />
         </div>
       </fieldset>
+      <FlagFilters flags={flags} />
       <div className="px-actions">
         <SubmitButton>Search</SubmitButton>
       </div>
