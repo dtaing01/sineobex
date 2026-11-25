@@ -853,6 +853,39 @@ void main() {
       expect(flags().flagsToChoose(entry.changeId), isEmpty);
     });
 
+    // Review finding F2: a refused clear sent again with another flag would clear that one.
+    test('Choose a flag offers nothing for a refused clear, and sends nothing: no other flag is cleared in its '
+        'place', () async {
+      final p = await openedPatient();
+      final ghost = server.addPreset(team, 'flag', flag('Demo: Old level', 'primary', 'grey', 40));
+      await pullPresets();
+      flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      advance(const Duration(minutes: 1));
+      flags().record(p, flagId: ghost, action: 'set', reason: 'Demo: weekly check');
+      await phone.engine.syncAll(force: true);
+      server.presetsOf(team).heads.remove(ghost);
+      advance(const Duration(minutes: 1));
+      final id = flags().record(p, flagId: ghost, action: 'clear', reason: 'Demo: doing better');
+      await phone.engine.syncAll(force: true);
+      final entry = createOf(id);
+      expect(
+        [entry.state, entry.details?['problem'], settledByFlag(entry), clearsFlag(entry)],
+        [ChangeState.rejected, 'unknown_flag', true, true],
+      );
+
+      expect(flags().flagsToChoose(entry.changeId), isEmpty);
+      expect(
+        () => flags().chooseFlag(entry.changeId, flagId: high, reason: 'Demo: doing better'),
+        refused('unknown_flag'),
+      );
+      await phone.engine.syncAll(force: true);
+      expect(createOf(id).state, ChangeState.rejected, reason: 'nothing was sent again');
+      expect([
+        for (final r in server.records.values)
+          if (r.entity == entityFlagChange && r.attributes['action'] == 'clear') r.id,
+      ], isEmpty);
+    });
+
     test('Change the reason: a change the server refused for its reason is sent again with the new one', () async {
       final p = await openedPatient();
       server.offline = true;

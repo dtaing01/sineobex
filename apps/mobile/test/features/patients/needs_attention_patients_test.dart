@@ -180,6 +180,7 @@ void main() {
       Run? run,
       String tier = 'primary',
       bool archiveTheRest = false,
+      String action = 'set',
     }) async {
       final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
       seedP1(h.server);
@@ -195,7 +196,7 @@ void main() {
       final id = h.sync.store!.createRecord(entityFlagChange, {
         'patientId': p1Id,
         'flagId': ghost,
-        'action': 'set',
+        'action': action,
         'reason': 'Demo: left hospital',
       });
       final changeId = h.sync.store!.outbox().singleWhere((e) => e.recordId == id).changeId;
@@ -247,6 +248,24 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Choose a flag'), findsNothing);
       expect(h.sync.store!.needsAttention(), hasLength(1));
     });
+
+    // Review finding F2: a refused clear sent again with another flag would clear that one, which the
+    // person never chose to take off.
+    for (final run in runs) {
+      testWidgets('a refused clear offers no Choose a flag, says why, and sends nothing (${runName(run)})', (
+        tester,
+      ) async {
+        final (:h, :changeId, recordId: _, medium: _) = await refusedFlag(tester, run: run, action: 'clear');
+        await openAttention(tester);
+        await expectShown(tester, find.text('This flag can’t be cleared on this phone. Tell a Program Admin.'));
+        expect(find.text('This flag isn’t on your team’s list. Choose a flag.'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'Choose a flag'), findsNothing);
+        await expectScreenOk(tester);
+        await syncAndRefresh(tester, h);
+        expect(h.sync.store!.entry(changeId)!.state, ChangeState.rejected);
+        expect(h.sync.store!.needsAttention(), hasLength(1));
+      });
+    }
 
     testWidgets('Change the reason: the same change sent again with the reason given', (tester) async {
       final h = await signIn(tester);

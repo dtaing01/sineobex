@@ -51,6 +51,11 @@ bool flagHidden(Iterable<String> permissions, FlagBody? flag) =>
 /// flag the server doesn't hold among the team's flags (`unknown_flag`).
 bool settledByFlag(OutboxEntry e) => _refusedCreate(e, 'unknown_flag');
 
+/// Whether [e], a flag change, clears its flag. Choose a flag offers no other flag in place of a
+/// refused clear's ([PatientFlags.flagsToChoose]): clearing one the person never named could take a
+/// risk level off the patient unseen, so the card says the flag can't be cleared on this phone.
+bool clearsFlag(OutboxEntry e) => e.entity == entityFlagChange && (e.value as Map?)?['action'] == 'clear';
+
 /// Whether Needs attention offers **Change the reason** for [e]: a refused create of a flag change
 /// whose reason the server refused (`reason_invalid`).
 bool settledByReason(OutboxEntry e) => _refusedCreate(e, 'reason_invalid');
@@ -391,11 +396,16 @@ class PatientFlags {
   /// Admin." and nothing is sent. A refused flag the phone knows nowhere has no tier, so nothing is
   /// offered for it either. Throws a [StateError] for a change [settledByFlag] doesn't take.
   ///
+  /// Nothing either for a refused clear ([clearsFlag]): sent again with another flag, it would clear
+  /// that one, which the person never chose to take off (a risk level among them), so the card says
+  /// "This flag can’t be cleared on this phone. Tell a Program Admin." and nothing is sent.
+  ///
   /// Here, and in [chooseFlag] and [changeReason], [changeId] is the refused create's entry in the
   /// outbox, as Needs attention lists it ([OutboxEntry.changeId]), not the flag change's own ID.
   List<FlagView> flagsToChoose(String changeId) {
     _guardFrozen();
     final refused = _refused(changeId, settledByFlag);
+    if (clearsFlag(refused)) return const [];
     final value = refused.value! as Map<String, Object?>;
     final flagId = value['flagId'];
     final patientId = value['patientId'];

@@ -26,7 +26,7 @@ import '../../encounters/referrals.dart' show settledByDate;
 import '../../forms/definition.dart' show ChoiceDef;
 import '../../forms/field_at.dart' show fieldAt;
 import '../../forms/forms_api.dart' show NoteTypeVersion;
-import '../../patients/flags.dart' show FlagView, settledByFlag, settledByReason;
+import '../../patients/flags.dart' show FlagView, clearsFlag, settledByFlag, settledByReason;
 import '../../patients/patient_providers.dart';
 import '../../sync/entities.dart' show entityCorrection, entitySignoff;
 import '../../sync/local_store.dart';
@@ -612,7 +612,7 @@ class _RejectionCard extends ConsumerWidget {
             completedAgain != null
                 ? waitsForNoteLine
                 : byFlag && flagChoices.isEmpty
-                ? noFlagToChoose
+                ? (clearsFlag(e) ? noFlagToClear : noFlagToChoose)
                 : problemLabel(problem) ?? reasonLabel(e.reason),
             style: text.titleMedium,
           ),
@@ -804,6 +804,10 @@ const chooseFlagAction = 'Choose a flag';
 const changeReasonAction = 'Change the reason';
 const noFlagToChoose = 'This flag can’t be set on this phone. Tell a Program Admin.';
 const openPatientAction = 'Open patient';
+
+/// A refused clear (phase 5 design 6.2): sent again with another flag, it would clear that one, which
+/// the person never chose to take off, so Choose a flag isn't offered for it.
+const noFlagToClear = 'This flag can’t be cleared on this phone. Tell a Program Admin.';
 
 /// What Choose a flag offers for [e]: none once the store froze, or for a change it doesn't settle.
 List<FlagView> _flagsToChoose(PatientServices services, OutboxEntry e) {
