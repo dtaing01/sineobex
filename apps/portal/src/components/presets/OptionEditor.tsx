@@ -59,7 +59,7 @@ function WordsForm({
     }
   };
   return (
-    <form className={editor.inline} onSubmit={keep} aria-label={label}>
+    <form className={editor.inline} onSubmit={keep}>
       <div className="px-field">
         <label htmlFor={id}>{label}</label>
         <div className="sx-input">

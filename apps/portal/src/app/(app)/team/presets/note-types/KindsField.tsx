@@ -1,6 +1,7 @@
 'use client';
 
 import { useFieldId, useFormState } from '@/components/ActionForm';
+import styles from '@/components/presets/presets.module.css';
 import type { NoteTypeKind } from '@/lib/presets';
 import { KIND_WORDS } from './words';
 
@@ -55,5 +56,51 @@ export function KindsField({ hint }: { hint: string }) {
         </div>
       ))}
     </fieldset>
+  );
+}
+
+/**
+ * The note type to copy, or none for a blank one, posted as `copyOf`. Its box is as wide as the form
+ * lets it be, never as its longest title: at 320 px a select sized to its content would widen the
+ * page (WCAG 1.4.10). A refused form keeps the choice it sent.
+ */
+export function CopyOfField({
+  options,
+  hint,
+}: {
+  options: readonly { value: string; label: string }[];
+  hint: string;
+}) {
+  const state = useFormState();
+  const id = useFieldId('copyOf');
+  const error = state.fieldErrors?.copyOf;
+  const value = state.values?.copyOf ?? '';
+  return (
+    <div className="px-field">
+      <label htmlFor={id}>Copy of</label>
+      <p id={`${id}-hint`} className="sx-help">
+        {hint}
+      </p>
+      {error && (
+        <p id={`${id}-error`} className="sx-help sx-help--error">
+          {error}
+        </p>
+      )}
+      <select
+        id={id}
+        name="copyOf"
+        className={`px-select ${styles.choose}`}
+        defaultValue={value}
+        key={value}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={[`${id}-hint`, error ? `${id}-error` : null].filter(Boolean).join(' ')}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

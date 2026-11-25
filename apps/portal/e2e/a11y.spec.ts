@@ -76,6 +76,8 @@ test('pages behind sign-in redirect to the sign-in page', async ({ page }) => {
     '/team/presets',
     '/team/presets/items',
     '/team/presets/flags',
+    '/team/presets/note-types',
+    '/team/presets/note-types/outreach',
   ]) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/sign-in$/);
@@ -225,11 +227,21 @@ test('a done form keeps focus on the button pressed and says its message, on an 
 
 // Phase 5's Team setup (design 8.1): the hub, each area's page, and a preset's own page for each
 // kind that has one, opened as a Program Admin finds them, each in all three themes and at 320 px.
-const TEAM_SETUP_AREAS = ['Categories', 'Items', 'Bundles', 'Flags', 'Condition supplies', 'Bag minimums'];
+const TEAM_SETUP_AREAS = [
+  'Categories',
+  'Items',
+  'Bundles',
+  'Flags',
+  'Condition supplies',
+  'Bag minimums',
+  'Note types',
+];
 const PRESET_PAGES: Record<string, { href: string; title: string }> = {
   Items: { href: '/team/presets/items/', title: 'Item' },
   Bundles: { href: '/team/presets/bundles/', title: 'Bundle' },
   Flags: { href: '/team/presets/flags/', title: 'Flag' },
+  // A note type's own page is its editor, by its key.
+  'Note types': { href: '/team/presets/note-types/', title: 'Note type' },
 };
 
 test('@responsive a Program Admin’s Team setup pages, and a preset’s own page of each kind with one, are accessible in all three themes and reflow at 320 px', async ({
