@@ -342,7 +342,8 @@ class PatientFlags {
       (change.authorId == userId || permissions.contains(_manageUsers));
 
   /// Marks the change [changeId] entered in error with [reason] (trimmed, 3 to 300 code points), once:
-  /// it drops out of the current flags and stays in the history (section 11, row 23).
+  /// it drops out of the current flags and stays in the history (section 11, row 23). [changeId] is
+  /// the flag change's own ID, as the history gives it ([FlagChangeView.changeId]).
   ///
   /// Throws, writing nothing: [ChartingPaused] while the store is frozen or the clock is paused; a
   /// [LocalValidationError] with `not_allowed` for someone [mayEnterInError] refuses,
@@ -375,6 +376,9 @@ class PatientFlags {
   /// refused flag left out. Empty, the card says "This flag can’t be set on this phone. Tell a Program
   /// Admin." and nothing is sent. A refused flag the phone knows nowhere has no tier, so nothing is
   /// offered for it either. Throws a [StateError] for a change [settledByFlag] doesn't take.
+  ///
+  /// Here, and in [chooseFlag] and [changeReason], [changeId] is the refused create's entry in the
+  /// outbox, as Needs attention lists it ([OutboxEntry.changeId]), not the flag change's own ID.
   List<FlagView> flagsToChoose(String changeId) {
     _guardFrozen();
     final refused = _refused(changeId, settledByFlag);
