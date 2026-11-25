@@ -561,6 +561,9 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await page.keyboard.press('Enter');
     await expect(section.getByLabel('A new answer for “Support provided”')).toBeFocused();
     await expect(editor.heldItems).toHaveCount(5);
+    // Numbered as a refusal names them ("Change 3"): each change is drawn as a list item (B-11).
+    await expect(editor.held.getByRole('list')).toHaveCSS('list-style-type', 'decimal');
+    for (const item of await editor.heldItems.all()) await expect(item).toHaveCSS('display', 'list-item');
     // Undo of an added answer: focus goes on to the next added one's Undo, else to the box (B-5).
     await section.getByLabel('A new answer for “Support provided”').fill('Demo: Gloves');
     await page.keyboard.press('Enter');
