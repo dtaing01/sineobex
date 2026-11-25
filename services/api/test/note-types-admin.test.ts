@@ -8,6 +8,7 @@ import {
   takeRevision,
   type InstallSql,
   type NoteTypeEdit,
+  type Option,
   type Preset,
   type ResolvedNoteType,
 } from '@sineobex/forms';
@@ -1698,6 +1699,96 @@ describe('adding, removing, restoring and taking an update: what each checks', (
 // ------------------------------------------------------------------------------------------------
 // Every write: a reason and a recent sign-in
 // ------------------------------------------------------------------------------------------------
+
+describe('a platform version under which a field supply map would fire on what some readers may not see (BM-77)', () => {
+  /**
+   * A team with a field supply map of its own on wound care's wound bed (slough), and the platform's
+   * next wound care, which marks that answer a sensitive exam's: nothing fixed at creation changes,
+   * and no other map reads it, so without the map it would be taken in place. `edit` makes the
+   * team's copy its own first, so it is offered.
+   */
+  async function mappedTeam(label: string, edit: boolean) {
+    const t = await presetsTeam(h, label);
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const presets = presetsApi(h, t.teamId, t.admin);
+    if (edit) {
+      const row = await rowOf('wound_care', theirs);
+      expect(
+        (
+          await theirs.publish('wound_care', row.version, [
+            { op: 'rename_type', title: 'Demo: Wound care, ours' },
+          ])
+        ).status,
+      ).toBe(200);
+    }
+    const item = Object.entries(t.ids).find(([k]) => k.startsWith('item.'))![1];
+    const made = await presets.create('field_supply_map', {
+      name: 'Demo: Dressing for slough',
+      noteTypeKey: 'wound_care',
+      path: 'wound.bed',
+      when: { includes: 'slough' },
+      lines: [{ itemId: item, qty: 1 }],
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const next = await platformNext('wound_care', (d) => {
+      const marked = structuredClone(d);
+      const bed = marked.sections[0]!.fields.find((f) => f.id === 'bed') as { options: Option[] };
+      bed.options = bed.options.map((o) => (o.code === 'slough' ? { ...o, sensitiveExam: true } : o));
+      return marked;
+    });
+    const unrelease = release(next);
+    return { t, theirs, presets, next, unrelease, map: { id: made.body.id as string, version: 1 } };
+  }
+  const listed = async (t: PresetsTeam) => {
+    const r = await call(h, '/v1/forms/note-types', { token: await tokenOf(h, t.admin), teamId: t.teamId });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return (r.body.noteTypes as { key: string; version: number }[]).find((n) => n.key === 'wound_care')!;
+  };
+
+  it('is only offered by the installer while the map is active, and taken in place once it is removed', async () => {
+    const { t, theirs, presets, next, unrelease, map } = await mappedTeam('Note Types Map Held Back', false);
+    try {
+      expect(await listed(t)).toMatchObject({ version: 1 });
+      expect(await headOf(t.teamId, 'wound_care')).toMatchObject({
+        currentVersion: 1,
+        platformLatest: next.version,
+        customized: false,
+      });
+      expect((await rowOf('wound_care', theirs)).update).toMatchObject({ platformVersion: next.version });
+      expect((await presets.archive('field_supply_map', map.id, map.version)).status).toBe(200);
+      expect(await listed(t)).toMatchObject({ version: 2 });
+      const { definition } = await storedAs('wound_care', 2, t.teamId);
+      expect(fieldOf(definition, 'wound.bed').options!.find((o) => o.code === 'slough')).toMatchObject({
+        sensitiveExam: true,
+      });
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('is not taken in place while the map is active, writing nothing, and is once it is removed', async () => {
+    const { t, theirs, presets, next, unrelease, map } = await mappedTeam('Note Types Map Take', true);
+    try {
+      await listed(t);
+      const row = await rowOf('wound_care', theirs);
+      const take = () =>
+        theirs.takeUpdate('wound_care', {
+          baseVersion: row.version,
+          platformVersion: next.version,
+          asNew: false,
+        });
+      expect(await refusedUnwritten(take, 409, 'sensitive_path', t.teamId)).toEqual({
+        referencedBy: { field_supply_map: 1 },
+      });
+      expect((await presets.archive('field_supply_map', map.id, map.version)).status).toBe(200);
+      const taken = await take();
+      expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+      expect(taken.body).toMatchObject({ key: 'wound_care', version: row.version + 1 });
+    } finally {
+      unrelease();
+    }
+  });
+});
 
 describe('every note type write', () => {
   /** Each write route, on a note type made for it, as a sign-in made just now carries it out. */
