@@ -639,6 +639,46 @@ test('an answer that isn’t the route handler’s own is read as a dropped conn
   expect(history.map((h) => [h.name, h.action, h.enteredInError])).toEqual([['Frost risk', 'set', null]]);
 });
 
+// Review finding R5: a session that ends with the panel open goes to sign-in, from either act, and
+// what the press carried was never received.
+test('a session that ended with the panel open goes to sign-in from Save and from Entered in error, and nothing is saved', async ({
+  page,
+  context,
+}) => {
+  const patient = await freshPatient();
+  const high = await flagNamed('High');
+  const frost = await flagNamed('Frost risk');
+  await changeFlag(ADMIN, patient.id, frost.flagId, 'set', 'Demo: sleeps by the made-up river');
+  const history = async () =>
+    (await chartFor(ADMIN, patient.id)).flags!.history.map((h) => [h.name, h.action, h.enteredInError]);
+
+  await signIn(page, ADMIN);
+  await page.goto(`/patients/${patient.id}`);
+  let parts = partsOf(page);
+  await fill(parts, pill(high), 'Set', 'Demo: open wound and nowhere warm');
+  await context.clearCookies();
+  await parts.save.click();
+  await expect(page).toHaveURL(/\/sign-in/);
+  await signIn(page, ADMIN);
+  expect(await history()).toEqual([['Frost risk', 'set', null]]);
+
+  await page.goto(`/patients/${patient.id}`);
+  parts = partsOf(page);
+  await parts.panel.getByRole('button', { name: /^Entered in error: Set Frost risk,/ }).click();
+  const mark = page.getByRole('form', { name: 'Mark entered in error' });
+  await mark.getByLabel('Why it was entered in error').fill('Demo: set on the wrong patient');
+  await context.clearCookies();
+  await mark.getByRole('button', { name: 'Mark entered in error' }).click();
+  await expect(page).toHaveURL(/\/sign-in/);
+  await signIn(page, ADMIN);
+  expect(await history()).toEqual([['Frost risk', 'set', null]]);
+  // Signed in again, the page shows the form empty and the change unmarked.
+  await page.goto(`/patients/${patient.id}`);
+  parts = partsOf(page);
+  await expect(parts.rows).toHaveCount(1);
+  await expect(parts.rows).not.toContainText('Entered in error by');
+});
+
 /** Words drawn across two lines in the Flags history: none should be, but for one longer than its column. */
 function splitWords(): string[] {
   const out: string[] = [];
