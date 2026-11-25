@@ -119,8 +119,10 @@ enum FlagChangeState {
 /// A change marked entered in error: who and when, and why only for its author and Program Admins
 /// (holders of `team.manage_users`, section 11 rows 23 and 24). [byName] is null for a mark made on
 /// this phone that no chart names yet (the person's own), [at] for one confirmed here and not yet on
-/// a chart; [waiting] while the mark waits for its receipt.
-typedef FlagChangeMarkView = ({String? byName, DateTime? at, String? reason, bool waiting});
+/// a chart; [waiting] while the mark waits for its receipt. [held] for a mark of this phone's the
+/// server holds for a Program Admin: "Sent for review", and the change still counts until one accepts
+/// it (6.1, 8.2), since the server's chart still counts it.
+typedef FlagChangeMarkView = ({String? byName, DateTime? at, String? reason, bool waiting, bool held});
 
 /// One change of a patient's flags as the flags sheet's history lists it: the flag, set or cleared,
 /// who, when, why (8.2).
@@ -444,14 +446,21 @@ class PatientFlags {
   /// What the phone keeps of a flag change of its own once a receipt confirms it, in the receipt's
   /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, in `kv`;
   /// never a flag or a reason): the change's own time, as the server's `when` reads it (the corrected
-  /// time, else the device's), and when the receipt came, by the corrected clock. [_read] dates a
-  /// confirmed change by them until a chart gives the server's time. What it kept of a change the
-  /// phone no longer holds goes here too.
+  /// time, else the device's); when the receipt came, by the corrected clock; and, for a mark the
+  /// server holds for a Program Admin, the mark's change, so it is told from a held create of the
+  /// same change. [_read] dates a confirmed change by them until a chart gives the server's time.
+  /// What it kept of a change the phone no longer holds goes here too.
   void _onConfirmed(OutboxEntry e, AcceptedReceipt receipt) {
-    if (e.entity != entityFlagChange || e.op != 'create') return;
+    if (e.entity != entityFlagChange) return;
     final kept = {...?_kept(e.recordId)};
-    kept[_keptAt] = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
-    kept[_keptReceivedAt] = _now().millisecondsSinceEpoch;
+    if (e.op == 'create') {
+      kept[_keptAt] = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
+      kept[_keptReceivedAt] = _now().millisecondsSinceEpoch;
+    } else if (e.op == 'set' && e.field == 'enteredInError' && receipt.inReview) {
+      kept[_keptHeldMark] = e.changeId;
+    } else {
+      return;
+    }
     store.setKv('$_keptKvPrefix${e.recordId}', jsonEncode(kept));
     store.database.execute(
       'DELETE FROM kv WHERE substr(key, 1, ${_keptKvPrefix.length}) = ? '
@@ -622,11 +631,21 @@ class PatientFlags {
       if (e.op == 'create') creates[e.recordId] = e;
       if (e.op == 'set' && e.field == 'enteredInError') marks[e.recordId] = e;
     }
-    // Held by the server for a Program Admin (IDs only), and those it told the person it didn't apply.
-    final inReview = {
-      for (final r in store.database.select('SELECT record_id FROM in_review WHERE entity = ?', [entityFlagChange]))
-        r['record_id']! as String,
-    };
+    // Held by the server for a Program Admin (IDs only): a change's create, or its Entered in error
+    // mark, told apart by the mark this phone kept at the receipt; and those the server told the person
+    // it didn't apply.
+    final heldCreates = <String>{};
+    final heldMarks = <String>{};
+    for (final r in store.database.select('SELECT change_id, record_id FROM in_review WHERE entity = ?', [
+      entityFlagChange,
+    ])) {
+      final recordId = r['record_id']! as String;
+      if (_kept(recordId)?[_keptHeldMark] == r['change_id']) {
+        heldMarks.add(recordId);
+      } else {
+        heldCreates.add(recordId);
+      }
+    }
     final notApplied = {
       for (final n in store.notices())
         if (n.kind == noticeFlagChangeNotApplied && n.recordId != null) n.recordId!,
@@ -646,12 +665,13 @@ class PatientFlags {
         state = create.state == ChangeState.rejected ? FlagChangeState.refused : FlagChangeState.waiting;
       } else if (listed.contains(row.id)) {
         state = FlagChangeState.sent;
-      } else if (rec.origin != 'local' || notApplied.contains(row.id)) {
+      } else if (rec.origin != 'local' || (notApplied.contains(row.id) && !heldMarks.contains(row.id))) {
         // A server copy the chart no longer lists (merged away, or its flag hidden since), or a held
-        // change a Program Admin didn't apply, which its notice tells the person of.
+        // change a Program Admin didn't apply, which its notice tells the person of. A notice about a
+        // held mark leaves the change it was for standing.
         continue;
       } else {
-        state = inReview.contains(row.id) ? FlagChangeState.inReview : FlagChangeState.sent;
+        state = heldCreates.contains(row.id) ? FlagChangeState.inReview : FlagChangeState.sent;
       }
       final a = rec.attributes;
       final serverAt = _time(a['effectiveAt']);
@@ -675,6 +695,7 @@ class PatientFlags {
       if (state == FlagChangeState.refused) continue;
       final flag = catalog[a['flagId']];
       if (flag == null || _hidden(flag)) continue;
+      final heldMark = heldMarks.contains(row.id);
       changes.add(
         _Change(
           id: row.id,
@@ -686,7 +707,13 @@ class PatientFlags {
           authorId: rec.authorUserId ?? '',
           authorName: rows[row.id]?.authorName ?? nameOf?.call(rec.authorUserId ?? ''),
           reason: a['reason'] as String?,
-          mark: _mark(rec, marks[row.id], rows[row.id]?.enteredInError),
+          mark: _mark(
+            rec,
+            marks[row.id],
+            rows[row.id]?.enteredInError,
+            held: heldMark && !notApplied.contains(row.id),
+            dropped: heldMark && notApplied.contains(row.id),
+          ),
           state: state,
         ),
       );
@@ -712,7 +739,14 @@ class PatientFlags {
       changes: [
         ...base,
         for (final c in counted)
-          (id: c.id, flagId: c.flag.id, action: c.action, effectiveAt: c.at, enteredInError: c.mark != null),
+          (
+            id: c.id,
+            flagId: c.flag.id,
+            action: c.action,
+            effectiveAt: c.at,
+            // A mark the server holds for a Program Admin hasn't taken the change off its chart yet.
+            enteredInError: c.mark != null && !c.mark!.held,
+          ),
       ],
       // The fold leaves out a change whose flag it isn't given: every flag the rule hides is kept out.
       flags: {
@@ -730,31 +764,39 @@ class PatientFlags {
       riskLevel: current.primary == null ? null : catalog[current.primary]!.view,
       conditions: [for (final id in current.secondary) catalog[id]!.view],
       history: [for (final c in history) c.view],
-      sentForReview: changes.any((c) => c.state == FlagChangeState.inReview),
+      sentForReview: changes.any((c) => c.state == FlagChangeState.inReview || (c.mark?.held ?? false)),
     );
   }
 
   /// [rec]'s mark entered in error, as the person may read it: none while it stands, or while the mark
   /// made here waits refused in Needs attention. One made here waits for its receipt ([markEntry]);
-  /// the chart's history row ([charted]) says who made a mark the server holds, and when.
-  static FlagChangeMarkView? _mark(LocalRecord rec, OutboxEntry? markEntry, api.FlagChangeMark? charted) {
+  /// the chart's history row ([charted]) says who made a mark the server holds, and when. One of this
+  /// phone's the server holds for a Program Admin ([held]) is shown as such, and counts for nothing
+  /// until a chart shows it made; one a Program Admin didn't apply ([dropped]) is none, whatever this
+  /// phone's record still says of it.
+  static FlagChangeMarkView? _mark(
+    LocalRecord rec,
+    OutboxEntry? markEntry,
+    api.FlagChangeMark? charted, {
+    bool held = false,
+    bool dropped = false,
+  }) {
     final value = rec.fields['enteredInError']?.value;
+    final reason = value is Map<String, Object?> ? value['reason'] as String? : null;
     if (markEntry != null) {
       if (markEntry.state == ChangeState.rejected) return null;
       return (
         byName: null,
         at: markEntry.correctedTime ?? markEntry.deviceTime,
-        reason: value is Map<String, Object?> ? value['reason'] as String? : null,
+        reason: reason,
         waiting: true,
+        held: false,
       );
     }
-    if (value is! Map<String, Object?> && rec.status != 'entered_in_error') return null;
-    return (
-      byName: charted?.byName,
-      at: charted?.at,
-      reason: value is Map<String, Object?> ? value['reason'] as String? : null,
-      waiting: false,
-    );
+    if (charted != null) return (byName: charted.byName, at: charted.at, reason: reason, waiting: false, held: false);
+    if (held) return (byName: null, at: null, reason: reason, waiting: false, held: true);
+    if (dropped || (value is! Map<String, Object?> && rec.status != 'entered_in_error')) return null;
+    return (byName: null, at: null, reason: reason, waiting: false, held: false);
   }
 
   static DateTime? _time(Object? iso) => iso is String ? DateTime.tryParse(iso) : null;
@@ -872,6 +914,7 @@ const _manageUsers = 'team.manage_users';
 const _keptKvPrefix = 'flagChange.';
 const _keptAt = 'at';
 const _keptReceivedAt = 'receivedAt';
+const _keptHeldMark = 'heldMark';
 
 // What the flags sheet, intake and Needs attention say when this layer stops: its words.
 const _notAllowed = 'Your role can’t change a patient’s flags.';

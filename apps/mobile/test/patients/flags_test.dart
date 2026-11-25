@@ -753,6 +753,57 @@ void main() {
       expect(row.enteredInError?.byName, 'Demo Blair');
       expect(row.enteredInError?.at, isNotNull);
     });
+
+    // Review finding F4: the server holds a mark of this phone's for a Program Admin when the role was
+    // lowered while the phone kept its permissions. Its change still counts on the server's chart.
+    /// High set and charted, then marked by its author after the role lost patients.edit: held.
+    Future<({String patientId, String recordId, String markChange})> heldMark() async {
+      final p = await openedPatient();
+      final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      await phone.engine.syncAll(force: true);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      advance(const Duration(minutes: 1));
+      server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      flags().enterInError(id, 'Demo: set on the wrong patient');
+      final markChange = flagChanges().single.changeId;
+      await phone.engine.syncAll(force: true);
+      expect(server.held.keys, contains(markChange));
+      expect(flagChanges(), isEmpty, reason: 'held there, so it left the phone');
+      return (patientId: p, recordId: id, markChange: markChange);
+    }
+
+    test('a mark the server holds for review is Sent for review, and its change counts until a Program Admin '
+        'accepts it, before the chart comes again and after', () async {
+      final held = await heldMark();
+      final p = held.patientId;
+      void expectHeld() {
+        final view = flags().flagsOf(p);
+        expect([view.riskLevel?.flagId, view.sentForReview], [high, true]);
+        final row = view.history.single;
+        expect([row.state, row.enteredInError?.held, row.enteredInError?.waiting], [FlagChangeState.sent, true, false]);
+        expect(flags().mayEnterInError(row), isFalse, reason: 'sent once');
+      }
+
+      expectHeld();
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      expectHeld();
+
+      server.acceptHeld(held.markChange);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      final view = flags().flagsOf(p);
+      expect([view.riskLevel, view.sentForReview, view.history.single.enteredInError?.held], [null, false, false]);
+    });
+
+    test('a held mark a Program Admin didn’t apply leaves its change standing, unmarked', () async {
+      final held = await heldMark();
+      server.rejectHeld(held.markChange);
+      await services.notices.sync();
+      var view = flags().flagsOf(held.patientId);
+      expect([view.riskLevel?.flagId, view.sentForReview, view.history.single.enteredInError], [high, false, null]);
+      await services.charts.fetch([held.patientId], reason: FetchChartsReason.refresh);
+      view = flags().flagsOf(held.patientId);
+      expect([view.riskLevel?.flagId, view.sentForReview, view.history.single.enteredInError], [high, false, null]);
+    });
   });
 
   group('the two refusals a worker can fix (6.2, D121)', () {
@@ -1073,6 +1124,31 @@ void main() {
       expect(flagChanges(), isEmpty, reason: 'confirmed');
       expect(isPartialChart(store(), p), isTrue);
       expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [high, high]);
+    });
+
+    // Review finding F4, without the chart: the notice that a held mark wasn't applied names the change
+    // it was for, as the notice of a held create does; the change stands.
+    test('a held mark a Program Admin didn’t apply leaves its change counting, from the index alone', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      await indexRefresh();
+      server.offline = true;
+      await services.patients.open(p);
+      advance(const Duration(minutes: 1));
+      final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      server.offline = false;
+      await phone.engine.syncAll(force: true);
+      server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      flags().enterInError(id, 'Demo: set on the wrong patient');
+      final markChange = flagChanges().single.changeId;
+      await phone.engine.syncAll(force: true);
+      expect(server.held.keys, contains(markChange));
+      expect(isPartialChart(store(), p), isTrue);
+      expect([flags().flagsOf(p).riskLevel?.flagId, flags().flagsOf(p).sentForReview], [high, true]);
+
+      server.rejectHeld(markChange);
+      await services.notices.sync();
+      final view = flags().flagsOf(p);
+      expect([view.riskLevel?.flagId, view.sentForReview, view.history.single.enteredInError], [high, false, null]);
     });
   });
 

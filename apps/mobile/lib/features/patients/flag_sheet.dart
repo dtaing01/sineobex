@@ -546,12 +546,15 @@ class _HistoryRow extends StatelessWidget {
           ].join(' ');
     final state = (mark?.waiting ?? false)
         ? waitingToSend
+        : (mark?.held ?? false)
+        ? flagSentForReviewText
         : switch (ch.state) {
             FlagChangeState.waiting => waitingToSend,
             FlagChangeState.inReview => flagSentForReviewText,
             _ => null,
           };
-    final struck = mark != null;
+    // A mark the server holds for a Program Admin leaves the change counting until one accepts it.
+    final struck = mark != null && !mark.held;
     final spoken = [
       '$did ${flagSpoken(ch.flag)}',
       [who, if (at != null) '${longDate(at)} at ${timeOfDay(context, at)}'].join(', '),

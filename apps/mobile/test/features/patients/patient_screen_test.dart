@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/transport.dart' show NetworkException;
-import 'package:sineobex_field/features/patients/flag_sheet.dart' show changeFlagsAction;
+import 'package:sineobex_field/features/patients/flag_sheet.dart' show changeFlagsAction, flagSentForReviewText;
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
@@ -486,6 +486,41 @@ void main() {
       await go(tester, '/patients/$p1Id');
       await expectShown(tester, find.text('Sent for review'));
       expect(find.text('Red · Demo: High'), findsNothing);
+    });
+
+    // Review finding F4: the server holds a mark of this phone's for review, so the flag still counts.
+    testWidgets('a mark the server holds for review shows as Sent for review, and its flag stays, struck nowhere', (
+      tester,
+    ) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      final high = h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      final store = h.sync.store!;
+      final id = store.createRecord(entityFlagChange, {
+        'patientId': p1Id,
+        'flagId': high,
+        'action': 'set',
+        'reason': 'Demo: left hospital',
+      });
+      await syncAndRefresh(tester, h);
+      // The person's role lost patients.edit at the desk; the phone marked the change before it knew.
+      h.server.permissions[h.patients.userId] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      store.setField(id, 'enteredInError', {'reason': 'Demo: set on the wrong patient'});
+      await syncAndRefresh(tester, h);
+      expect(store.outbox().where((e) => e.entity == entityFlagChange), isEmpty, reason: 'held there');
+      await go(tester, '/patients/$p1Id');
+      await expectShown(tester, find.text('Sent for review'));
+      await expectShown(tester, find.text('Red · Demo: High'));
+
+      await tapOn(tester, find.widgetWithText(OutlinedButton, changeFlagsAction));
+      final row = find.descendant(of: find.byType(BottomSheet), matching: find.text('Set Red · Demo: High'));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(row).style?.decoration, isNot(TextDecoration.lineThrough));
+      expect(find.descendant(of: find.byType(BottomSheet), matching: find.text(flagSentForReviewText)), findsOneWidget);
+      await expectScreenOk(tester);
     });
 
     testWidgets('where the presets aren’t held, the pills are named as the chart names them', (tester) async {
