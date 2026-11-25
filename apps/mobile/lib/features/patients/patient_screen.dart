@@ -17,6 +17,7 @@ import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_services.dart';
 import '../../patients/consent_script.dart';
 import '../../patients/display.dart';
+import '../../patients/flags.dart' show PatientFlagsView;
 import '../../patients/id_links.dart';
 import '../../patients/patient_providers.dart';
 import '../../patients/patient_repository.dart';
@@ -29,6 +30,7 @@ import '../encounters/encounter_widgets.dart' show encountersOpen;
 import '../encounters/referrals_sheet.dart' show showReferrals;
 import '../encounters/timeline_section.dart';
 import 'field_review_sheet.dart';
+import 'flag_sheet.dart';
 import 'patient_labels.dart';
 import 'patient_widgets.dart';
 import 'sheet_gate.dart';
@@ -129,6 +131,12 @@ class _ProfileState extends ConsumerState<_Profile> {
   final _addAliasFocus = FocusNode();
   final _addAllergyFocus = FocusNode();
 
+  /// The flags row's **Change flags**, where focus comes back after Save (8.2).
+  final _flagsFocus = FocusNode();
+
+  /// Saves made from the flags sheet: each one's "Flags saved." is a new node, said again.
+  int _flagsSaved = 0;
+
   FocusNode _rowNode(String id) => _rowFocus.putIfAbsent(id, FocusNode.new);
 
   /// After the frame that took a row's action away: focus goes to its list's Add button.
@@ -138,7 +146,7 @@ class _ProfileState extends ConsumerState<_Profile> {
 
   @override
   void dispose() {
-    for (final node in [..._rowFocus.values, _addAliasFocus, _addAllergyFocus]) {
+    for (final node in [..._rowFocus.values, _addAliasFocus, _addAllergyFocus, _flagsFocus]) {
       node.dispose();
     }
     super.dispose();
@@ -304,6 +312,15 @@ class _ProfileState extends ConsumerState<_Profile> {
     if (decided == true && mounted) showDone(context, 'Choice saved');
   }
 
+  /// **Change flags** (8.2): the sheet, then "Flags saved." under the flags row, and focus back on
+  /// its button, whatever pressed it.
+  Future<void> _changeFlags(PatientView v) async {
+    final saved = await showFlagSheet(context, _s, patientId: v.canonicalId);
+    if (!saved || !mounted) return;
+    setState(() => _flagsSaved++);
+    _focusAfter(_flagsFocus);
+  }
+
   Future<void> _history(PatientView v) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -314,6 +331,15 @@ class _ProfileState extends ConsumerState<_Profile> {
         child: _HistorySheet(patients: _s.patients, patientId: v.canonicalId, today: todayOf(ref)),
       ),
     );
+  }
+
+  /// The patient's flags as the person may see them (6.1); null once the store froze under the read.
+  PatientFlagsView? _flagsOf(PatientView v) {
+    try {
+      return _s.flags.flagsOf(v.canonicalId);
+    } on ChartingPaused {
+      return null;
+    }
   }
 
   @override
@@ -415,6 +441,15 @@ class _ProfileState extends ConsumerState<_Profile> {
         ),
         const SizedBox(height: FieldSpace.s2),
         AllergyBadgeView(badge: v.badge),
+        const SizedBox(height: FieldSpace.s2),
+        // ---- flags (phase 5 design 8.2) ----
+        if (_flagsOf(v) case final flags?)
+          _FlagsRow(
+            flags: flags,
+            saved: _flagsSaved,
+            focusNode: _flagsFocus,
+            onChange: _s.flags.mayEdit && !merged ? () => unawaited(_changeFlags(v)) : null,
+          ),
         const SizedBox(height: FieldSpace.s2),
         if (legalText != null && legalText.isNotEmpty && legalText != name)
           Text('Legal name: $legalText', style: text.bodyLarge),
@@ -805,6 +840,56 @@ class _ProblemRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The profile's flags row (8.2): the risk level's pill, then the conditions', each with its colour's
+/// name and an archived one's words; "Sent for review" while a change of this phone's waits for a
+/// Program Admin; and **Change flags**, with `patients.edit`. A focus group of its own, so focus
+/// comes back to it after Save; nothing at all of flags where the patient has none.
+class _FlagsRow extends StatelessWidget {
+  const _FlagsRow({required this.flags, required this.saved, required this.focusNode, required this.onChange});
+  final PatientFlagsView flags;
+
+  /// Saves made from the sheet: after each, "Flags saved." above the row, a new node each time.
+  final int saved;
+  final FocusNode focusNode;
+  final VoidCallback? onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = flags;
+    final shown = [?f.riskLevel, ...f.conditions];
+    if (shown.isEmpty && !f.sentForReview && onChange == null && saved == 0) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (saved > 0)
+          Padding(
+            key: ValueKey('flags.saved.$saved'),
+            padding: const EdgeInsets.only(bottom: FieldSpace.s2),
+            child: Semantics(
+              liveRegion: true,
+              container: true,
+              child: Text(flagsSavedText, style: Theme.of(context).textTheme.bodyLarge),
+            ),
+          ),
+        FocusTraversalGroup(
+          child: Wrap(
+            spacing: FieldSpace.s2,
+            runSpacing: FieldSpace.s2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final flag in shown) FlagMark(flag: flag),
+              if (f.sentForReview)
+                const StatusChip(label: flagSentForReviewText, icon: LucideIcons.send, tone: ChipTone.info),
+              if (onChange case final change?)
+                OutlinedButton(focusNode: focusNode, onPressed: change, child: const Text(changeFlagsAction)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
