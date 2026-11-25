@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   canonicalJson,
+  mapsExposedBy,
   planNoteTypes,
   sha256Hex,
   type HeldNoteTypeVersion,
+  type MappedAnswers,
   type NoteTypeHead,
   type NoteTypePlan,
   type NoteTypeStep,
@@ -413,6 +415,79 @@ describe('the note type installer’s plan, key by key', () => {
     });
     expect(effects(plan)).toEqual(['demo_outreach offer']);
     expect(stepOf(plan, 'demo_outreach').write).toBeNull();
+  });
+
+  describe('a version under which a field supply map of the team would fire on what some readers may not see (BM-77)', () => {
+    // A choice whose answers a map fires on, then the platform's next version, which marks its section
+    // a sensitive exam: nothing fixed at creation changes, so it would be taken in place.
+    const given = typeOf('demo_outreach', 1, {
+      sections: [
+        {
+          id: 'notes',
+          title: 'Demo: Notes',
+          fields: [
+            {
+              id: 'given',
+              kind: 'choice',
+              label: 'Demo: Given',
+              many: true,
+              options: [
+                { code: 'socks', label: 'Demo: Socks' },
+                { code: 'food', label: 'Demo: Food' },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const marked = { ...given, version: 2, sections: [{ ...given.sections[0]!, sensitiveExam: true }] };
+    const map = (over: Partial<MappedAnswers> = {}): MappedAnswers => ({
+      noteTypeKey: 'demo_outreach',
+      path: 'notes.given',
+      when: { includes: 'socks' },
+      fromPaths: [],
+      ...over,
+    });
+    const planWith = async (maps: MappedAnswers[]) => {
+      const [v1, v2] = [await presetOf(given), await presetOf(marked as ResolvedNoteType)];
+      return planNoteTypes({
+        heads: [headOf('demo_outreach')],
+        versions: [await heldPreset(v1)],
+        presets: [v1, v2],
+        maps,
+      });
+    };
+
+    it('is offered, never taken in place, while an active map fires there', async () => {
+      const plan = await planWith([map()]);
+      expect(effects(plan)).toEqual(['demo_outreach offer']);
+      expect(stepOf(plan, 'demo_outreach')).toMatchObject({
+        write: null,
+        head: { currentVersion: 1, platformLatest: 2, customized: false },
+      });
+    });
+
+    it('is offered for a map that counts from an answer there too', async () => {
+      const plan = await planWith([map({ path: null, when: null, fromPaths: ['notes.given'] })]);
+      expect(effects(plan)).toEqual(['demo_outreach offer']);
+    });
+
+    it('is taken in place with no map there: none, one on another note type, or one on a path it lacks', async () => {
+      for (const maps of [
+        [],
+        [map({ noteTypeKey: 'demo_other' })],
+        [map({ path: 'notes.gone' })],
+        [map({ path: null, when: null })],
+      ])
+        expect(effects(await planWith(maps)), JSON.stringify(maps)).toEqual(['demo_outreach update']);
+    });
+
+    it('names the maps it holds back, as the take in place refuses them', () => {
+      expect(mapsExposedBy(marked as ResolvedNoteType, [map(), map({ noteTypeKey: 'demo_other' })])).toEqual([
+        map(),
+      ]);
+      expect(mapsExposedBy(given, [map()])).toEqual([]);
+    });
   });
 
   describe('a key the team holds without a head (a team made after 0023, before this installer)', () => {

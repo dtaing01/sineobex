@@ -1,8 +1,10 @@
 import {
+  activeMaps,
   canonicalJson,
   copyPart,
   editNoteTypesApplied,
   isNoteTypeTitle,
+  mapsExposedBy,
   mayReach,
   PRESETS,
   sha256Hex,
@@ -392,7 +394,8 @@ type NoteTypeRefusal =
   | 'name_taken'
   | 'referenced'
   | 'not_removable'
-  | 'no_update';
+  | 'no_update'
+  | 'sensitive_path';
 
 const MESSAGES: Record<NoteTypeRefusal, string> = {
   archived: 'This note type is removed. Restore it first.',
@@ -404,6 +407,8 @@ const MESSAGES: Record<NoteTypeRefusal, string> = {
   referenced: 'Field supplies use this note type. Take it out of those first.',
   not_removable: 'This note type can’t be removed: a Medical note is never finished without it.',
   no_update: 'No update is on offer for this note type.',
+  sensitive_path:
+    'With this update, field supplies would read answers only some people may read. Take it out of those first.',
 };
 
 /**
@@ -428,7 +433,7 @@ function refusal(
         }
       : code === 'fixed_field'
         ? { fields: context.fields ?? [] }
-        : code === 'referenced'
+        : code === 'referenced' || code === 'sensitive_path'
           ? { referencedBy: context.referencedBy ?? {} }
           : undefined;
   return new ApiError(code === 'no_change' ? 422 : 409, code, MESSAGES[code], details);
@@ -814,6 +819,12 @@ export function takeNoteTypeUpdate(
     const { preset } = update;
     if (!input.asNew) {
       const { definition } = update;
+      // PLAN-OPEN (BM-77): may a supply mapping read a sensitive answer? No: a version under which an
+      // active field supply map would fire on what some readers may not see is not taken in place
+      // while the map is active, as the installer only offers it (packages/forms install.ts).
+      const exposed = mapsExposedBy(update.preset.definition, await activeMaps(w.tx, w.teamId));
+      if (exposed.length > 0)
+        throw refusal('sensitive_path', { referencedBy: { field_supply_map: exposed.length } });
       const versions = await versionsOf(w, held);
       // The platform's labels are its own meaning for its paths, checked against its own earlier
       // versions when it was released, as the team's rewordings were declared as renames: only a

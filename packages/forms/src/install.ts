@@ -28,6 +28,8 @@
 import PRESETS_FILE from '../generated/presets.json' with { type: 'json' };
 import { canonicalJson, sha256Hex } from './canonical.ts';
 import { copyPart } from './edit-protected.ts';
+import { fieldAt } from './interp/field-at.ts';
+import { mayBeHidden, type AnswerTest } from './interp/may-be-hidden.ts';
 import { platformUpdateEffect } from './platform-effect.ts';
 import type { ResolvedNoteType } from './resolve.ts';
 import { lockTeam, takeRevision } from './revision.ts';
@@ -98,7 +100,12 @@ export async function installPresets(
   if (presets.length === 0) return { installed: [], differing: [] };
 
   const plan = async () => {
-    const planned = await planNoteTypes({ ...(await heldBy(sql, teamId)), presets });
+    const held = await heldBy(sql, teamId);
+    let planned = await planNoteTypes({ ...held, presets });
+    // The maps are read only when a version would be taken in place, the one step they hold back,
+    // so a team that is up to date still costs the list two reads.
+    if (planned.steps.some((s) => s.effect === 'update'))
+      planned = await planNoteTypes({ ...held, presets, maps: await activeMaps(sql, teamId) });
     if (planned.differing.length > 0 && !skip) throw new PresetDiffers(planned.differing);
     return planned;
   };
@@ -208,7 +215,9 @@ export type NoteTypePlan = {
  * `presetVersion`, `state` and `customized` the head's (a key whose newest row is the team's own is
  * customized whatever its head says: forms 3.2's rule), and `changesFixed` whether the platform's
  * kinds, group, sensitivity, quick or auto differ from those of the platform version last taken
- * (treated as changed when that version is not among the presets). An offer is a step only while
+ * (treated as changed when that version is not among the presets). An update is planned as an
+ * offer when an active field supply map of the team (`maps`) would fire, under the platform's
+ * version, on an answer some readers may not see (mapsExposedBy). An offer is a step only while
  * the head's `platformLatest` is below the platform version. A key the team holds without a head
  * gets one, as 0023 fills it: the newest version's title (the key where it has none), that version
  * current, `platformLatest` the newest preset row's, customized when any version is the team's own,
@@ -218,6 +227,8 @@ export async function planNoteTypes(input: {
   heads: readonly NoteTypeHead[];
   versions: readonly HeldNoteTypeVersion[];
   presets: readonly Preset[];
+  /** The team's active field supply maps (activeMaps); none when left out. */
+  maps?: readonly MappedAnswers[];
 }): Promise<NoteTypePlan> {
   const heads = new Map(input.heads.map((h) => [h.key, h]));
   const rowsOf = byKey(input.versions);
@@ -266,7 +277,7 @@ export async function planNoteTypes(input: {
     const lastTaken = rows.findLast((r) => r.origin === 'preset');
     const originVersion = lastTaken?.presetVersion ?? null;
     const taken = platform.find((p) => p.version === originVersion);
-    const effect = platformUpdateEffect({
+    const decided = platformUpdateEffect({
       exists: rows.length > 0,
       state: head?.state ?? null,
       customized: (head?.customized ?? false) || newestRow?.origin === 'team',
@@ -276,6 +287,14 @@ export async function planNoteTypes(input: {
         originVersion !== null &&
         (taken === undefined || fixedOf(taken.definition) !== fixedOf(newest.definition)),
     });
+    // PLAN-OPEN (BM-77): may a supply mapping read a sensitive answer? No, so a platform version
+    // that would make an active map of the team fire on what some readers may not see is offered,
+    // never taken in place: the map stays as the admin made it, and a take in place is refused
+    // while it is active (presets/note-types.ts in the API).
+    const effect =
+      decided === 'update' && mapsExposedBy(newest.definition, input.maps ?? []).length > 0
+        ? 'offer'
+        : decided;
 
     if (effect === 'install' || effect === 'update') {
       const version = (newestRow?.version ?? 0) + 1;
@@ -312,6 +331,77 @@ export async function planNoteTypes(input: {
     } else if (!held) steps.push(headOnly());
   }
   return { steps, differing };
+}
+
+/**
+ * What an active field supply map of the team fires on and counts from (phase 5 design 4.4): its
+ * note type's key, its path and `when` (none for a map on every note of the type), and each path a
+ * line reads its quantity from. Its body is the presets package's, which this package cannot import.
+ */
+export type MappedAnswers = {
+  noteTypeKey: string;
+  path: string | null;
+  when: AnswerTest | null;
+  fromPaths: string[];
+};
+
+/**
+ * The maps of `maps` that would fire, under `definition`, on an answer visibleAnswers may take out
+ * from a reader who may read the note, as validatePreset refuses one (`sensitive_path`, BM-77): on
+ * any answer of a sensitive note type, or at a path or a quantity's path that holds an answer such
+ * a reader may not see. A path the definition lacks fires on nothing, so it is none of these.
+ */
+export function mapsExposedBy(definition: ResolvedNoteType, maps: readonly MappedAnswers[]): MappedAnswers[] {
+  const fires = (path: string, when?: AnswerTest) =>
+    holdsAnswer(definition, path) && mayBeHidden(definition, path, when);
+  return maps.filter(
+    (map) =>
+      map.noteTypeKey === definition.key &&
+      (mayBeHidden(definition) ||
+        (map.path !== null && map.when !== null && fires(map.path, map.when)) ||
+        map.fromPaths.some((path) => fires(path))),
+  );
+}
+
+/** Whether `path`, written without an entry part as a map writes it, names an answer of the definition. */
+function holdsAnswer(definition: ResolvedNoteType, path: string): boolean {
+  const [section, ...rest] = path.split('.');
+  // Any entry: what a path holds is the same in every entry of a repeating section.
+  const repeats = definition.sections.find((s) => s.id === section)?.repeat !== undefined;
+  const target = fieldAt(definition, repeats ? [section, 'e0000000', ...rest].join('.') : path);
+  return target !== null && target.leaf !== null && target.field !== null;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * The team's active field supply maps, each at its current version, read as MappedAnswers: what a
+ * version taken in place may not make fire on what some readers may not see. A body that names no
+ * note type is passed over: the presets' own checks refused it when it was written.
+ */
+export async function activeMaps(sql: InstallSql, teamId: string): Promise<MappedAnswers[]> {
+  const rows = await sql<{ body: unknown }[]>`
+    select v.body from sineobex.team_presets p
+    join sineobex.team_preset_versions v
+      on v.team_id = p.team_id and v.preset_id = p.id and v.version = p.current_version
+    where p.team_id = ${teamId}::uuid and p.kind = 'field_supply_map' and p.state = 'active'`;
+  return rows.flatMap(({ body }) => {
+    if (!isRecord(body) || typeof body.noteTypeKey !== 'string') return [];
+    const fromPaths = (Array.isArray(body.lines) ? body.lines : []).flatMap((line: unknown) =>
+      isRecord(line) && isRecord(line.qty) && typeof line.qty.fromPath === 'string'
+        ? [line.qty.fromPath]
+        : [],
+    );
+    return [
+      {
+        noteTypeKey: body.noteTypeKey,
+        path: typeof body.path === 'string' ? body.path : null,
+        when: isRecord(body.when) ? (body.when as AnswerTest) : null,
+        fromPaths,
+      },
+    ];
+  });
 }
 
 /** Each entry by its key, in the order given. */
