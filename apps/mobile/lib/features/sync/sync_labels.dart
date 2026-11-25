@@ -57,6 +57,8 @@ String entityLabel(String entity) => switch (entity) {
   'note_addendum' => 'Addendum',
   'note_correction' => 'Correction',
   'referral' => 'Referral',
+  // Phase 5: a patient's flag changes.
+  'patient_flag_change' => 'Flag change',
   _ => 'A record',
 };
 

@@ -1502,6 +1502,8 @@ describe('phase 4 sync: sign-offs', () => {
         entity,
         recordId,
         noteId,
+        // Only a flag change's notice names its patient (phase 5).
+        patientId: null,
         createdAt: expect.any(String),
         readAt: null,
       });
