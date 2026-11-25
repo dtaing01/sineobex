@@ -45,9 +45,9 @@ import {
 //   (a held change's hold time); device time, clock, author, phone, change and approver as sent; no
 //   field_history row for the create, since its one field is the mark.
 // - `patient_flag.changed` in the change's transaction, details `{changeId, clockVerified, action,
-//   tier}` and `flagId` only for a flag that is not sensitive (an admin's accept adds onBehalfOf and
-//   quarantineItem first); `patient_flag.entered_in_error` with writeValue's details and `{tier}`,
-//   `flagId` likewise. Never a reason.
+//   tier}` (an admin's accept adds onBehalfOf and quarantineItem first);
+//   `patient_flag.entered_in_error` with writeValue's details and `{tier}`. Never a reason, and
+//   never the flag, whatever the flag (CO-14): an event names its change by its entity id.
 // - `enteredInError`: set_once, a Retraction; mayChange is the change's author or a holder of
 //   team.manage_users, and never a sender the flag is hidden from.
 // - review.ts: a held flag change rejected, or refused at its accept, writes one
@@ -308,7 +308,6 @@ describe('phase 5 sync: flag changes', () => {
       clockVerified: true,
       action: 'set',
       tier: 'primary',
-      flagId: presetId('flag.high'),
     });
     expect(await eventXid('patient_flag.changed', made.recordId)).toBe(await rowXid(made.recordId));
     await expectAuditClean(h, [REASON, 'follow-ups'], before);
@@ -341,7 +340,6 @@ describe('phase 5 sync: flag changes', () => {
           clockVerified: true,
           action: 'clear',
           tier: 'primary',
-          flagId: presetId('flag.medium'),
         },
       ],
       [
@@ -352,13 +350,12 @@ describe('phase 5 sync: flag changes', () => {
           clockVerified: true,
           action: 'set',
           tier: 'secondary',
-          flagId: presetId('flag.frost_risk'),
         },
       ],
     ]);
   });
 
-  it('a sensitive flag’s change is logged without its flag', async () => {
+  it('a sensitive flag’s change is logged as any flag’s is, without its flag', async () => {
     const before = await auditMark(h);
     const made = await flagChange(kim, patientB, presetId('flag.pregnancy'));
     expect(await kim.send(made)).toEqual([taken(made)]);
@@ -383,9 +380,10 @@ describe('phase 5 sync: flag changes', () => {
     const before = await auditMark(h);
     expect(await kim.send(made)).toEqual([taken(made)]);
     expect(await row(made.recordId)).toMatchObject({ patientId: patient, flagId: low });
-    // Logged by the flag's ID as stored, as the route logs it.
+    // Logged on the patient as stored, naming no flag (CO-14).
     const [event] = await expectAudit(h, 'patient_flag.changed', { after: before, count: 1 });
-    expect(event).toMatchObject({ patientId: patient, details: { flagId: low } });
+    expect(event).toMatchObject({ entityId: made.recordId, patientId: patient });
+    expect(JSON.stringify(event!.details).toLowerCase()).not.toContain(low);
     const read = await call(h, '/v1/sync/records', {
       method: 'POST',
       token: kim.token,
@@ -461,7 +459,6 @@ describe('phase 5 sync: flag changes', () => {
       clockVerified: false,
       action: 'set',
       tier: 'primary',
-      flagId: presetId('flag.low'),
     });
   });
 
@@ -725,11 +722,10 @@ describe('phase 5 sync: flag changes', () => {
       kind: 'entered_in_error',
       version: 1,
       tier: 'primary',
-      flagId: presetId('flag.medium'),
     });
     expect(await eventXid('patient_flag.entered_in_error', kims.recordId)).toBe(await rowXid(kims.recordId));
 
-    // A sensitive flag's mark is logged without its flag.
+    // A sensitive flag's mark is logged as any flag's is, without its flag.
     const sensitiveMark = await markOf(kim, sensitive.recordId);
     expect(await kim.send(sensitiveMark)).toEqual([taken(sensitiveMark)]);
     const [quiet] = await expectAudit(h, 'patient_flag.entered_in_error', {

@@ -110,21 +110,23 @@ export async function insertFlagChange(
     entityId: change.id,
     patientId: change.patientId,
     deviceTime: change.deviceTime,
-    details: { ...change.auditDetails, action: change.action, ...flagDetails(flag, change.flagId) },
+    details: { ...change.auditDetails, action: change.action, ...flagDetails(flag) },
   });
   return { stored: true, flag };
 }
 
+// PLAN-OPEN (CO-14): what may the audit log say of a patient's flag change? Its tier and its
+// action, never its flag, for any flag.
 /**
- * What a flag change's audit event names of its flag: its tier, and its id only when it is not
- * sensitive. Every member reads the team's flags by id, and the audit chain is never redacted (D41),
- * so a sensitive flag's id would tell any reader of the log what the chart hides (design 9). The
- * portal's mark (patients/flags.ts) names it the same way.
+ * What a flag change's two audit events name of its flag, the create's and its mark's, synced or
+ * from the portal (patients/flags.ts): its tier, never its id, whatever the flag. Every member
+ * reads the team's flags by id (GET /v1/presets), a reader of the log need not see sensitive flags,
+ * and the chain is never redacted (D41), so an id kept only for a flag that is not sensitive would
+ * mark the change it is missing from as a sensitive flag's. The events are the same shape for every
+ * flag, as problem.created carries no code for any problem; an investigator who may read the change
+ * reads its flag from the change itself, by the event's entity id.
  */
-export const flagDetails = (flag: FlagHead | null, flagId: string) => ({
-  tier: flag?.tier ?? null,
-  ...(flag && !flag.sensitive ? { flagId } : {}),
-});
+export const flagDetails = (flag: FlagHead | null) => ({ tier: flag?.tier ?? null });
 
 /** The change's flag as the team holds it now, read with the change (load). */
 const flagOf = (rec: StoredRecord) => rec.internal.flag as FlagHead | null;
@@ -215,7 +217,8 @@ export const flagChangeRules: EntityRules<Value> = {
     const stored = await insertFlagChange(ctx.tx, ctx.audit, {
       id: c.recordId,
       teamId: ctx.actor.teamId,
-      // IDs as the database writes them, so its event names the flag as stored, as the route's does.
+      // IDs as the database writes them, as the route passes them: insertFlagChange is handed one
+      // form whichever way a change came.
       patientId: v.patientId.toLowerCase(),
       flagId: v.flagId.toLowerCase(),
       action: v.action,
@@ -262,6 +265,6 @@ export const flagChangeRules: EntityRules<Value> = {
   },
 
   writeAction: () => 'patient_flag.entered_in_error',
-  // The flag it was about, as its create's event names it: never a sensitive flag's id.
-  writeDetails: (s) => flagDetails(flagOf(s.rec), s.rec.attributes.flagId as string),
+  // The flag it was about, as its create's event names it: its tier, never its id.
+  writeDetails: (s) => flagDetails(flagOf(s.rec)),
 };
