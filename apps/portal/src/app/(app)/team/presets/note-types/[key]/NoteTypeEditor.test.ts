@@ -134,20 +134,34 @@ describe('what the editor holds', () => {
 
   it('shows a choice’s answers as the held moves, retires, renames and adds leave them', () => {
     const options = definition.sections[0]!.fields[0]!.options!;
+    // Each move puts its answer just before the one it names, or at the end (5.4's move_option).
     const list = [
-      held(1, { op: 'move_option', path: 'needs.given', code: 'food', before: 'socks' }),
+      held(1, { op: 'move_option', path: 'needs.given', code: 'none', before: 'socks' }),
       held(2, { op: 'rename_option', path: 'needs.given', code: 'socks', label: 'Demo: Wool socks' }),
       held(3, { op: 'add_option', path: 'needs.given', label: 'Demo: Blanket' }),
-      held(4, { op: 'retire_option', path: 'needs.given', code: 'none' }),
-      held(5, { op: 'move_option', path: 'needs.given', code: 'food', before: null }),
-      held(6, { op: 'move_option', path: 'other.field', code: 'socks', before: null }),
+      held(4, { op: 'move_option', path: 'needs.given', code: 'food', before: 'socks' }),
+      held(5, { op: 'move_option', path: 'other.field', code: 'socks', before: null }),
     ];
-    const shown = shownOptions(options, list, 'needs.given');
-    expect(shown.live.map((o) => [o.code, o.renamed?.id ?? null])).toEqual([
-      ['socks', 2],
+    expect(
+      shownOptions(options, list, 'needs.given').live.map((o) => [o.code, o.renamed?.id ?? null]),
+    ).toEqual([
+      ['none', null],
       ['food', null],
+      ['socks', 2],
     ]);
-    expect(shown.retired.map((r) => [r.option.code, r.op.id])).toEqual([['none', 4]]);
+    const moved = [...list, held(6, { op: 'move_option', path: 'needs.given', code: 'none', before: null })];
+    expect(shownOptions(options, moved, 'needs.given').live.map((o) => o.code)).toEqual([
+      'food',
+      'socks',
+      'none',
+    ]);
+    const shown = shownOptions(
+      options,
+      [...list, held(7, { op: 'retire_option', path: 'needs.given', code: 'none' })],
+      'needs.given',
+    );
+    expect(shown.live.map((o) => o.code)).toEqual(['food', 'socks']);
+    expect(shown.retired.map((r) => [r.option.code, r.op.id])).toEqual([['none', 7]]);
     expect(shown.added.map((h) => h.id)).toEqual([3]);
   });
 });
