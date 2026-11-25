@@ -76,6 +76,7 @@ test('pages behind sign-in redirect to the sign-in page', async ({ page }) => {
     '/team/presets',
     '/team/presets/items',
     '/team/presets/flags',
+    '/team/presets/field-supplies',
     '/team/presets/note-types',
     '/team/presets/note-types/outreach',
   ]) {
@@ -232,6 +233,7 @@ const TEAM_SETUP_AREAS = [
   'Items',
   'Bundles',
   'Flags',
+  'Field supplies',
   'Condition supplies',
   'Bag minimums',
   'Note types',
