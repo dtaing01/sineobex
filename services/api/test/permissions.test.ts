@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import {
+  canonicalJson,
+  PRESETS,
+  sha256Hex,
+  type NoteTypeEdit,
+  type Preset,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   FIELD_PERMISSIONS,
@@ -32,6 +40,7 @@ import {
   type PresetsApi,
   type PresetsTeam,
 } from './presets-fixtures.ts';
+import { call } from './sync-fixtures.ts';
 
 // Phase 3 adds no permission key (D37): every check is one of the 23 keys of migration 0002, alone
 // or combined by the three rules below, which the phone mirrors (access.json pins both).
@@ -39,6 +48,11 @@ import {
 // This file's platform is its own copy, so the platform updates a stale sign-in is tried on can be
 // released into it (presets-fixtures.ts, releasePlatform).
 vi.mock('../../../packages/presets/data/platform.json', async (importOriginal) => {
+  const real = (await importOriginal()) as { default: unknown[] };
+  return { default: [...real.default] };
+});
+// Its note types are its own copy too, so a platform version of one can be released into it.
+vi.mock('../../../packages/forms/generated/presets.json', async (importOriginal) => {
   const real = (await importOriginal()) as { default: unknown[] };
   return { default: [...real.default] };
 });
@@ -959,6 +973,321 @@ describe('phase 5 preset writes, with a stale sign-in', () => {
       const done = await send(await tokenOf(h, team.admin));
       const answer = await done.text();
       expect(done.status, answer).toBe(write.done);
+      expect(await revisionOf(h, team.teamId)).toBe(before.revision + 1);
+    });
+  }
+});
+
+/**
+ * Phase 5's admin note type routes (design 7, unit P4): team.manage_presets alone opens each, as it
+ * opens the preset routes, and no other key stands in for it, alone or with every other. Their team
+ * is made in the database, so no installer ran and it holds no note type: a key below is a platform
+ * note type's the team lacks, so a role past the check gets 404, and the list is empty.
+ */
+const NOTE_TYPE_ROUTES: RouteCase[] = [
+  {
+    method: 'GET',
+    path: '/v1/admin/note-types',
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: '/v1/admin/note-types',
+    body: { title: 'Demo: Permissions note type', kinds: ['non_medical'], group: 'outreach', reason: REASON },
+    label: 'a blank one',
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: '/v1/admin/note-types',
+    body: { title: 'Demo: Permissions copy', copyOf: 'outreach', reason: REASON },
+    label: 'a copy',
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'PUT',
+    path: '/v1/admin/note-types/wound_care',
+    body: { baseVersion: 1, ops: [{ op: 'rename_type', title: 'Demo: Permissions wounds' }], reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: '/v1/admin/note-types/outreach/archive',
+    body: { baseVersion: 1, reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: '/v1/admin/note-types/social_needs/restore',
+    body: { reason: REASON },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+  {
+    method: 'POST',
+    path: '/v1/admin/note-types/psychological/take-update',
+    body: { baseVersion: 1, platformVersion: 2, reason: REASON, asNew: false },
+    allowed: [MANAGE_PRESETS],
+    refused: ALL_BUT_PRESETS,
+    logged: { permission: MANAGE_PRESETS },
+  },
+];
+
+describe('phase 5 note type routes', () => {
+  let h: Harness;
+  let teamId: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    teamId = await createTeam(h, 'Note Types Team (demo)');
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  checksEach(NOTE_TYPE_ROUTES, () => ({ h, teamId }));
+
+  // The list asks no recent sign-in (design 7), as the preset lists ask none: Team setup's pages
+  // are read without signing in again.
+  it('GET /v1/admin/note-types asks no recent sign-in', async () => {
+    const member = await memberWith(h, teamId, [MANAGE_PRESETS]);
+    const [user] = await h.scratch.owner<{ email: string }[]>`
+      select email from sineobex.users where id = ${member.userId}`;
+    const stale = await h.tokenFor(user!.email, {
+      authTime: new Date(h.clock.now.getTime() - 60 * 60_000),
+    });
+    const mark = await auditMark(h);
+    const res = await h.request('/v1/admin/note-types', { token: stale, teamId });
+    expect(res.status).toBe(200);
+    const denied = await h.scratch.owner`
+      select 1 from sineobex.audit_events where action = 'access.denied' and id > ${mark}::bigint`;
+    expect(denied).toHaveLength(0);
+  });
+});
+
+/**
+ * Every note type write asks for a sign-in within RECENT_AUTH_MINUTES (design 7; PRD main 600), as
+ * every preset write does, and its refusal, 403 reauth_required, is logged nowhere (D98). Each
+ * request below is one a sign-in made just now carries out, in a team made as the owner console
+ * makes one, so a stale sign-in is refused for its age alone, and nothing is written: no head,
+ * version, event or audit row, and the same revision.
+ */
+describe('phase 5 note type writes, with a stale sign-in', () => {
+  let h: Harness;
+  let team: PresetsTeam;
+  const unreleases: (() => void)[] = [];
+  let made = 0;
+
+  /** A note type route in the team, called with a sign-in made `minutesAgo` minutes ago. */
+  const send = async (method: 'POST' | 'PUT', path: string, json: unknown, minutesAgo = 0) =>
+    call(h, path, { method, token: await tokenOf(h, team.admin, minutesAgo), teamId: team.teamId, json });
+
+  /** A blank note type of the team's own at version 1, made with a sign-in made just now. */
+  async function blank(): Promise<string> {
+    made += 1;
+    const r = await send('POST', '/v1/admin/note-types', {
+      title: `Demo: Stale sign-in ${made}`,
+      kinds: ['non_medical'],
+      group: 'outreach',
+      reason: REASON,
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    return r.body.key as string;
+  }
+
+  /** The list's row of a key: its version, and the platform version on offer. */
+  async function rowOf(key: string) {
+    const r = await call(h, '/v1/admin/note-types', {
+      token: await tokenOf(h, team.admin),
+      teamId: team.teamId,
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return (
+      r.body as unknown as { key: string; version: number; update: { platformVersion: number } | null }[]
+    ).find((row) => row.key === key)!;
+  }
+
+  /**
+   * A platform note type the team edits, then the platform's next version of it, which the
+   * installer can only offer (design 5.2): what a take sends, as the list shows it.
+   */
+  async function offered(key: string) {
+    const before = await rowOf(key);
+    const edit: NoteTypeEdit = { op: 'rename_type', title: `Demo: ${key}, the team’s own` };
+    const edited = await send('PUT', `/v1/admin/note-types/${key}`, {
+      baseVersion: before.version,
+      ops: [edit],
+      reason: REASON,
+    });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    const newest = [...PRESETS].filter((p) => p.key === key).sort((a, b) => b.version - a.version)[0]!;
+    const definition: ResolvedNoteType = {
+      ...structuredClone(newest.definition),
+      version: newest.version + 1,
+      title: `${newest.definition.title}, again`,
+    };
+    const next: Preset = {
+      key,
+      version: definition.version,
+      hash: await sha256Hex(canonicalJson(definition)),
+      definition,
+    };
+    (PRESETS as Preset[]).push(next);
+    unreleases.push(() => void (PRESETS as Preset[]).splice((PRESETS as Preset[]).indexOf(next), 1));
+    // A phone's list runs the installer, which offers the platform version over the team's own.
+    const listed = await call(h, '/v1/forms/note-types', {
+      token: await tokenOf(h, team.admin),
+      teamId: team.teamId,
+    });
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    const row = await rowOf(key);
+    expect(row.update?.platformVersion).toBe(next.version);
+    return { baseVersion: row.version, platformVersion: next.version };
+  }
+
+  /** Everything a note type write could leave behind in the team: what a refusal must leave as it was. */
+  async function noteTypeFootprint() {
+    const heads = await h.scratch.owner`
+      select key, title, state, current_version, platform_latest, customized, revision, updated_at
+      from sineobex.note_types where team_id = ${team.teamId} order by key collate "C"`;
+    const [counts] = await h.scratch.owner<{ versions: number; events: number; audit: number }[]>`
+      select (select count(*)::int from sineobex.note_type_versions where team_id = ${team.teamId}) as versions,
+             (select count(*)::int from sineobex.team_preset_events where team_id = ${team.teamId}) as events,
+             (select count(*)::int from sineobex.audit_events where team_id = ${team.teamId}) as audit`;
+    return { heads, ...counts!, revision: await revisionOf(h, team.teamId) };
+  }
+
+  beforeAll(async () => {
+    h = await createHarness();
+    team = await presetsTeam(h, 'Note Type Permissions');
+  });
+  afterAll(async () => {
+    for (const unrelease of unreleases) unrelease();
+    await h?.close();
+  });
+
+  /** A write a sign-in made just now carries out: where it is sent, what, and the status it gets. */
+  interface Write {
+    method: 'POST' | 'PUT';
+    path: string;
+    body: unknown;
+    done: number;
+  }
+
+  const WRITES: [string, () => Promise<Write>][] = [
+    [
+      'POST /v1/admin/note-types (a blank one)',
+      async () => ({
+        method: 'POST',
+        path: '/v1/admin/note-types',
+        body: {
+          title: 'Demo: Made on a fresh sign-in',
+          kinds: ['medical'],
+          group: 'clinical',
+          reason: REASON,
+        },
+        done: 201,
+      }),
+    ],
+    [
+      'POST /v1/admin/note-types (a copy)',
+      async () => ({
+        method: 'POST',
+        path: '/v1/admin/note-types',
+        body: { title: 'Demo: Copied on a fresh sign-in', copyOf: 'outreach', reason: REASON },
+        done: 201,
+      }),
+    ],
+    [
+      'PUT /v1/admin/note-types/{key}',
+      async () => ({
+        method: 'PUT',
+        path: `/v1/admin/note-types/${await blank()}`,
+        body: {
+          baseVersion: 1,
+          ops: [{ op: 'rename_label', path: 'notes.notes', label: 'Demo: What was said' }],
+          reason: REASON,
+        },
+        done: 200,
+      }),
+    ],
+    [
+      'POST /v1/admin/note-types/{key}/archive',
+      async () => ({
+        method: 'POST',
+        path: `/v1/admin/note-types/${await blank()}/archive`,
+        body: { baseVersion: 1, reason: REASON },
+        done: 200,
+      }),
+    ],
+    [
+      'POST /v1/admin/note-types/{key}/restore',
+      async () => {
+        const key = await blank();
+        const archived = await send('POST', `/v1/admin/note-types/${key}/archive`, {
+          baseVersion: 1,
+          reason: REASON,
+        });
+        expect(archived.status, JSON.stringify(archived.body)).toBe(200);
+        return {
+          method: 'POST',
+          path: `/v1/admin/note-types/${key}/restore`,
+          body: { reason: REASON },
+          done: 200,
+        };
+      },
+    ],
+    [
+      'POST /v1/admin/note-types/{key}/take-update',
+      async () => ({
+        method: 'POST',
+        path: '/v1/admin/note-types/psychological/take-update',
+        body: { ...(await offered('psychological')), asNew: false, reason: REASON },
+        done: 200,
+      }),
+    ],
+    [
+      'POST /v1/admin/note-types/{key}/take-update (as new)',
+      async () => ({
+        method: 'POST',
+        path: '/v1/admin/note-types/sexual_reproductive/take-update',
+        body: { ...(await offered('sexual_reproductive')), asNew: true, reason: REASON },
+        done: 200,
+      }),
+    ],
+  ];
+
+  for (const [name, prepare] of WRITES) {
+    it(`${name} refuses a stale sign-in: reauth_required, logged nowhere, nothing written`, async () => {
+      const write = await prepare();
+      const before = await noteTypeFootprint();
+      const mark = await auditMark(h);
+      const res = await h.request(write.path, {
+        method: write.method,
+        token: await tokenOf(h, team.admin, STALE_MINUTES),
+        teamId: team.teamId,
+        json: write.body,
+      });
+      expect(res.status).toBe(403);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('reauth_required');
+      // In no chain: neither the team's nor the platform's.
+      expect(await auditAfter(h, mark)).toEqual([]);
+      expect(await noteTypeFootprint()).toEqual(before);
+      // A sign-in made just now carries the same request out, so its age alone refused it.
+      const done = await send(write.method, write.path, write.body);
+      expect(done.status, JSON.stringify(done.body)).toBe(write.done);
       expect(await revisionOf(h, team.teamId)).toBe(before.revision + 1);
     });
   }
