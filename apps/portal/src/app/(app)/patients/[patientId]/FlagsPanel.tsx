@@ -61,9 +61,35 @@ function choiceWords(c: FlagChoice): string {
 }
 
 /**
- * Posts [body] to a flag route handler and reads its answer: the handler's JSON, `session_ended` for
- * a redirect the browser was not let follow (the session ended on the way), or null for anything
- * else (a dropped connection, a gateway's page), which can't say whether the act went through.
+ * [json] as the route handler answers (lib/flags.ts FlagAnswer): done, or not done with its words and
+ * the field they are about, or a page of the portal's own to go to. Null for any other shape: JSON
+ * from a gateway or a platform in front of the portal says nothing of whether the act went through,
+ * so it is read as a dropped connection, never drawn.
+ */
+export function flagAnswerOf(json: unknown): FlagAnswer | null {
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) return null;
+  const answer = json as Record<string, unknown>;
+  if (answer.ok === true) return { ok: true };
+  if (answer.ok !== false) return null;
+  const { redirect, error, field, code } = answer;
+  // Only a path of the portal's own: never another site.
+  if (typeof redirect === 'string') {
+    return redirect.startsWith('/') && !redirect.startsWith('//') ? { ok: false, redirect } : null;
+  }
+  if (typeof error !== 'string' || error === '') return null;
+  return {
+    ok: false,
+    error,
+    ...(field === 'flagId' || field === 'reason' ? { field } : {}),
+    ...(typeof code === 'string' ? { code } : {}),
+  };
+}
+
+/**
+ * Posts [body] to a flag route handler and reads its answer: the handler's own ([flagAnswerOf]),
+ * `session_ended` for a redirect the browser was not let follow (the session ended on the way), or
+ * null for anything else (a dropped connection, a gateway's page or its JSON), which can't say
+ * whether the act went through.
  */
 async function post(path: string, body: unknown): Promise<FlagAnswer | 'session_ended' | null> {
   try {
@@ -76,7 +102,7 @@ async function post(path: string, body: unknown): Promise<FlagAnswer | 'session_
     });
     if (response.type === 'opaqueredirect') return 'session_ended';
     if (!response.headers.get('content-type')?.includes('json')) return null;
-    return (await response.json()) as FlagAnswer;
+    return flagAnswerOf(await response.json());
   } catch {
     return null;
   }

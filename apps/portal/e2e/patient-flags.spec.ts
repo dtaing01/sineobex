@@ -36,6 +36,8 @@ const SAVED = 'Flag saved. The history below shows the change.';
 const MARKED = 'Marked entered in error. It no longer counts among the patient’s flags.';
 const DROPPED =
   'The connection dropped, so we can’t tell whether the flag was saved. Press Save again: if it was, it isn’t saved twice.';
+const DROPPED_MARK =
+  'The connection dropped, so we can’t tell whether the change was marked. Press Mark entered in error again: if it was, nothing changes.';
 const ARCHIVED = 'This flag is no longer on your team’s list, so it can only be cleared.';
 const KEPT_BACK = 'Only the person who made it and Program Admins see why.';
 
@@ -513,6 +515,59 @@ test('@responsive Entered in error is offered to the change’s author and to a 
   await expect(parts.rows.filter({ hasText: 'Frost risk' })).toContainText('Demo: set on the wrong patient');
   await expect(markOf(parts, 'Dehydration risk')).toHaveCount(1);
   await expectAccessible(page, 'the history with a change entered in error');
+});
+
+// Review finding R1: an answer is the route handler's only in its shape; JSON from a gateway or a
+// platform in front of the portal says nothing of whether the act went through.
+test('an answer that isn’t the route handler’s own is read as a dropped connection, and what was typed stays', async ({
+  page,
+}) => {
+  const patient = await freshPatient();
+  const high = await flagNamed('High');
+  const frost = await flagNamed('Frost risk');
+  await changeFlag(ADMIN, patient.id, frost.flagId, 'set', 'Demo: sleeps by the made-up river');
+  const foreign = [
+    { status: 500, body: { error: { code: 'internal', message: 'Something broke' } } },
+    { status: 502, body: { message: 'Internal Server Error' } },
+  ];
+
+  await signIn(page, ADMIN);
+  const crashes: string[] = [];
+  page.on('pageerror', (e) => crashes.push(e.message));
+  await page.goto(`/patients/${patient.id}`);
+  const parts = partsOf(page);
+  const saveRoute = `**/patients/${patient.id}/flags`;
+  for (const { status, body } of foreign) {
+    await page.route(saveRoute, (r) =>
+      r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }),
+    );
+    await fill(parts, pill(high), 'Set', 'Demo: open wound and nowhere warm');
+    await parts.save.click();
+    await expect(parts.alert).toBeFocused();
+    await expect(parts.alert).toHaveText(DROPPED);
+    await expect(parts.reason).toHaveValue('Demo: open wound and nowhere warm');
+    await page.unroute(saveRoute);
+  }
+
+  const markRoute = `**/patients/${patient.id}/flag-changes/*/entered-in-error`;
+  await parts.panel.getByRole('button', { name: /^Entered in error: Set Frost risk,/ }).click();
+  const mark = page.getByRole('form', { name: 'Mark entered in error' });
+  const reason = mark.getByLabel('Why it was entered in error');
+  for (const { status, body } of foreign) {
+    await page.route(markRoute, (r) =>
+      r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }),
+    );
+    await reason.fill('Demo: set on the wrong patient');
+    await mark.getByRole('button', { name: 'Mark entered in error' }).click();
+    await expect(mark.getByRole('alert')).toBeFocused();
+    await expect(mark.getByRole('alert')).toHaveText(DROPPED_MARK);
+    await expect(reason).toHaveValue('Demo: set on the wrong patient');
+    await page.unroute(markRoute);
+  }
+  await expectAccessible(page, 'an answer not the route handler’s own', { inPlace: true });
+  expect(crashes).toEqual([]);
+  const history = (await chartFor(ADMIN, patient.id)).flags!.history;
+  expect(history.map((h) => [h.name, h.action, h.enteredInError])).toEqual([['Frost risk', 'set', null]]);
 });
 
 // ------------------------------------------------------------------------------------------------

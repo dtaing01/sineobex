@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { FlagChoice } from '@/lib/flags';
-import { FlagsPanel, type FlagsPanelProps } from './FlagsPanel';
+import { FlagsPanel, flagAnswerOf, type FlagsPanelProps } from './FlagsPanel';
 
 // The patient page's Flags panel as it first draws (phase 5 design 8.1; card P5-portal-panel),
 // written ahead of its code: it fails until that card lands. The history as the API worked it out
@@ -179,5 +179,55 @@ describe('the Flags panel’s form', () => {
     const html = draw({ canEdit: false, markable: [] });
     expect(html).not.toContain('<form');
     expect(text(html)).toContain('Demo: High');
+  });
+});
+
+// Review finding R1: an answer is the route handler's only in its shape; any other JSON, such as a
+// gateway's or a platform's in front of the portal, says nothing of whether the act went through.
+describe('the panel’s reading of a route handler’s answer', () => {
+  it('takes the handler’s own answers as they are', () => {
+    expect(flagAnswerOf({ ok: true })).toEqual({ ok: true });
+    expect(
+      flagAnswerOf({ ok: false, error: 'Give a reason.', field: 'reason', code: 'reason_invalid' }),
+    ).toEqual({
+      ok: false,
+      error: 'Give a reason.',
+      field: 'reason',
+      code: 'reason_invalid',
+    });
+    expect(flagAnswerOf({ ok: false, error: 'This patient can’t be found.' })).toEqual({
+      ok: false,
+      error: 'This patient can’t be found.',
+    });
+    expect(flagAnswerOf({ ok: false, redirect: `/reauth?next=/patients/${PATIENT}` })).toEqual({
+      ok: false,
+      redirect: `/reauth?next=/patients/${PATIENT}`,
+    });
+  });
+
+  it('reads any other JSON as no answer, so nothing it holds is drawn', () => {
+    for (const json of [
+      { error: { code: 'internal', message: 'Something broke' } },
+      { ok: false, error: { code: 'internal', message: 'Something broke' } },
+      { message: 'Internal Server Error' },
+      { ok: 'false', error: 'Demo: words' },
+      { ok: false },
+      { ok: false, error: '' },
+      // A redirect off the portal is never followed.
+      { ok: false, redirect: 'https://example.com/sign-in' },
+      { ok: false, redirect: '//example.com/sign-in' },
+      null,
+      'Internal Server Error',
+      [{ ok: true }],
+    ]) {
+      expect(flagAnswerOf(json), JSON.stringify(json)).toBeNull();
+    }
+  });
+
+  it('keeps only a field the panel has', () => {
+    expect(flagAnswerOf({ ok: false, error: 'Demo: words', field: 'patientId' })).toEqual({
+      ok: false,
+      error: 'Demo: words',
+    });
   });
 });
