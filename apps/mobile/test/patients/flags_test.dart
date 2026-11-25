@@ -313,14 +313,15 @@ void main() {
       final p = await openedPatient();
       server.offline = true;
       // Healthcare Staff see it, and set it.
-      expect(ids(flags().teamFlags(FlagTier.secondary)), [frost, wet, pregnancy]);
+      // By rank: Heat risk (5) before Frost risk (10).
+      expect(ids(flags().teamFlags(FlagTier.secondary)), [heat, frost, wet, pregnancy]);
       final id = flags().record(p, flagId: pregnancy, action: 'set', reason: 'Demo: told the team');
       expect(ids(flags().flagsOf(p).conditions), [pregnancy]);
 
       // A community health worker on the same phone does not, anywhere.
       final chw = servicesFor(FakeSyncServer.chw.toList());
-      expect(ids(chw.flags.teamFlags(FlagTier.secondary)), [frost, wet]);
-      expect(ids(chw.flags.offered(p, FlagTier.secondary)), [frost, wet]);
+      expect(ids(chw.flags.teamFlags(FlagTier.secondary)), [heat, frost, wet]);
+      expect(ids(chw.flags.offered(p, FlagTier.secondary)), [heat, frost, wet]);
       final shown = chw.flags.flagsOf(p);
       expect(shown.conditions, isEmpty);
       expect([for (final h in shown.history) h.changeId], isNot(contains(id)));

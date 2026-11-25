@@ -399,10 +399,13 @@ void main() {
       expect(shown.preferredName, 'Demo 0');
 
       // Each list shown is logged before it returns, naming the patients and never a flag (CO-14).
+      final before = store().outbox().where((e) => e.entity == entityAudit).length;
+      expect(listed(riskLevel: high, conditions: {frost}), {ids[0]});
       final audits = [
         for (final e in store().outbox())
           if (e.entity == entityAudit) e.value! as Map<String, Object?>,
       ];
+      expect(audits, hasLength(before + 1));
       final last = audits.last;
       expect([last['action'], last['source'], last['resultCount']], ['patient.searched', 'team_index', 1]);
       expect(last['patientIds'], [ids[0]]);
