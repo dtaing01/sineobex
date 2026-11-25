@@ -98,7 +98,7 @@ function NoteTypeSection({ row, history }: { row: NoteTypeRow; history?: readonl
         <div>
           <dt>Whose version</dt>
           <dd>
-            {whoseOf(row)}, version {row.version}
+            {whoseOf(row, history)}, version {row.version}
           </dd>
         </div>
         <div>

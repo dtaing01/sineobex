@@ -1,6 +1,7 @@
 import type { ReviewRow } from '@/components/presets/review';
 import type {
   NoteTypeDefinition,
+  NoteTypeEvent,
   NoteTypeField,
   NoteTypeGroup,
   NoteTypeKind,
@@ -44,10 +45,19 @@ export const readersOf = (sensitivity: string): string =>
 
 /**
  * Whose version a note type is at: Sineobex's as it made it, which the PRD calls Use as is (main 952),
- * or the team's, which a platform update never overwrites (5.2).
+ * or the team's, which a platform update never overwrites (5.2). Read from the source of the current
+ * version, as its history gives it: a remove and a restore make the note type `customized` (5.1),
+ * which keeps Sineobex's later versions to an offer, though the version stays Sineobex's. Without
+ * the history, `customized` is all there is to go on.
  */
-export const whoseOf = (row: Pick<NoteTypeRow, 'customized'>): string =>
-  row.customized ? 'Your team’s' : 'Sineobex’s, used as is';
+export function whoseOf(
+  row: Pick<NoteTypeRow, 'customized' | 'version'>,
+  history?: readonly Pick<NoteTypeEvent, 'version' | 'source'>[],
+): string {
+  const source = history?.findLast((e) => e.version === row.version)?.source;
+  const sineobex = source === undefined ? !row.customized : source === 'platform';
+  return sineobex ? 'Sineobex’s, used as is' : 'Your team’s';
+}
 
 /** A field's words in a list: a group's own fields after its label. */
 function fieldLines(fields: readonly NoteTypeField[], within = ''): string[] {

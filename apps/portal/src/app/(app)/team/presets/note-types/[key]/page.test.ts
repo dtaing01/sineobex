@@ -100,6 +100,20 @@ describe('a note type’s own page', () => {
     }
   });
 
+  it('says whose version it is from the version’s own source: Sineobex’s after a remove and a restore', async () => {
+    const whose = (html: string) => /<dt>Whose version<\/dt><dd>([^<]*)<\/dd>/.exec(html)?.[1];
+    rows = [row('social_needs', { customized: true })];
+    history = [
+      event(),
+      event({ act: 'archived', by: { userId: 'u', displayName: 'Demo: Admin' }, reason: 'Demo: not now' }),
+      event({ act: 'restored', by: { userId: 'u', displayName: 'Demo: Admin' }, reason: 'Demo: back' }),
+    ];
+    expect(whose(await draw('social_needs'))).toBe('Sineobex’s, used as is, version 1');
+    rows = [row('social_needs', { customized: true, version: 2 })];
+    history = [event(), event({ act: 'updated', version: 2, source: 'team' })];
+    expect(whose(await draw('social_needs'))).toBe('Your team’s, version 2');
+  });
+
   it('draws no editor for a note type that can’t be changed at all, and says so once', async () => {
     const sections = [
       {

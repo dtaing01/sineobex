@@ -69,6 +69,14 @@ async function noteTypes(): Promise<NoteType[]> {
 }
 const noteType = async (key: string) => (await noteTypes()).find((n) => n.key === key)!;
 
+/** Whose a note type's current version is, as its history gives it: the platform's or the team's. */
+async function sourceOf(n: NoteType): Promise<'platform' | 'team'> {
+  const res = await apiCall(await admin(), 'GET', `/v1/admin/note-types/${n.key}/history`);
+  expect(res.status).toBe(200);
+  const events = (await res.json()) as { version: number; source: 'platform' | 'team' }[];
+  return events.findLast((e) => e.version === n.version)!.source;
+}
+
 /** A note type of the team's own, a copy or a blank one, added as another admin would add it. */
 async function added(body: Record<string, unknown>): Promise<string> {
   const res = await apiCall(await admin(), 'POST', '/v1/admin/note-types', {
@@ -174,8 +182,9 @@ test.describe('note types, /team/presets/note-types', () => {
       const section = page.getByRole('region', { name: n.title, exact: true });
       await expect(fact(section, 'Which visits')).toHaveText(VISITS[n.definition.kinds.join(',')]!);
       await expect(fact(section, 'Timeline group')).toHaveText(GROUPS[n.definition.group]!);
+      // Whose the version is follows the version's own source, as its history gives it.
       await expect(fact(section, 'Whose version')).toHaveText(
-        `${n.customized ? 'Your team’s' : 'Sineobex’s, used as is'}, version ${n.version}`,
+        `${(await sourceOf(n)) === 'platform' ? 'Sineobex’s, used as is' : 'Your team’s'}, version ${n.version}`,
       );
       await expect(section.getByRole('link', { name: `Edit ${n.title}`, exact: true })).toHaveAttribute(
         'href',
