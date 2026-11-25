@@ -12,7 +12,7 @@ import '../../design/tokens.dart';
 import '../../design/widgets/flag_pill.dart';
 import '../../design/widgets/form_bits.dart' show NoticeMessage;
 import '../../design/widgets/status_chip.dart';
-import '../../patients/access.dart' show mayViewProblems;
+import '../../patients/flags.dart' show flagHidden;
 import '../../presets/models.dart';
 import '../../presets/preset_store.dart';
 import '../../sync/sync_engine.dart' show RefreshReason;
@@ -105,7 +105,7 @@ class TeamSetupScreen extends ConsumerWidget {
                       copy.presets(),
                       updatedAt: copy.updatedAt,
                       now: ref.read(wallClockProvider)(),
-                      seesSensitive: _seesSensitiveFlags(permissions),
+                      permissions: permissions,
                     ).children(context)
                   : const [NoticeMessage(setupNotDownloaded)],
             ),
@@ -142,15 +142,6 @@ class TeamSetupRow extends StatelessWidget {
   }
 }
 
-/// Whether a person with [permissions] sees a sensitive flag: the flag rule's reader half (6.2,
-/// D136), the server's projection for a sensitive problem (`mayViewProblems` and
-/// `patients.view_sensitive`). Team setup lists the team's flags as every other list does, so a
-/// sensitive one is absent for a reader the rule hides it from.
-// PLAN-OPEN (PL-23): who sees a sensitive flag? Whoever sees a sensitive problem. Phase 5's unit P5
-// gives the phone one copy of the flag rule, which this then calls.
-bool _seesSensitiveFlags(List<String> permissions) =>
-    mayViewProblems(permissions) && permissions.contains('patients.view_sensitive');
-
 /// A to Z by name whatever its case, then by ID, so the order never rests on the copy's.
 int _byName((HeldPreset, PresetBody) a, (HeldPreset, PresetBody) b) {
   final byName = a.$2.name.toLowerCase().compareTo(b.$2.name.toLowerCase());
@@ -167,7 +158,7 @@ int _byRank((HeldPreset, FlagBody) a, (HeldPreset, FlagBody) b) =>
 
 /// What the screen lists, read from the copy once per build.
 class _Setup {
-  _Setup(List<HeldPreset> held, {required this.updatedAt, required this.now, required this.seesSensitive})
+  _Setup(List<HeldPreset> held, {required this.updatedAt, required this.now, required this.permissions})
     : byId = {for (final p in held) p.id: p},
       active = [
         for (final p in held)
@@ -178,7 +169,9 @@ class _Setup {
   final List<HeldPreset> active;
   final DateTime? updatedAt;
   final DateTime now;
-  final bool seesSensitive;
+
+  /// The person's permission keys, which the flag rule reads.
+  final List<String> permissions;
 
   Iterable<(HeldPreset, B)> _of<B extends PresetBody>() sync* {
     for (final p in active) {
@@ -211,10 +204,12 @@ class _Setup {
 
   List<(HeldPreset, BundleBody)> get bundles => _of<BundleBody>().toList()..sort(_byName);
 
-  /// The active flags of [tier] this person may see.
+  /// The active flags of [tier] this person may see: the phone's one flag rule ([flagHidden],
+  /// lib/patients/flags.dart), so Team setup lists a sensitive flag exactly where every other read of
+  /// it shows one (6.2, D136).
   List<(HeldPreset, FlagBody)> flags(FlagTier tier) => [
     for (final (p, body) in _of<FlagBody>())
-      if (body.tier == tier && (!body.sensitive || seesSensitive)) (p, body),
+      if (body.tier == tier && !flagHidden(permissions, body)) (p, body),
   ]..sort(_byRank);
 
   List<Widget> children(BuildContext context) {

@@ -28,6 +28,9 @@ import 'team_index.dart' show TeamIndex;
 /// Whether a person with [permissions] sees a sensitive flag: the reader half of the flag rule (6.2,
 /// D136), the server's `Projection.sensitive` for a sensitive problem, `mayViewProblems` (access.dart)
 /// and `patients.view_sensitive`, held to it role by role in flags_test.dart through access.json.
+// PLAN-OPEN (PL-23): who sees a sensitive flag? Whoever sees a sensitive problem: patients.view_sensitive
+// with the problem list, so a flag tells no reader what the problem list would not. The phone's one
+// copy of the rule: Team setup, the team index, the flags sheet and the patient list all ask it.
 bool seesSensitiveFlags(Iterable<String> permissions) =>
     mayViewProblems(permissions) && permissions.contains('patients.view_sensitive');
 
