@@ -815,6 +815,42 @@ enum NoteTypeEntrySensitivity {
   String toJson() => wire;
 }
 
+enum NoteTypePlatformUpdateChangesFixedItem {
+  kinds('kinds'),
+  group('group'),
+  sensitivity('sensitivity'),
+  quick('quick'),
+  auto('auto'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteTypePlatformUpdateChangesFixedItem(this.wire);
+  final String wire;
+
+  static NoteTypePlatformUpdateChangesFixedItem fromJson(String value) =>
+      NoteTypePlatformUpdateChangesFixedItem.values.firstWhere((e) => e.wire == value, orElse: () => NoteTypePlatformUpdateChangesFixedItem.unknown);
+
+  String toJson() => wire;
+}
+
+/// An archived note type is offered for no new note; every version still reads
+enum NoteTypeViewState {
+  active('active'),
+  archived('archived'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteTypeViewState(this.wire);
+  final String wire;
+
+  static NoteTypeViewState fromJson(String value) =>
+      NoteTypeViewState.values.firstWhere((e) => e.wire == value, orElse: () => NoteTypeViewState.unknown);
+
+  String toJson() => wire;
+}
+
 enum OwnerTeamStatus {
   active('active'),
   suspended('suspended'),
@@ -4078,6 +4114,145 @@ class NoteTypeList {
       };
 }
 
+class NoteTypePlatformUpdate {
+  const NoteTypePlatformUpdate({
+    required this.changesFixed,
+    required this.definition,
+    required this.platformVersion,
+  });
+
+  /// The fields fixed at creation it changes; with any, it is taken only as a new note type
+  final List<NoteTypePlatformUpdateChangesFixedItem> changesFixed;
+  /// The platform’s definition named as this note type’s next version: what taking it in place writes
+  final Map<String, Object?> definition;
+  /// Send it back as platformVersion to take this update and no other
+  final int platformVersion;
+
+  factory NoteTypePlatformUpdate.fromJson(Map<String, dynamic> json) => NoteTypePlatformUpdate(
+        changesFixed: (json['changesFixed'] as List<dynamic>).map((e) => NoteTypePlatformUpdateChangesFixedItem.fromJson(e as String)).toList(),
+        definition: Map<String, Object?>.from(json['definition'] as Map),
+        platformVersion: (json['platformVersion'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'changesFixed': changesFixed.map((e) => e.toJson()).toList(),
+        'definition': definition,
+        'platformVersion': platformVersion,
+      };
+}
+
+/// What an edit may not touch: “This part can’t be changed.”
+class NoteTypeProtectedParts {
+  const NoteTypeProtectedParts({
+    required this.fields,
+    required this.options,
+    required this.sections,
+  });
+
+  /// Field paths, the entry part of a repeating section left out
+  final List<String> fields;
+  /// Options of choice fields, by the field’s path and the option’s code
+  final List<NoteTypeProtectedPartsOptionsItem> options;
+  /// Section ids
+  final List<String> sections;
+
+  factory NoteTypeProtectedParts.fromJson(Map<String, dynamic> json) => NoteTypeProtectedParts(
+        fields: (json['fields'] as List<dynamic>).map((e) => e as String).toList(),
+        options: (json['options'] as List<dynamic>).map((e) => NoteTypeProtectedPartsOptionsItem.fromJson(e as Map<String, dynamic>)).toList(),
+        sections: (json['sections'] as List<dynamic>).map((e) => e as String).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'fields': fields.map((e) => e).toList(),
+        'options': options.map((e) => e.toJson()).toList(),
+        'sections': sections.map((e) => e).toList(),
+      };
+}
+
+class NoteTypeProtectedPartsOptionsItem {
+  const NoteTypeProtectedPartsOptionsItem({
+    required this.code,
+    required this.path,
+  });
+
+  final String code;
+  final String path;
+
+  factory NoteTypeProtectedPartsOptionsItem.fromJson(Map<String, dynamic> json) => NoteTypeProtectedPartsOptionsItem(
+        code: json['code'] as String,
+        path: json['path'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'code': code,
+        'path': path,
+      };
+}
+
+class NoteTypeView {
+  const NoteTypeView({
+    required this.customized,
+    required this.definition,
+    required this.key,
+    required this.protected,
+    required this.referencedBy,
+    required this.state,
+    required this.title,
+    required this.update,
+    required this.updateChangesFixed,
+    required this.updateOnOffer,
+    required this.version,
+  });
+
+  /// The team edited, removed or restored it: a platform version is then only offered
+  final bool customized;
+  /// Its current version’s resolved definition
+  final Map<String, Object?> definition;
+  final String key;
+  final NoteTypeProtectedParts protected;
+  /// How many active presets name it, by their kind; it can’t be removed while any do
+  final Map<String, int> referencedBy;
+  /// An archived note type is offered for no new note; every version still reads
+  final NoteTypeViewState state;
+  final String title;
+  /// The update on offer, for the person to review before taking it; null when none is
+  final NoteTypePlatformUpdate? update;
+  /// The update changes a field fixed at creation, so it is taken only as a new note type
+  final bool updateChangesFixed;
+  /// A newer platform version is on offer to take
+  final bool updateOnOffer;
+  /// Its current version: a publish, a remove and a take send it back
+  final int version;
+
+  factory NoteTypeView.fromJson(Map<String, dynamic> json) => NoteTypeView(
+        customized: json['customized'] as bool,
+        definition: Map<String, Object?>.from(json['definition'] as Map),
+        key: json['key'] as String,
+        protected: NoteTypeProtectedParts.fromJson(json['protected'] as Map<String, dynamic>),
+        referencedBy: (json['referencedBy'] as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt())),
+        state: NoteTypeViewState.fromJson(json['state'] as String),
+        title: json['title'] as String,
+        update: json['update'] == null ? null : NoteTypePlatformUpdate.fromJson(json['update'] as Map<String, dynamic>),
+        updateChangesFixed: json['updateChangesFixed'] as bool,
+        updateOnOffer: json['updateOnOffer'] as bool,
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'customized': customized,
+        'definition': definition,
+        'key': key,
+        'protected': protected.toJson(),
+        'referencedBy': referencedBy.map((k, v) => MapEntry(k, v)),
+        'state': state.toJson(),
+        'title': title,
+        'update': update == null ? null : update!.toJson(),
+        'updateChangesFixed': updateChangesFixed,
+        'updateOnOffer': updateOnOffer,
+        'version': version,
+      };
+}
+
 class NotesToFinish {
   const NotesToFinish({
     required this.notes,
@@ -7336,6 +7511,12 @@ class SineobexApi {
   Future<IdLinkState> issueIdLink({required String patientId, required IssueIdLink body}) async {
     final json = await _transport.send('POST', '/v1/patients/${Uri.encodeComponent(patientId)}/id-link', body: body.toJson());
     return IdLinkState.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Every note type of the team, removed ones too, with its current definition, what is protected in it and any update on offer
+  Future<List<NoteTypeView>> listAdminNoteTypes() async {
+    final json = await _transport.send('GET', '/v1/admin/note-types');
+    return (json as List<dynamic>).map((e) => NoteTypeView.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// Every phone on the team, with sync status, clock flag and unsynced counts

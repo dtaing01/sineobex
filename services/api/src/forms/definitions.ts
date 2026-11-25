@@ -145,14 +145,61 @@ export async function definitionFor(
   key: string,
   version: number,
 ): Promise<StoredDefinition | undefined> {
-  const name = `${teamId.toLowerCase()}\u0000${key}\u0000${version}`;
-  const hash = hashes.get(name);
+  const hash = hashes.get(nameOf(teamId, key, version));
   const kept = hash === undefined ? undefined : definitions.get(hash);
   if (kept) return kept;
   const [row] = await tx<{ hash: string; definition: ResolvedNoteType }[]>`
     select hash, definition from sineobex.note_type_versions
     where team_id = ${teamId} and key = ${key} and version = ${version}`;
   if (!row) return undefined;
+  return checkedRow(teamId, { key, version, ...row });
+}
+
+/**
+ * Every version the team holds of each of `keys`, oldest first, by key (a key it holds none of is
+ * left out), each checked as definitionFor checks it and sharing its kept copies: what an admin's
+ * note type write reads, in one statement, so a version it makes is only ever made from versions
+ * that are the rows they say (phase 5 design 4.3). In the team's scope, as definitionFor is.
+ */
+export async function versionsFor(
+  tx: Tx,
+  teamId: string,
+  keys: readonly string[],
+): Promise<Map<string, StoredDefinition[]>> {
+  const found = new Map<string, StoredDefinition[]>();
+  if (keys.length === 0) return found;
+  const rows = await tx<StoredRow[]>`
+    select key, version, hash, definition from sineobex.note_type_versions
+    where team_id = ${teamId} and key = any(${keys as string[]}::text[])
+    order by version`;
+  for (const row of rows) {
+    const stored = await checkedRow(teamId, row);
+    const held = found.get(row.key);
+    if (held) held.push(stored);
+    else found.set(row.key, [stored]);
+  }
+  return found;
+}
+
+/** A row of note_type_versions as it is read. */
+export type StoredRow = { key: string; version: number; hash: string; definition: ResolvedNoteType };
+
+const nameOf = (teamId: string, key: string, version: number) =>
+  `${teamId.toLowerCase()}\u0000${key}\u0000${version}`;
+
+/**
+ * A row read from the team's note_type_versions, checked once (D79) and kept: the hash of its
+ * canonical definition must be its hash, and the definition must hold the row's key and version,
+ * or this throws DefinitionMismatch and keeps nothing. A row that passes shares the one frozen copy
+ * kept for its hash. The caller's transaction runs in that team's scope.
+ */
+export async function checkedRow(teamId: string, row: StoredRow): Promise<StoredDefinition> {
+  const { key, version } = row;
+  const name = nameOf(teamId, key, version);
+  if (hashes.get(name) === row.hash) {
+    const kept = definitions.get(row.hash);
+    if (kept) return kept;
+  }
   if ((await sha256Hex(canonicalJson(row.definition))) !== row.hash) throw new DefinitionMismatch();
   // Its own key and version are in the definition, so one hash is one key and version, once the row
   // names the key and version its definition holds: a row filed under another (written by hand, or a

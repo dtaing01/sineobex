@@ -1,5 +1,22 @@
 // GENERATED FILE. Do not edit by hand. Regenerate with `pnpm contract:generate`.
 export interface paths {
+    "/v1/admin/note-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every note type of the team, removed ones too, with its current definition, what is protected in it and any update on offer */
+        get: operations["listAdminNoteTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/preset-order/flag": {
         parameters: {
             query?: never;
@@ -2154,6 +2171,56 @@ export interface components {
         NoteTypeList: {
             noteTypes: components["schemas"]["NoteTypeEntry"][];
         };
+        NoteTypePlatformUpdate: {
+            /** @description The fields fixed at creation it changes; with any, it is taken only as a new note type */
+            changesFixed: ("kinds" | "group" | "sensitivity" | "quick" | "auto")[];
+            /** @description The platform’s definition named as this note type’s next version: what taking it in place writes */
+            definition: {
+                [key: string]: unknown;
+            };
+            /** @description Send it back as platformVersion to take this update and no other */
+            platformVersion: number;
+        };
+        /** @description What an edit may not touch: “This part can’t be changed.” */
+        NoteTypeProtectedParts: {
+            /** @description Field paths, the entry part of a repeating section left out */
+            fields: string[];
+            /** @description Options of choice fields, by the field’s path and the option’s code */
+            options: {
+                code: string;
+                path: string;
+            }[];
+            /** @description Section ids */
+            sections: string[];
+        };
+        NoteTypeView: {
+            /** @description The team edited, removed or restored it: a platform version is then only offered */
+            customized: boolean;
+            /** @description Its current version’s resolved definition */
+            definition: {
+                [key: string]: unknown;
+            };
+            key: string;
+            protected: components["schemas"]["NoteTypeProtectedParts"];
+            /** @description How many active presets name it, by their kind; it can’t be removed while any do */
+            referencedBy: {
+                [key: string]: number;
+            };
+            /**
+             * @description An archived note type is offered for no new note; every version still reads
+             * @enum {string}
+             */
+            state: "active" | "archived";
+            title: string;
+            /** @description The update on offer, for the person to review before taking it; null when none is */
+            update: components["schemas"]["NoteTypePlatformUpdate"] | null;
+            /** @description The update changes a field fixed at creation, so it is taken only as a new note type */
+            updateChangesFixed: boolean;
+            /** @description A newer platform version is on offer to take */
+            updateOnOffer: boolean;
+            /** @description Its current version: a publish, a remove and a take send it back */
+            version: number;
+        };
         Notice: {
             /** Format: date-time */
             createdAt: string;
@@ -3157,6 +3224,44 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAdminNoteTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Note types */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteTypeView"][];
+                };
+            };
+            /** @description Not signed in, or the session expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not allowed; the refusal is logged */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     reorderFlags: {
         parameters: {
             query?: never;

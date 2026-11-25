@@ -2928,6 +2928,160 @@
         ],
         "type": "object"
       },
+      "NoteTypePlatformUpdate": {
+        "properties": {
+          "changesFixed": {
+            "description": "The fields fixed at creation it changes; with any, it is taken only as a new note type",
+            "items": {
+              "enum": [
+                "kinds",
+                "group",
+                "sensitivity",
+                "quick",
+                "auto"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "definition": {
+            "additionalProperties": {},
+            "description": "The platform’s definition named as this note type’s next version: what taking it in place writes",
+            "type": "object"
+          },
+          "platformVersion": {
+            "description": "Send it back as platformVersion to take this update and no other",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platformVersion",
+          "definition",
+          "changesFixed"
+        ],
+        "type": "object"
+      },
+      "NoteTypeProtectedParts": {
+        "description": "What an edit may not touch: “This part can’t be changed.”",
+        "properties": {
+          "fields": {
+            "description": "Field paths, the entry part of a repeating section left out",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "options": {
+            "description": "Options of choice fields, by the field’s path and the option’s code",
+            "items": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "code"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "sections": {
+            "description": "Section ids",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sections",
+          "fields",
+          "options"
+        ],
+        "type": "object"
+      },
+      "NoteTypeView": {
+        "properties": {
+          "customized": {
+            "description": "The team edited, removed or restored it: a platform version is then only offered",
+            "type": "boolean"
+          },
+          "definition": {
+            "additionalProperties": {},
+            "description": "Its current version’s resolved definition",
+            "type": "object"
+          },
+          "key": {
+            "type": "string"
+          },
+          "protected": {
+            "$ref": "#/components/schemas/NoteTypeProtectedParts"
+          },
+          "referencedBy": {
+            "additionalProperties": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "description": "How many active presets name it, by their kind; it can’t be removed while any do",
+            "type": "object"
+          },
+          "state": {
+            "description": "An archived note type is offered for no new note; every version still reads",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoteTypePlatformUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The update on offer, for the person to review before taking it; null when none is"
+          },
+          "updateChangesFixed": {
+            "description": "The update changes a field fixed at creation, so it is taken only as a new note type",
+            "type": "boolean"
+          },
+          "updateOnOffer": {
+            "description": "A newer platform version is on offer to take",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "Its current version: a publish, a remove and a take send it back",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "state",
+          "version",
+          "customized",
+          "updateOnOffer",
+          "updateChangesFixed",
+          "update",
+          "referencedBy",
+          "definition",
+          "protected"
+        ],
+        "type": "object"
+      },
       "NotesToFinish": {
         "properties": {
           "notes": {
@@ -6173,6 +6327,55 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/admin/note-types": {
+      "get": {
+        "operationId": "listAdminNoteTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NoteTypeView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Note types"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not signed in, or the session expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not allowed; the refusal is logged"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every note type of the team, removed ones too, with its current definition, what is protected in it and any update on offer",
+        "tags": [
+          "presets"
+        ]
+      }
+    },
     "/v1/admin/preset-order/flag": {
       "post": {
         "operationId": "reorderFlags",
