@@ -51,6 +51,13 @@ const AREAS = [
   { title: 'Items', href: '/team/presets/items', kinds: ['item'], noun: ['item', 'items'] },
   { title: 'Bundles', href: '/team/presets/bundles', kinds: ['bundle'], noun: ['bundle', 'bundles'] },
   { title: 'Flags', href: '/team/presets/flags', kinds: ['flag'], noun: ['flag', 'flags'] },
+  // The team's field supply mappings (unit P4), each read against the note types it names.
+  {
+    title: 'Field supplies',
+    href: '/team/presets/field-supplies',
+    kinds: ['field_supply_map'],
+    noun: ['mapping', 'mappings'],
+  },
   {
     title: 'Condition supplies',
     href: '/team/presets/condition-supplies',

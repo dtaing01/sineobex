@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { NoteTypeDefinition, NoteTypeRow, PresetRow } from '@/lib/presets';
-import { FieldSuppliesView } from './FieldSuppliesView';
+import { EditMapping, FieldSuppliesView } from './FieldSuppliesView';
 
 // Field supplies (phase 5 design 8.1) as the page first draws them, written ahead of the view (card
 // P4-tests): it fails until card P4-field-supplies builds it. Each mapping is named with its note
@@ -128,5 +128,117 @@ describe('the field supplies page', () => {
       expect(html).toContain(`name="${name}"`);
     expect(html).toContain('Every note of this type');
     expect(html).toContain('Don’t put patient names here.');
+  });
+});
+
+// Card P4-field-supplies: what the page draws beyond the cases written ahead of it.
+describe('the field supplies page, further', () => {
+  const removed: NoteTypeRow = {
+    ...noteTypes[0]!,
+    key: 't_000000000002',
+    title: 'Demo: Old round',
+    state: 'archived',
+    definition: { ...wound, key: 't_000000000002', title: 'Demo: Old round' },
+  };
+  const counted = { itemId: GAUZE, qty: 2 };
+  const fromNote = { itemId: GAUZE, qty: { fromPath: 'wound.dressing' } };
+
+  it('warns where the note type was removed, or isn’t on the team’s list at all', () => {
+    const html = renderToStaticMarkup(
+      createElement(FieldSuppliesView, {
+        rows: [
+          map(DRESSED, 'Demo: On a removed one', { noteTypeKey: removed.key }),
+          map(HIDDEN, 'Demo: On none', { noteTypeKey: 't_000000000009' }),
+        ],
+        noteTypes: [...noteTypes, removed],
+        items: [item],
+        histories: {},
+      }),
+    );
+    expect(sectionOf(html, 'Demo: On a removed one')).toContain(
+      'This note type was removed, so this mapping suggests nothing.',
+    );
+    const none = sectionOf(html, 'Demo: On none');
+    expect(none).toContain('This note type isn’t on your team’s list, so this mapping suggests nothing.');
+    // A key the list doesn't hold is shown as it is stored.
+    expect(none).toContain('t_000000000009');
+  });
+
+  it('says each line’s item and count, and a count the note holds by its field’s words', () => {
+    const html = draw([map(DRESSED, 'Demo: Counted', { lines: [counted, fromNote] })]);
+    const section = sectionOf(html, 'Demo: Counted');
+    expect(section).toContain('Demo: Gauze pad × 2');
+    expect(section).toContain('Demo: Gauze pad × the number in “Demo: Dressing applied”');
+  });
+
+  it('offers a new mapping the team’s active note types only, and Every note of this type first', () => {
+    const html = renderToStaticMarkup(
+      createElement(FieldSuppliesView, {
+        rows: [],
+        noteTypes: [...noteTypes, removed],
+        items: [item],
+        histories: {},
+      }),
+    );
+    const add = html.slice(html.indexOf('id="add-mapping"'));
+    expect(add).toContain(
+      '<option value="" selected="">Choose a note type</option><option value="wound_care">Demo: Wound care</option></select>',
+    );
+    expect(add).not.toContain('Demo: Old round');
+    expect(add).toMatch(
+      /name="path"[^>]*><option value="" selected="">Every note of this type<\/option><\/select>/,
+    );
+    // No field yet, so no answer: both are sent empty.
+    expect(add).toContain('<input type="hidden" name="when.kind" value=""/>');
+    expect(html).toContain('No field supply mapping is on your team’s list. Add one below.');
+  });
+
+  const edit = (row: PresetRow<'field_supply_map'>, types = noteTypes) =>
+    renderToStaticMarkup(
+      createElement(EditMapping, {
+        row,
+        noteTypes: types,
+        items: [{ id: GAUZE, name: 'Demo: Gauze pad' }],
+        names: { [GAUZE]: 'Demo: Gauze pad' },
+      }),
+    );
+
+  it('edits a mapping’s answer and lines, its note type and field shown and never sent', () => {
+    const html = edit(
+      map(DRESSED, 'Demo: Gauze given', { path: 'wound.dressing', when: { includes: 'gauze' } }),
+    );
+    for (const name of ['noteTypeKey', 'path']) expect(html).not.toContain(`name="${name}"`);
+    expect(html).toContain('value="Demo: Wound care"');
+    expect(html).toContain('value="Demo: Wound: Demo: Dressing applied"');
+    expect(html).toContain('Which note type a mapping is for can’t be changed later.');
+    expect(html).toContain('Which field a mapping fires on can’t be changed later.');
+    // The answer it holds is chosen; it is sent as the body's test and its value.
+    expect(html).toContain('<option value="includes:gauze" selected="">Demo: Gauze</option>');
+    expect(html).toContain('<input type="hidden" name="when.kind" value="includes"/>');
+    expect(html).toContain('<input type="hidden" name="when.value" value="gauze"/>');
+    expect(html).toContain('name="lines.0.qty"');
+    expect(html).toContain('name="baseVersion" value="1"');
+  });
+
+  it('asks no answer of a mapping on every note of its type', () => {
+    const html = edit(map(EVERY, 'Demo: Every wound visit', {}));
+    expect(html).toContain('value="Every note of this type"');
+    expect(html).not.toContain('name="when.kind"');
+  });
+
+  it('shows lines whose counts come from the note, and sends none, so the edit keeps them', () => {
+    const html = edit(
+      map(DRESSED, 'Demo: Counted', { path: 'wound.dressing', when: { answered: true }, lines: [fromNote] }),
+    );
+    expect(html).not.toContain('name="lines.');
+    expect(html).toContain('Demo: Gauze pad × the number in “Demo: Dressing applied”');
+    expect(html).toContain('Some quantities here come from the note, which this form can’t change.');
+  });
+
+  it('keeps an answer the field no longer offers, as it is, so a save leaves it alone', () => {
+    const html = edit(
+      map(RETIRED, 'Demo: Film given', { path: 'wound.dressing', when: { includes: 'film' } }),
+    );
+    expect(html).toContain('<option value="includes:film" selected="">film</option>');
   });
 });
