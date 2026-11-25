@@ -393,12 +393,12 @@ void main() {
     test('each difference is one change with the one reason; None clears the level; nothing differs, nothing '
         'is sent', () async {
       final p = server.seedPatient(preferredName: 'Demo Wren');
-      server.seed(entityFlagChange, {
-        'patientId': p,
-        'flagId': medium,
-        'action': 'set',
-        'reason': 'Demo: weekly check',
-      }, by: blair);
+      server.seed(
+        entityFlagChange,
+        {'patientId': p, 'flagId': medium, 'action': 'set', 'reason': 'Demo: weekly check'},
+        by: blair,
+        at: start.subtract(const Duration(days: 1)),
+      );
       await services.patients.open(p);
       server.offline = true;
 

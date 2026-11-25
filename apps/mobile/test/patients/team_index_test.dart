@@ -328,12 +328,14 @@ void main() {
       'sensitive': sensitive,
     };
 
+    // Each change a second after the last, so the fold's order is the order written here.
+    var at = start.subtract(const Duration(hours: 1));
     void change(String patientId, String flagId, {String action = 'set'}) => server.seed(entityFlagChange, {
       'patientId': patientId,
       'flagId': flagId,
       'action': action,
       'reason': 'Demo: a reason',
-    });
+    }, at: at = at.add(const Duration(seconds: 1)));
 
     setUp(() async {
       high = server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
@@ -358,8 +360,16 @@ void main() {
       change(ids[1], frost, action: 'clear');
       await refresher.refresh(RefreshReason.manual);
       server.offline = true;
-      expect(services.index.flagsOf(ids[0]), (primary: high, secondary: [frost]));
-      expect(services.index.flagsOf(ids[1]), (primary: null, secondary: <String>[]));
+      final first = services.index.flagsOf(ids[0])!;
+      final second = services.index.flagsOf(ids[1])!;
+      expect(
+        [first.primary, first.secondary],
+        [
+          high,
+          [frost],
+        ],
+      );
+      expect([second.primary, second.secondary], [null, isEmpty]);
       expect(services.index.flagsOf('e9e90000-0000-4000-8000-000000000001'), isNull);
       // IDs only: no flag's name rests in the index.
       expect(json(), allOf(contains(high), isNot(contains('Demo: High')), isNot(contains('Demo: a reason'))));
