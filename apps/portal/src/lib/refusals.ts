@@ -420,6 +420,42 @@ export function publishedSentence(version: number): string {
 /** What a note type page asked of the API, as the sentences below tell its acts apart. */
 export type NoteTypeAct = 'add' | 'remove' | 'restore' | 'take';
 
+/** How every refusal over field supply mappings ends: the page sends the admin there (FieldSuppliesLink). */
+const ON_FIELD_SUPPLIES = 'on Field supplies first.';
+
+/** Whether a refusal's sentence asks the admin to remove mappings on Field supplies. */
+export const namesFieldSupplies = (error: string | undefined): boolean =>
+  error?.endsWith(ON_FIELD_SUPPLIES) ?? false;
+
+/** "2 field supply mappings. Remove them …", "1 field supply mapping. Remove it …". */
+function mappings(referencedBy: unknown): { counted: string; them: string } {
+  const n =
+    referencedBy !== null && typeof referencedBy === 'object'
+      ? Number((referencedBy as Record<string, unknown>).field_supply_map ?? 0)
+      : 0;
+  return n === 1
+    ? { counted: '1 field supply mapping', them: 'it' }
+    : { counted: `${n > 0 ? n : 'Some'} field supply mappings`, them: 'them' };
+}
+
+/**
+ * A note type that field supply mappings name (design 5.4's referenced): a mapping's note type can't
+ * be changed, so the way through is to remove those mappings, on their own page.
+ */
+export function noteTypeReferencedSentence(referencedBy: unknown): string {
+  const { counted, them } = mappings(referencedBy);
+  return `Still used by ${counted}. Remove ${them} ${ON_FIELD_SUPPLIES}`;
+}
+
+/**
+ * An update taken in place that would leave mappings firing on answers only some people may read
+ * (sensitive_path, BM-77): refused while they are there.
+ */
+export function updateHidesMappedSentence(referencedBy: unknown): string {
+  const { counted, them } = mappings(referencedBy);
+  return `With this update, only some people may read the answers ${counted} use${counted.startsWith('1 ') ? 's' : ''}. Remove ${them} ${ON_FIELD_SUPPLIES}`;
+}
+
 /** The add form's words for its fields, for the error summary and beside each field. */
 const NOTE_TYPE_LABELS: Readonly<Record<string, string>> = {
   title: 'Title',
@@ -465,7 +501,9 @@ export function noteTypeRefusalState(
     case 'stale':
       return state(act === 'take' ? takeStale(details, values) : PRESET_SENTENCES.stale);
     case 'referenced':
-      return state(referencedSentence(details?.referencedBy));
+      return state(noteTypeReferencedSentence(details?.referencedBy));
+    case 'sensitive_path':
+      return state(updateHidesMappedSentence(details?.referencedBy));
     case 'not_removable':
       return state(
         act === 'take'

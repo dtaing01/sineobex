@@ -8,6 +8,7 @@ import { ReasonBox } from '@/components/presets/ReasonBox';
 import styles from '@/components/presets/presets.module.css';
 import type { ActionState } from '@/lib/forms';
 import { PRESET_SENTENCES } from '@/lib/refusals';
+import { FieldSuppliesLink } from './FieldSuppliesLink';
 
 /** The update on offer, as the list row gave it: the version to send back, and how it is taken. */
 export interface NoteTypeOfferProps {
@@ -83,6 +84,7 @@ export function NoteTypeOffer({ noteType, offer, review, headingLevel = 3 }: Not
         <span className="sr-only"> for {title}</span>
       </Heading>
       <ActionForm id={`take-${key}`} action={take} label={`Take Sineobex’s update to ${title}`}>
+        <FieldSuppliesLink />
         {offer ? (
           <>
             <p>

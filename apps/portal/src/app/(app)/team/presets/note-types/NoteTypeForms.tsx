@@ -11,6 +11,7 @@ import { FreeText } from '@/components/presets/FreeText';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import type { NoteTypeGroup, NoteTypeRow } from '@/lib/presets';
 import { NOTE_TYPE_SENTENCES } from '@/lib/refusals';
+import { FieldSuppliesLink } from './FieldSuppliesLink';
 import { CopyOfField, KindsField } from './KindsField';
 import { GROUPS } from './words';
 
@@ -19,8 +20,9 @@ type Named = Pick<NoteTypeRow, 'key' | 'title' | 'version'>;
 /**
  * Remove, with a reason (design 5.1, 5.4, 8.1): the note type is archived at the version shown,
  * never deleted, and joins the Removed list. Behind a button that shows the form. The API refuses
- * the Red flags note, and one a field supply mapping still names, each with its sentence: the page
- * offers Remove on every one and asks nothing first (D114).
+ * the Red flags note, and one a field supply mapping still names, each with its sentence, and the
+ * latter with the way to Field supplies: the page offers Remove on every one and asks nothing first
+ * (D114).
  */
 export function RemoveNoteType({ noteType }: { noteType: Named }) {
   return (
@@ -30,6 +32,7 @@ export function RemoveNoteType({ noteType }: { noteType: Named }) {
         action={removeNoteTypeAction}
         label={`Remove ${noteType.title}`}
       >
+        <FieldSuppliesLink />
         <input type="hidden" name="key" value={noteType.key} />
         <BaseVersion version={noteType.version} />
         <p>It won’t be offered for new notes. Notes already started on it can still be finished.</p>
