@@ -534,6 +534,16 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     ).toBeFocused();
     await expect(editor.said).toContainText('Move the answer “Food” down in “Support provided”, to 2nd of 8');
     await expect(answers.getByRole('listitem').first()).toContainText('Clothing');
+    // Moved back to the top, it has no Move up any more: focus goes to its Move down.
+    await answers.getByRole('button', { name: 'Move up the answer “Food”', exact: true }).click();
+    await expect(
+      answers.getByRole('button', { name: 'Move down the answer “Food”', exact: true }),
+    ).toBeFocused();
+    await expect(answers.getByRole('button', { name: 'Move up the answer “Food”', exact: true })).toHaveCount(
+      0,
+    );
+    await expect(editor.said).toContainText('Move the answer “Food” up in “Support provided”, to 1st of 8');
+    await expect(answers.getByRole('listitem').first()).toContainText('Food');
     await answers.getByRole('button', { name: 'Retire the answer “Phone”', exact: true }).click();
     await expect(
       section.getByRole('button', { name: 'Keep it the answer “Phone”', exact: true }),
@@ -541,7 +551,7 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await section.getByLabel('A new answer for “Support provided”').fill('Demo: Blankets');
     await page.keyboard.press('Enter');
     await expect(section.getByLabel('A new answer for “Support provided”')).toBeFocused();
-    await expect(editor.heldItems).toHaveCount(4);
+    await expect(editor.heldItems).toHaveCount(5);
 
     // A field of the team's own: Yes or No.
     await section
@@ -555,7 +565,7 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await expect(
       section.getByRole('button', { name: 'Add a field to “Outreach / community encounter”', exact: true }),
     ).toBeFocused();
-    await expect(editor.heldItems).toHaveCount(5);
+    await expect(editor.heldItems).toHaveCount(6);
     await expect(section).toContainText(
       'A new field when you publish: “Demo: Dog with them” (Choice, one answer).',
     );
@@ -579,7 +589,7 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await expect(sectionForm.getByLabel('Where it goes')).toHaveValue('outreach');
     await sectionForm.getByRole('button', { name: 'Hold this section', exact: true }).click();
     await expect(openSection).toBeFocused();
-    await expect(editor.heldItems).toHaveCount(6);
+    await expect(editor.heldItems).toHaveCount(7);
     await expect(section).toContainText('A new section after this one when you publish:');
 
     // Publish with no reason: the alert takes focus and names the Reason box.
@@ -605,8 +615,8 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     expect(fields.find((f) => f.id === 'notes')!.label).toBe('Demo: What happened');
     expect(fields.find((f) => f.id === 'follow_up')).toBeDefined();
     expect(fields.find((f) => f.id === 'support')!.options!.map((o) => o.label)).toEqual([
-      'Clothing',
       'Food',
+      'Clothing',
       'Hygiene',
       'Charging',
       'Transportation',
