@@ -4,15 +4,22 @@
 /// clock is paused, D35), works out the patient's current flags (6.1), marks a change entered in
 /// error, and settles the two refusals a worker can fix (Choose a flag and Change the reason,
 /// through `fixRejected`, D121). The flag rule here is the phone's one copy of the server's
-/// (`flagHidden` in services/api/src/sync/read-rules.ts, D99, D136).
+/// (`flagHidden` in services/api/src/sync/read-rules.ts, D99, D136); Team setup lists the team's
+/// flags by it too.
 ///
-/// Written ahead of its code (card P5-tests): every member throws until card P5-phone-domain
-/// builds it. The tests in test/patients/flags_test.dart say what each must do.
+/// A change's reason is patient detail: it lives in the change's record, in the store's encrypted
+/// database, and in what this class answers, never in a log, a notice or an audit entry (design 9).
 library;
 
-import '../presets/models.dart' show FlagBody, FlagColor, FlagTier;
+import '../api/generated/api.dart' as api show ChartFlags, FlagChangeMark, FlagHistoryRow, FlagTier;
+import '../presets/current_flags.dart';
+import '../presets/models.dart' show FlagBody, FlagColor, FlagTier, PresetKind, PresetState;
+import '../presets/preset_store.dart';
+import '../sync/entities.dart' show entityFlagChange, flagReasonInvalid;
 import '../sync/local_store.dart';
 import 'access.dart' show mayViewProblems;
+import 'chart_cache.dart' show chartMetaOf, patientGroup;
+import 'team_index.dart' show TeamIndex;
 
 // ------------------------------------------------------------------------------------------------
 // The flag rule
@@ -37,11 +44,17 @@ bool flagHidden(Iterable<String> permissions, FlagBody? flag) =>
 
 /// Whether Needs attention offers **Choose a flag** for [e]: a refused create of a flag change whose
 /// flag the server doesn't hold among the team's flags (`unknown_flag`).
-bool settledByFlag(OutboxEntry e) => throw UnimplementedError('P5-phone-domain');
+bool settledByFlag(OutboxEntry e) => _refusedCreate(e, 'unknown_flag');
 
 /// Whether Needs attention offers **Change the reason** for [e]: a refused create of a flag change
 /// whose reason the server refused (`reason_invalid`).
-bool settledByReason(OutboxEntry e) => throw UnimplementedError('P5-phone-domain');
+bool settledByReason(OutboxEntry e) => _refusedCreate(e, 'reason_invalid');
+
+bool _refusedCreate(OutboxEntry e, String problem) =>
+    e.state == ChangeState.rejected &&
+    e.op == 'create' &&
+    e.entity == entityFlagChange &&
+    e.details?['problem'] == problem;
 
 // ------------------------------------------------------------------------------------------------
 // What the screens show
@@ -70,7 +83,9 @@ class FlagView {
   /// [colorName].
   final FlagColor? color;
 
-  /// The colour's plain name, shown first: "Red".
+  /// The colour's plain name, shown first: "Red". Empty only for a flag the phone knows from a
+  /// chart's history row alone (the presets not held, and the flag on the patient no longer): its
+  /// name is then shown alone.
   final String colorName;
 
   /// Its place in its tier, lowest first.
@@ -97,7 +112,9 @@ enum FlagChangeState {
 }
 
 /// A change marked entered in error: who and when, and why only for its author and Program Admins
-/// (holders of `team.manage_users`, section 11 rows 23 and 24).
+/// (holders of `team.manage_users`, section 11 rows 23 and 24). [byName] is null for a mark made on
+/// this phone that no chart names yet (the person's own), [at] for one confirmed here and not yet on
+/// a chart; [waiting] while the mark waits for its receipt.
 typedef FlagChangeMarkView = ({String? byName, DateTime? at, String? reason, bool waiting});
 
 /// One change of a patient's flags as the flags sheet's history lists it: the flag, set or cleared,
@@ -170,7 +187,7 @@ typedef IntakeRiskLevel = ({String flagId, String reason});
 
 /// A team's patient flags on this phone, for one person.
 class PatientFlags {
-  PatientFlags(this.store, {required this.userId, required this.permissions, this.nameOf});
+  PatientFlags(this.store, {required this.userId, required this.permissions, this.nameOf, this.index});
 
   final LocalStore store;
 
@@ -183,21 +200,30 @@ class PatientFlags {
   /// A teammate's name, where the phone knows it.
   final String? Function(String userId)? nameOf;
 
+  /// The team index, whose entries carry each patient's flags (6.1): what the phone knows of a
+  /// patient whose chart it doesn't hold. Without it, only the charts and the changes made here.
+  final TeamIndex? index;
+
   /// Called after a change made here, so screens read again.
   void Function()? onChanged;
 
   /// The flags sheet is shown, and changes are made, only with `patients.edit` (section 11, row 8).
-  bool get mayEdit => throw UnimplementedError('P5-phone-domain');
+  bool get mayEdit => permissions.contains('patients.edit');
 
   /// The phone holds a copy of the team's presets (6.1). False is "Your team’s setup hasn’t
   /// downloaded yet. Connect to finish." on the flags sheet and intake's risk level, which then offer
   /// nothing (section 11, row 34).
-  bool get presetsHeld => throw UnimplementedError('P5-phone-domain');
+  bool get presetsHeld => PresetStore(store).downloaded;
 
   /// The team's active flags of [tier] the person may see ([flagHidden]), by rank, then name, then
   /// ID: what the sheet offers to set, intake's risk level and the patient list's filters. Empty
   /// where the presets aren't held.
-  List<FlagView> teamFlags(FlagTier tier) => throw UnimplementedError('P5-phone-domain');
+  List<FlagView> teamFlags(FlagTier tier) {
+    if (!presetsHeld) return const [];
+    return [
+      for (final f in _ordered(_held().values.where((f) => f.tier == tier && !f.archived && !_hidden(f)))) f.view,
+    ];
+  }
 
   /// [patientId]'s flags (6.1): `currentFlags` over the flag change records this phone holds for the
   /// patient's merged group whose IDs the chart lists or that this phone made, confirmed or not,
@@ -205,16 +231,44 @@ class PatientFlags {
   /// presets, else from the chart's `flags`; the history of every change the person may see, a
   /// hidden flag's never. A chart read already logged on screen: this logs nothing. Throws
   /// [ChartingPaused] while the store is frozen.
-  PatientFlagsView flagsOf(String patientId) => throw UnimplementedError('P5-phone-domain');
+  ///
+  /// For a patient the phone holds no full chart of (one opened from the index offline, or never
+  /// opened), the team index entry's flags stand for what the server worked out before, with the
+  /// changes made here that it can't reflect yet folded after them: one still waiting, or made after
+  /// the index was last refreshed. Its history then lists this phone's changes only.
+  PatientFlagsView flagsOf(String patientId) {
+    _guardFrozen();
+    return _read(store.canonicalPatient(patientId));
+  }
 
   /// What the flags sheet offers [patientId] in [tier]: [teamFlags], and an archived flag the patient
   /// carries, which is offered only to clear (5.1).
-  List<FlagView> offered(String patientId, FlagTier tier) => throw UnimplementedError('P5-phone-domain');
+  List<FlagView> offered(String patientId, FlagTier tier) {
+    final now = flagsOf(patientId);
+    if (!presetsHeld) return const [];
+    final held = _held();
+    final carried = [
+      for (final f in [?now.riskLevel, ...now.conditions])
+        if (f.tier == tier && f.archived && held.containsKey(f.flagId)) held[f.flagId]!,
+    ];
+    return [...teamFlags(tier), for (final f in _ordered(carried)) f.view];
+  }
 
   /// The risk level a patient list row shows for [patientId] (8.2): the current risk level of a chart
   /// the phone holds ([flagsOf]), else the team index entry's, as the person may see it; null for
   /// none, or where the presets name no such flag.
-  FlagView? riskLevelOf(String patientId) => throw UnimplementedError('P5-phone-domain');
+  FlagView? riskLevelOf(String patientId) {
+    _guardFrozen();
+    final canonical = store.canonicalPatient(patientId);
+    final group = patientGroup(store, canonical);
+    if (chartMetaOf(store, canonical) == null && _changeRows(group).isEmpty) {
+      // Nothing of the patient's here but the index: its entry alone, as the person may see it.
+      final primary = index?.flagsOf(canonical)?.primary;
+      final f = primary == null ? null : _held()[primary];
+      return f == null || _hidden(f) ? null : f.view;
+    }
+    return _read(canonical).riskLevel;
+  }
 
   /// Records one change of [patientId]'s flags: [action] `set` or `clear` of the flag [flagId], with
   /// [reason] (trimmed; 1 to 500 code points, `flagReasonInvalid`), a create whose parent is the
@@ -224,8 +278,20 @@ class PatientFlags {
   /// [LocalValidationError] with `not_allowed` without `patients.edit`, `unknown_flag` for a flag
   /// the person may not see or the presets don't hold, `archived` for a set of an archived flag
   /// (a clear is taken), and `reason_invalid` for a reason the rule refuses.
-  String record(String patientId, {required String flagId, required String action, required String reason}) =>
-      throw UnimplementedError('P5-phone-domain');
+  String record(String patientId, {required String flagId, required String action, required String reason}) {
+    final id = _record(patientId, flagId: flagId, action: action, reason: reason);
+    onChanged?.call();
+    return id;
+  }
+
+  /// Intake's risk level (8.2), recorded in `PatientRepository.createPatient`'s transaction as a set
+  /// whose parent is the new patient's create: null, and nothing written, while the clock is paused
+  /// or where the presets aren't held, since the patient saves without one then. Otherwise as
+  /// [record], a risk level only, without telling the screens: intake does once the patient is saved.
+  String? recordAtIntake(String patientId, IntakeRiskLevel level) {
+    if (store.chartingPaused || !presetsHeld) return null;
+    return _record(patientId, flagId: level.flagId, action: 'set', reason: level.reason, tier: FlagTier.primary);
+  }
 
   /// The flags sheet's **Save** (8.2): the risk level chosen ([riskLevel], a flag ID, or null for
   /// None) and the conditions chosen, against [patientId]'s current flags, each difference recorded
@@ -237,11 +303,40 @@ class PatientFlags {
     required String? riskLevel,
     required Set<String> conditions,
     required String reason,
-  }) => throw UnimplementedError('P5-phone-domain');
+  }) {
+    _guardWrite();
+    final now = flagsOf(patientId);
+    final carried = {for (final f in now.conditions) f.flagId};
+    final level = now.riskLevel?.flagId;
+    // A condition the phone's copy of the presets doesn't hold, only the chart names, is never offered
+    // ([offered]), so it can't have been taken off: it is left as it is.
+    final held = _held();
+    final changes = <({String flagId, String action, FlagTier tier})>[
+      if (riskLevel != level && riskLevel != null) (flagId: riskLevel, action: 'set', tier: FlagTier.primary),
+      if (riskLevel != level && riskLevel == null) (flagId: level!, action: 'clear', tier: FlagTier.primary),
+      for (final id in conditions)
+        if (!carried.contains(id)) (flagId: id, action: 'set', tier: FlagTier.secondary),
+      for (final id in carried)
+        if (!conditions.contains(id) && held.containsKey(id)) (flagId: id, action: 'clear', tier: FlagTier.secondary),
+    ];
+    if (changes.isEmpty) return const [];
+    final ids = store.transaction(
+      () => [
+        for (final c in changes) _record(patientId, flagId: c.flagId, action: c.action, reason: reason, tier: c.tier),
+      ],
+    );
+    onChanged?.call();
+    return ids;
+  }
 
   /// **Entered in error** is offered on [change]: one standing, made by the person or marked by a
-  /// holder of `team.manage_users`, with `patients.edit` (6.2; section 11, rows 23 and 24).
-  bool mayEnterInError(FlagChangeView change) => throw UnimplementedError('P5-phone-domain');
+  /// holder of `team.manage_users`, with `patients.edit` (6.2; section 11, rows 23 and 24). Not on a
+  /// change the server holds for review, which isn't on the chart to mark.
+  bool mayEnterInError(FlagChangeView change) =>
+      mayEdit &&
+      change.enteredInError == null &&
+      (change.state == FlagChangeState.sent || change.state == FlagChangeState.waiting) &&
+      (change.authorId == userId || permissions.contains(_manageUsers));
 
   /// Marks the change [changeId] entered in error with [reason] (trimmed, 3 to 300 code points), once:
   /// it drops out of the current flags and stays in the history (section 11, row 23).
@@ -249,23 +344,460 @@ class PatientFlags {
   /// Throws, writing nothing: [ChartingPaused] while the store is frozen or the clock is paused; a
   /// [LocalValidationError] with `not_allowed` for someone [mayEnterInError] refuses,
   /// `entered_in_error` for one marked already, and `reason` for a reason out of bounds; a
-  /// [StateError] for a change the phone doesn't hold.
-  void enterInError(String changeId, String reason) => throw UnimplementedError('P5-phone-domain');
+  /// [StateError] for a change the phone doesn't hold, or doesn't show the person.
+  void enterInError(String changeId, String reason) {
+    _guardFrozen();
+    _guardClock();
+    final rec = store.record(changeId);
+    final patientId = rec?.patientId;
+    if (rec == null || rec.entity != entityFlagChange || patientId == null) {
+      throw StateError('no such flag change on this phone');
+    }
+    final shown = _read(store.canonicalPatient(patientId)).history.where((h) => h.changeId == changeId).firstOrNull;
+    // A hidden flag's change, a refused one and one never applied are none the person is shown.
+    if (shown == null) throw StateError('no such flag change on this phone');
+    if (shown.enteredInError != null) throw const LocalValidationError(_marked, problem: 'entered_in_error');
+    if (!mayEnterInError(shown)) throw const LocalValidationError(_notYours, problem: 'not_allowed');
+    final text = reason.trim();
+    final length = text.runes.length;
+    if (length < 3 || length > 300) {
+      throw const LocalValidationError(_markReasonLength, problem: 'reason', paths: {'reason'});
+    }
+    store.setField(changeId, 'enteredInError', {'reason': text});
+    onChanged?.call();
+  }
 
   /// What **Choose a flag** offers for the refused change [changeId] ([settledByFlag]): the active
   /// flags the person may see of the tier of the refused change's flag, as the presets give it, the
   /// refused flag left out. Empty, the card says "This flag can’t be set on this phone. Tell a Program
-  /// Admin." and nothing is sent.
-  List<FlagView> flagsToChoose(String changeId) => throw UnimplementedError('P5-phone-domain');
+  /// Admin." and nothing is sent. A refused flag the phone knows nowhere has no tier, so nothing is
+  /// offered for it either. Throws a [StateError] for a change [settledByFlag] doesn't take.
+  List<FlagView> flagsToChoose(String changeId) {
+    _guardFrozen();
+    final refused = _refused(changeId, settledByFlag);
+    final value = refused.value! as Map<String, Object?>;
+    final flagId = value['flagId'];
+    final patientId = value['patientId'];
+    final chart = patientId is String ? chartMetaOf(store, store.canonicalPatient(patientId))?.flags : null;
+    final tier = _catalog(chart)[flagId]?.tier;
+    if (tier == null) return const [];
+    return [
+      for (final f in teamFlags(tier))
+        if (f.flagId != flagId) f,
+    ];
+  }
 
   /// **Choose a flag**: the refused create [changeId] sent again with [flagId] and [reason], through
   /// `fixRejected`, so the refusal settles once the server takes it. Throws as [record] does, and a
-  /// [StateError] for a change [settledByFlag] doesn't take.
-  void chooseFlag(String changeId, {required String flagId, required String reason}) =>
-      throw UnimplementedError('P5-phone-domain');
+  /// [StateError] for a change [settledByFlag] doesn't take. [flagId] must be one [flagsToChoose]
+  /// offers (`unknown_flag` otherwise).
+  void chooseFlag(String changeId, {required String flagId, required String reason}) {
+    _guardFrozen();
+    final refused = _refused(changeId, settledByFlag);
+    _guardClock();
+    if (!flagsToChoose(changeId).any((f) => f.flagId == flagId)) {
+      throw const LocalValidationError(_unknownFlag, problem: 'unknown_flag');
+    }
+    store.fixRejected(changeId, {
+      ...refused.value! as Map<String, Object?>,
+      'flagId': flagId,
+      'reason': _reason(reason),
+    });
+    onChanged?.call();
+  }
 
   /// **Change the reason**: the refused create [changeId] sent again as it was, with [reason],
   /// through `fixRejected`. Throws as [record] does, and a [StateError] for a change
   /// [settledByReason] doesn't take.
-  void changeReason(String changeId, String reason) => throw UnimplementedError('P5-phone-domain');
+  void changeReason(String changeId, String reason) {
+    _guardFrozen();
+    final refused = _refused(changeId, settledByReason);
+    _guardClock();
+    store.fixRejected(changeId, {...refused.value! as Map<String, Object?>, 'reason': _reason(reason)});
+    onChanged?.call();
+  }
+
+  // ---- recording ----
+
+  /// One change, checked as the server would refuse it and in this layer's words, then created.
+  /// [tier], when given, is the tier the flag must be of (Save's risk level and conditions).
+  String _record(
+    String patientId, {
+    required String flagId,
+    required String action,
+    required String reason,
+    FlagTier? tier,
+  }) {
+    _guardWrite();
+    if (action != 'set' && action != 'clear') throw ArgumentError('a flag is set or cleared: $action');
+    final flag = _held()[flagId];
+    if (flag == null || _hidden(flag) || (tier != null && flag.tier != tier)) {
+      throw const LocalValidationError(_unknownFlag, problem: 'unknown_flag');
+    }
+    if (action == 'set' && flag.archived) throw const LocalValidationError(_archived, problem: 'archived');
+    return store.createRecord(entityFlagChange, {
+      'patientId': store.canonicalPatient(patientId),
+      'flagId': flagId,
+      'action': action,
+      'reason': _reason(reason),
+    });
+  }
+
+  /// [reason] trimmed, as the store sends it; `reason_invalid` when the server would refuse it.
+  static String _reason(String reason) {
+    final text = reason.trim();
+    if (flagReasonInvalid(text)) {
+      throw const LocalValidationError(_reasonLength, problem: 'reason_invalid', paths: {'reason'});
+    }
+    return text;
+  }
+
+  /// The refused change [changeId] that [settles] takes; a [StateError] for anything else.
+  OutboxEntry _refused(String changeId, bool Function(OutboxEntry e) settles) {
+    final e = store.entry(changeId);
+    if (e == null || !settles(e)) throw StateError('not a flag change this fix settles');
+    return e;
+  }
+
+  void _guardFrozen() {
+    if (store.frozen) throw ChartingPaused(store.frozenMessage!);
+  }
+
+  /// A flag change pauses with the clock (D35; PL-24): it is ordered by its own time.
+  void _guardClock() {
+    if (store.chartingPaused) throw const ChartingPaused(flagsClockPaused);
+  }
+
+  void _guardWrite() {
+    _guardFrozen();
+    _guardClock();
+    if (!mayEdit) throw const LocalValidationError(_notAllowed, problem: 'not_allowed');
+  }
+
+  // ---- reading ----
+
+  bool get _seesSensitive => seesSensitiveFlags(permissions);
+
+  /// The flag rule over the phone's view of a flag: a sensitive one the person doesn't see. A flag
+  /// the phone knows nowhere is never in the catalog, so never shown (the rule's team half).
+  bool _hidden(_Flag f) => f.sensitive && !_seesSensitive;
+
+  /// The team's flags the phone's copy of the presets holds, archived ones included, by ID.
+  Map<String, _Flag> _held() => {
+    for (final p in PresetStore(store).presets(kind: PresetKind.flag))
+      if (p.body case final FlagBody b)
+        p.id: _Flag(
+          id: p.id,
+          tier: b.tier,
+          rank: b.rank,
+          name: b.name,
+          color: b.color,
+          colorName: b.color.colorName,
+          archived: p.state == PresetState.archived,
+          sensitive: b.sensitive,
+        ),
+  };
+
+  /// Every flag the phone can name: the presets' (6.1), then those [chart] names that the presets
+  /// don't hold, which the server showed this person when it read the chart (its flag rule applied),
+  /// first as the patient's own flags, then as its history rows name them.
+  Map<String, _Flag> _catalog(api.ChartFlags? chart) {
+    final out = _held();
+    if (chart == null) return out;
+    for (final f in [?chart.primary, ...chart.secondary]) {
+      final tier = _tierOf(f.tier);
+      if (tier == null || out.containsKey(f.flagId)) continue;
+      out[f.flagId] = _Flag(
+        id: f.flagId,
+        tier: tier,
+        rank: f.rank,
+        name: f.name,
+        color: FlagColor.byCode(f.color.wire),
+        colorName: f.colorName,
+        archived: f.archived,
+        sensitive: false,
+      );
+    }
+    for (final h in chart.history) {
+      final tier = _tierOf(h.tier);
+      if (tier == null || out.containsKey(h.flagId)) continue;
+      out[h.flagId] = _Flag(
+        id: h.flagId,
+        tier: tier,
+        rank: _unranked,
+        name: h.name,
+        color: null,
+        colorName: '',
+        archived: false,
+        sensitive: false,
+      );
+    }
+    return out;
+  }
+
+  static FlagTier? _tierOf(api.FlagTier t) => switch (t) {
+    api.FlagTier.primary => FlagTier.primary,
+    api.FlagTier.secondary => FlagTier.secondary,
+    _ => null,
+  };
+
+  /// The flag change records filed under [group]'s patients, in the order they came to this phone,
+  /// with when each came.
+  List<({String id, DateTime createdAt})> _changeRows(Set<String> group) {
+    final ids = group.toList();
+    return [
+      for (final r in store.database.select(
+        'SELECT id, created_at FROM records WHERE entity = ? AND patient_id IN '
+        '(${List.filled(ids.length, '?').join(', ')}) ORDER BY created_at, rowid',
+        [entityFlagChange, ...ids],
+      ))
+        (id: r['id']! as String, createdAt: DateTime.fromMillisecondsSinceEpoch(r['created_at']! as int, isUtc: true)),
+    ];
+  }
+
+  /// Everything [flagsOf] answers for the canonical patient [canonical].
+  PatientFlagsView _read(String canonical) {
+    final group = patientGroup(store, canonical);
+    final meta = chartMetaOf(store, canonical);
+    final full = meta != null && !meta.partial;
+    final chart = full ? meta.flags : null;
+    final listed = full ? meta.flagChangeIds.toSet() : const <String>{};
+    final rows = {for (final h in chart?.history ?? const <api.FlagHistoryRow>[]) h.changeId: h};
+    final catalog = _catalog(chart);
+
+    // What waits here of each change: its create, and its mark, each the latest not folded into a fix.
+    final creates = <String, OutboxEntry>{};
+    final marks = <String, OutboxEntry>{};
+    for (final e in store.outbox()) {
+      if (e.entity != entityFlagChange || e.state == ChangeState.superseded) continue;
+      if (e.op == 'create') creates[e.recordId] = e;
+      if (e.op == 'set' && e.field == 'enteredInError') marks[e.recordId] = e;
+    }
+    // Held by the server for a Program Admin (IDs only), and those it told the person it didn't apply.
+    final inReview = {
+      for (final r in store.database.select('SELECT record_id FROM in_review WHERE entity = ?', [entityFlagChange]))
+        r['record_id']! as String,
+    };
+    final notApplied = {
+      for (final n in store.notices())
+        if (n.kind == noticeFlagChangeNotApplied && n.recordId != null) n.recordId!,
+    };
+
+    final changes = <_Change>[];
+    // This phone's own changes in the order they were made: one dated by this phone no earlier than
+    // the one made before it goes after it, as the person made them, where two fall on one instant.
+    DateTime? lastOwn;
+    DateTime? lastOwnAsDated;
+    for (final row in _changeRows(group)) {
+      final rec = store.record(row.id);
+      if (rec == null) continue;
+      final create = creates[row.id];
+      final FlagChangeState state;
+      if (create != null) {
+        state = create.state == ChangeState.rejected ? FlagChangeState.refused : FlagChangeState.waiting;
+      } else if (listed.contains(row.id)) {
+        state = FlagChangeState.sent;
+      } else if (rec.origin != 'local' || notApplied.contains(row.id)) {
+        // A server copy the chart no longer lists (merged away, or its flag hidden since), or a held
+        // change a Program Admin didn't apply, which its notice tells the person of.
+        continue;
+      } else {
+        state = inReview.contains(row.id) ? FlagChangeState.inReview : FlagChangeState.sent;
+      }
+      final a = rec.attributes;
+      final serverAt = _time(a['effectiveAt']);
+      final dated = serverAt ?? create?.correctedTime ?? create?.deviceTime ?? row.createdAt;
+      var at = dated;
+      if (rec.origin == 'local') {
+        if (serverAt == null && lastOwn != null && !at.isAfter(lastOwn) && !dated.isBefore(lastOwnAsDated!)) {
+          at = lastOwn.add(const Duration(milliseconds: 1));
+        }
+        lastOwn = at;
+        lastOwnAsDated = dated;
+      }
+      // A refused change shows only in Needs attention.
+      if (state == FlagChangeState.refused) continue;
+      final flag = catalog[a['flagId']];
+      if (flag == null || _hidden(flag)) continue;
+      changes.add(
+        _Change(
+          id: row.id,
+          flag: flag,
+          action: a['action'] as String? ?? '',
+          at: at,
+          pending: create != null,
+          authorId: rec.authorUserId ?? '',
+          authorName: rows[row.id]?.authorName ?? nameOf?.call(rec.authorUserId ?? ''),
+          reason: a['reason'] as String?,
+          mark: _mark(rec, marks[row.id], rows[row.id]?.enteredInError),
+          state: state,
+        ),
+      );
+    }
+
+    // A patient whose chart the phone doesn't hold whole: the index's word stands for the server's
+    // earlier changes, and what it can't reflect yet of this phone's is folded after it.
+    final base = <FlagChangeRef>[];
+    var counted = changes.where((c) => c.state == FlagChangeState.sent || c.state == FlagChangeState.waiting);
+    final indexed = full ? null : index?.flagsOf(canonical);
+    if (indexed != null) {
+      final epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+      for (final id in [?indexed.primary, ...indexed.secondary]) {
+        base.add((id: '', flagId: id, action: 'set', effectiveAt: epoch, enteredInError: false));
+      }
+      final refreshedAt = index!.state.refreshedAt;
+      counted = counted.where((c) => c.pending || refreshedAt == null || c.at.isAfter(refreshedAt));
+    }
+    final current = currentFlags(
+      changes: [
+        ...base,
+        for (final c in counted)
+          (id: c.id, flagId: c.flag.id, action: c.action, effectiveAt: c.at, enteredInError: c.mark != null),
+      ],
+      flags: {for (final MapEntry(:key, :value) in catalog.entries) key: value.ref},
+      hidden: (f) => f.sensitive && !_seesSensitive,
+    );
+    final history = [...changes]
+      ..sort((x, y) {
+        final byTime = y.at.compareTo(x.at);
+        return byTime != 0 ? byTime : y.id.compareTo(x.id);
+      });
+    return PatientFlagsView(
+      riskLevel: current.primary == null ? null : catalog[current.primary]!.view,
+      conditions: [for (final id in current.secondary) catalog[id]!.view],
+      history: [for (final c in history) c.view],
+      sentForReview: changes.any((c) => c.state == FlagChangeState.inReview),
+    );
+  }
+
+  /// [rec]'s mark entered in error, as the person may read it: none while it stands, or while the mark
+  /// made here waits refused in Needs attention. One made here waits for its receipt ([markEntry]);
+  /// the chart's history row ([charted]) says who made a mark the server holds, and when.
+  static FlagChangeMarkView? _mark(LocalRecord rec, OutboxEntry? markEntry, api.FlagChangeMark? charted) {
+    final value = rec.fields['enteredInError']?.value;
+    if (markEntry != null) {
+      if (markEntry.state == ChangeState.rejected) return null;
+      return (
+        byName: null,
+        at: markEntry.correctedTime ?? markEntry.deviceTime,
+        reason: value is Map<String, Object?> ? value['reason'] as String? : null,
+        waiting: true,
+      );
+    }
+    if (value is! Map<String, Object?> && rec.status != 'entered_in_error') return null;
+    return (
+      byName: charted?.byName,
+      at: charted?.at,
+      reason: value is Map<String, Object?> ? value['reason'] as String? : null,
+      waiting: false,
+    );
+  }
+
+  static DateTime? _time(Object? iso) => iso is String ? DateTime.tryParse(iso) : null;
+
+  /// By rank, then name (by code unit, as the server orders them), then ID.
+  static List<_Flag> _ordered(Iterable<_Flag> flags) => [...flags]
+    ..sort((a, b) {
+      final byRank = a.rank.compareTo(b.rank);
+      if (byRank != 0) return byRank;
+      final byName = a.name.compareTo(b.name);
+      return byName != 0 ? byName : a.id.compareTo(b.id);
+    });
 }
+
+/// Where [FlagView.rank] puts a flag the phone knows from a chart's history row alone: after the rest.
+const _unranked = 1000001;
+
+/// One of the team's flags as this class reads it: from the phone's copy of the presets, or as a
+/// chart named it.
+class _Flag {
+  const _Flag({
+    required this.id,
+    required this.tier,
+    required this.rank,
+    required this.name,
+    required this.color,
+    required this.colorName,
+    required this.archived,
+    required this.sensitive,
+  });
+
+  final String id;
+  final FlagTier tier;
+  final int rank;
+  final String name;
+  final FlagColor? color;
+  final String colorName;
+  final bool archived;
+
+  /// False for a flag a chart named: the server's flag rule let this person see it then.
+  final bool sensitive;
+
+  FlagView get view =>
+      FlagView(flagId: id, name: name, tier: tier, color: color, colorName: colorName, rank: rank, archived: archived);
+
+  FlagRef get ref => (
+    tier: tier,
+    rank: rank,
+    name: name,
+    sensitive: sensitive,
+    state: archived ? PresetState.archived : PresetState.active,
+  );
+}
+
+/// One change as [PatientFlags.flagsOf] reads it.
+class _Change {
+  const _Change({
+    required this.id,
+    required this.flag,
+    required this.action,
+    required this.at,
+    required this.pending,
+    required this.authorId,
+    required this.authorName,
+    required this.reason,
+    required this.mark,
+    required this.state,
+  });
+
+  final String id;
+  final _Flag flag;
+  final String action;
+
+  /// The server's time for it, or this phone's for one made here that no chart lists yet.
+  final DateTime at;
+
+  /// Made here, its create still waiting for its receipt.
+  final bool pending;
+  final String authorId;
+  final String? authorName;
+  final String? reason;
+  final FlagChangeMarkView? mark;
+  final FlagChangeState state;
+
+  FlagChangeView get view => FlagChangeView(
+    changeId: id,
+    flag: flag.view,
+    action: action,
+    at: at,
+    authorId: authorId,
+    authorName: authorName,
+    reason: reason,
+    enteredInError: mark,
+    state: state,
+  );
+}
+
+/// While the clock is paused (D35): the flags sheet's words (8.2).
+const flagsClockPaused = 'Flags can be changed once the phone’s clock is right.';
+
+const _manageUsers = 'team.manage_users';
+
+// What the flags sheet, intake and Needs attention say when this layer stops: its words.
+const _notAllowed = 'Your role can’t change a patient’s flags.';
+const _unknownFlag = 'This flag isn’t on your team’s list.';
+const _archived = 'This flag is no longer on the team’s list. It can only be cleared.';
+const _reasonLength = 'Give a reason, up to 500 characters.';
+const _marked = 'This change is already marked entered in error.';
+const _notYours = 'Only the person who made this change, or a Program Admin, can mark it entered in error.';
+const _markReasonLength = 'Give a short reason (3 to 300 characters).';

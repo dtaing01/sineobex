@@ -45,7 +45,7 @@ class PatientServices extends ChangeNotifier {
     idLinks = IdLinks(store, copy: copy, now: corrected)..install();
     if (idLinkBaseUrl != null) IdLinks.rememberBaseUrl(store, idLinkBaseUrl);
     problems = Problems(store, permissions: permissions);
-    flags = PatientFlags(store, userId: userId, permissions: permissions)..onChanged = notifyListeners;
+    flags = PatientFlags(store, userId: userId, permissions: permissions, index: index)..onChanged = notifyListeners;
     search = PatientSearcher(store, team.api, index: index, now: corrected);
     patients = PatientRepository(
       store,
@@ -53,6 +53,7 @@ class PatientServices extends ChangeNotifier {
       charts: charts,
       idLinks: idLinks,
       problems: problems,
+      flags: flags,
       now: corrected,
     )..onChanged = notifyListeners;
     notices = ServerNotices(store, team.api)..onChanged = notifyListeners;

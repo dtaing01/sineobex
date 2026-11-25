@@ -22,7 +22,7 @@ import 'chart_cache.dart';
 import 'consent_script.dart';
 import 'display.dart';
 import 'dob.dart';
-import 'flags.dart' show IntakeRiskLevel;
+import 'flags.dart' show IntakeRiskLevel, PatientFlags;
 import 'id_links.dart';
 import 'normalize.dart';
 import 'patient_search.dart' show addSearchName, writeSearchNames;
@@ -424,6 +424,7 @@ class PatientRepository {
     required this.charts,
     required this.idLinks,
     required this.problems,
+    required this.flags,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -432,6 +433,9 @@ class PatientRepository {
   final ChartCache charts;
   final IdLinks idLinks;
   final Problems problems;
+
+  /// The patient's flags: intake's risk level is recorded through it (phase 5 design 8.2).
+  final PatientFlags flags;
   final DateTime Function() _now;
 
   /// Called after a change made through this repository, so screens re-read.
@@ -689,10 +693,14 @@ class PatientRepository {
   // ---- intake (11.1) ----
 
   /// **Create patient**: one SQLite transaction holds the patient create (with its two consents and
-  /// the match check), each street name, each allergy, the ID card when wanted, the search names
+  /// the match check), each street name, each allergy, the risk level picked (a flag change whose
+  /// parent is the patient's create, phase 5 design 8.2), the ID card when wanted, the search names
   /// (origin `local`: preferred name, street names, description; never the legal name, D40) and the
   /// `opened` scope; the draft goes with it. A killed app never leaves half an intake. The clock
-  /// never fails an intake: a card wanted while charting is paused waits ([IntakeResult]).
+  /// never fails an intake: a card wanted while charting is paused waits, and the patient saves
+  /// without a risk level then, or where the presets aren't held ([IntakeResult]). A risk level the
+  /// flags would refuse otherwise ([PatientFlags.record]: its reason, a flag not on the team's list)
+  /// saves nothing.
   IntakeResult createPatient(Intake i) {
     if (i.aliases.length > 20) {
       throw const LocalValidationError('Up to 20 street names.', problem: 'too_many_aliases');
@@ -730,6 +738,8 @@ class PatientRepository {
       for (final a in i.allergies) {
         store.createRecord(entityAllergy, a.value(id));
       }
+      final risk = i.riskLevel;
+      final riskChange = risk == null ? null : flags.recordAtIntake(id, risk);
       String? card;
       var waits = false;
       if (i.idCard == IdCardAnswer.wants) {
@@ -752,7 +762,7 @@ class PatientRepository {
         descriptor: value['visualDescriptor'] as String?,
       );
       store.setKv(draftKey, '');
-      return IntakeResult(patientId: id, cardId: card, cardWaitsForClock: waits);
+      return IntakeResult(patientId: id, cardId: card, cardWaitsForClock: waits, riskLevelChangeId: riskChange);
     });
     onChanged?.call();
     return result;

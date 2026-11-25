@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason, PresetsPull, PulledPreset;
 import 'package:sineobex_field/api/generated/api.dart' as api show PulledPresetKind, PulledPresetState;
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/patients/consent_script.dart' show ConsentGiven;
 import 'package:sineobex_field/patients/flags.dart';
 import 'package:sineobex_field/patients/patient_providers.dart';
+import 'package:sineobex_field/patients/patient_repository.dart' show Intake;
+import 'package:sineobex_field/patients/team_index.dart' show TeamIndexRefresher;
 import 'package:sineobex_field/presets/models.dart';
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/presets/presets_refresher.dart';
@@ -803,6 +806,154 @@ void main() {
       final notice = store().notices().singleWhere((n) => n.kind == noticeFlagChangeNotApplied);
       expect(notice.patientId, kept);
     });
+  });
+
+  // Card P5-phone-domain's own cases, beside those written ahead of it: intake's risk level in
+  // createPatient's transaction, a patient the phone holds no whole chart of, a held change a Program
+  // Admin didn't apply, and Save's tiers.
+  group('intake’s risk level, saved with the patient in one transaction (8.2)', () {
+    Intake intake(IntakeRiskLevel level) =>
+        Intake(consent: const ConsentGiven(), preferredName: 'Demo Wren', riskLevel: level);
+
+    test('a set whose parent is the patient’s create, after it in the outbox', () {
+      final made = services.patients.createPatient(intake((flagId: high, reason: '  Demo: left hospital  ')));
+      final patient = store().outbox().singleWhere((e) => e.entity == entityPatient && e.op == 'create');
+      final change = createOf(made.riskLevelChangeId!);
+      expect(change.value, {
+        'patientId': made.patientId,
+        'flagId': high,
+        'action': 'set',
+        'reason': 'Demo: left hospital',
+      });
+      expect([change.seq > patient.seq, change.patientId], [true, made.patientId]);
+      expect(flags().flagsOf(made.patientId).riskLevel?.flagId, high);
+    });
+
+    test('one the flags refuse saves nothing, the patient included', () {
+      for (final (level, problem) in [
+        ((flagId: high, reason: '   '), 'reason_invalid'),
+        // A condition is no risk level.
+        ((flagId: frost, reason: 'Demo: by the river'), 'unknown_flag'),
+        ((flagId: '5e5e5e5e-0000-4000-8000-000000000001', reason: 'Demo: from another team'), 'unknown_flag'),
+      ]) {
+        expect(() => services.patients.createPatient(intake(level)), refused(problem));
+      }
+      expect(store().outbox().where((e) => e.entity != entityAudit), isEmpty);
+    });
+
+    test('while the clock is paused, or where the presets aren’t held, the patient saves without one', () {
+      pauseClock();
+      expect(
+        services.patients.createPatient(intake((flagId: high, reason: 'Demo: left hospital'))).riskLevelChangeId,
+        isNull,
+      );
+      resumeClock();
+      PresetStore(store()).clear();
+      expect(
+        services.patients.createPatient(intake((flagId: high, reason: 'Demo: left hospital'))).riskLevelChangeId,
+        isNull,
+      );
+      expect(store().outbox().where((e) => e.entity == entityPatient), hasLength(2));
+      expect(flagChanges(), isEmpty);
+    });
+  });
+
+  group('a patient whose chart the phone doesn’t hold whole: the index’s word (6.1)', () {
+    Future<void> indexRefresh() =>
+        TeamIndexRefresher(services.index, phone.engine.api, wallNow: () => phone.wall).refresh(RefreshReason.manual);
+
+    void seeded(String p, String flagId, {String action = 'set', Duration ago = Duration.zero}) => server.seed(
+      entityFlagChange,
+      {'patientId': p, 'flagId': flagId, 'action': action, 'reason': 'Demo: weekly check'},
+      by: blair,
+      at: serverTime.subtract(ago),
+    );
+
+    test('its index entry’s flags stand until the chart comes, with this phone’s changes after them', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      seeded(p, medium, ago: const Duration(days: 1));
+      seeded(p, frost, ago: const Duration(days: 1));
+      await indexRefresh();
+      server.offline = true;
+      // Never opened: the list's row reads the index.
+      expect(flags().riskLevelOf(p)?.flagId, medium);
+      // Opened offline from the index: a list-only copy, with the index's flags and no history.
+      await services.patients.open(p);
+      expect(isPartialChart(store(), p), isTrue);
+      var view = flags().flagsOf(p);
+      expect(
+        [view.riskLevel?.flagId, ids(view.conditions), view.history],
+        [
+          medium,
+          [frost],
+          isEmpty,
+        ],
+      );
+
+      advance(const Duration(minutes: 1));
+      final clear = flags().record(p, flagId: medium, action: 'clear', reason: 'Demo: doing better');
+      view = flags().flagsOf(p);
+      expect(
+        [view.riskLevel, ids(view.conditions), flags().riskLevelOf(p)],
+        [
+          null,
+          [frost],
+          null,
+        ],
+      );
+      expect([for (final h in view.history) h.changeId], [clear]);
+
+      // Online, the chart whole: the server's word.
+      server.offline = false;
+      await phone.engine.syncAll(force: true);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      view = flags().flagsOf(p);
+      expect(
+        [view.riskLevel, ids(view.conditions), view.history.length],
+        [
+          null,
+          [frost],
+          3,
+        ],
+      );
+    });
+
+    test('a change of this phone’s the index has taken in since is not folded again over a later one', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      await indexRefresh();
+      server.offline = true;
+      await services.patients.open(p);
+      flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      server.offline = false;
+      await phone.engine.syncAll(force: true);
+      // A teammate sets a later level; the index, downloaded again, holds both.
+      advance(const Duration(minutes: 5));
+      seeded(p, medium);
+      advance(const Duration(minutes: 1));
+      await indexRefresh();
+      expect(services.index.flagsOf(p)?.primary, medium);
+      expect(flags().flagsOf(p).riskLevel?.flagId, medium);
+    });
+  });
+
+  test('a held change a Program Admin didn’t apply leaves Sent for review and counts nowhere', () async {
+    final p = await openedPatient();
+    server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+    final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+    final changeId = createOf(id).changeId;
+    await phone.engine.syncAll(force: true);
+    expect(flags().flagsOf(p).sentForReview, isTrue);
+    server.rejectHeld(changeId);
+    await services.notices.sync();
+    final view = flags().flagsOf(p);
+    expect([view.riskLevel, view.sentForReview, view.history], [null, false, isEmpty]);
+  });
+
+  test('Save takes a risk level only from the risk levels, and conditions only from the conditions', () async {
+    final p = await openedPatient();
+    expect(() => flags().save(p, riskLevel: frost, conditions: const {}, reason: 'Demo: x'), refused('unknown_flag'));
+    expect(() => flags().save(p, riskLevel: null, conditions: {high}, reason: 'Demo: x'), refused('unknown_flag'));
+    expect(flagChanges(), isEmpty);
   });
 
   group('the copy of the presets the domain reads', () {
