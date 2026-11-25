@@ -731,7 +731,21 @@ test('the Flags history splits no word with a reason of 500 characters, at 1280 
     expect(await page.evaluate(splitWords), `split words at ${width} px`).toEqual([]);
     await expectReflow(page, `the Flags history at ${width} px`, width);
   }
+  // In columns, each change's time and its Entered in error stay on one line.
   await page.setViewportSize({ width: 1280, height: 900 });
+  const lines = await page.evaluate(() =>
+    [...document.querySelectorAll('#flags tbody td[data-label="When"], #flags tbody button')].map((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)))
+        .size;
+    }),
+  );
+  expect(lines.length).toBeGreaterThan(2);
+  expect(
+    lines.every((n) => n === 1),
+    `lines: ${lines.join(', ')}`,
+  ).toBe(true);
   await expectAccessible(page, 'the Flags history with a long reason', { inPlace: true });
 });
 
