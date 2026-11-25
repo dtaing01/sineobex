@@ -40,11 +40,13 @@ const recordsRoute = createRoute({
   summary: 'The server’s copy of records, with each field’s version, for records a phone holds open',
   description:
     'Each kind of record needs its read permission: encounters, notes and what hangs off a note (sign-offs, ' +
-    'addenda, corrections) encounters.chart; patient records and referrals patients.view; problems and their ' +
-    'notes patients.view with encounters.chart or billing.view_codes. What the reader may not see is reported ' +
-    'missing, like a record the team doesn’t have: a sensitive problem the role can’t see, a note they may not ' +
-    'read with its sign-offs, addenda and corrections, and a correction to an answer hidden from them. A note ' +
-    'they may read lists only the answers they may see, each with its version; a hidden one leaves no key.',
+    'addenda, corrections) encounters.chart; patient records, referrals and flag changes patients.view; ' +
+    'problems and their notes patients.view with encounters.chart or billing.view_codes. What the reader may ' +
+    'not see is reported missing, like a record the team doesn’t have: a sensitive problem the role can’t see, ' +
+    'a note they may not read with its sign-offs, addenda and corrections, a correction to an answer hidden ' +
+    'from them, and a change of a flag the role can’t see. A note they may read lists only the answers they ' +
+    'may see, each with its version; a hidden one leaves no key. A flag change marked entered in error ' +
+    'carries its reasons only to its author and to holders of team.manage_users.',
   security: [{ bearer: [] }],
   request: { body: { required: true, ...json(FetchRecords) } },
   responses: { 200: { description: 'Records', ...json(FetchRecordsResult) }, ...errors(401, 403, 422) },
