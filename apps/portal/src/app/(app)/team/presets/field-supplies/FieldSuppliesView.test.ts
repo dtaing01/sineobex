@@ -52,7 +52,7 @@ const noteTypes: NoteTypeRow[] = [
     update: null,
     referencedBy: { field_supply_map: 4 },
     definition: wound,
-    protected: { sections: [], fields: [], options: [] },
+    protected: { whole: false, sections: [], fields: [], options: [] },
   },
 ];
 

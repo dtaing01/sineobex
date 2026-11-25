@@ -50,7 +50,12 @@ const row: NoteTypeRow = {
   update: null,
   referencedBy: {},
   definition,
-  protected: { sections: ['consent'], fields: [], options: [{ path: 'needs.given', code: 'none' }] },
+  protected: {
+    whole: false,
+    sections: ['consent'],
+    fields: [],
+    options: [{ path: 'needs.given', code: 'none' }],
+  },
 };
 
 const draw = () =>

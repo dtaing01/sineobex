@@ -4459,6 +4459,7 @@ class NoteTypeProtectedParts {
     required this.fields,
     required this.options,
     required this.sections,
+    required this.whole,
   });
 
   /// Field paths, the entry part of a repeating section left out
@@ -4467,17 +4468,21 @@ class NoteTypeProtectedParts {
   final List<NoteTypeProtectedPartsOptionsItem> options;
   /// Section ids
   final List<String> sections;
+  /// Nothing in it can be changed, its title and what an edit would add included: the Red flags note
+  final bool whole;
 
   factory NoteTypeProtectedParts.fromJson(Map<String, dynamic> json) => NoteTypeProtectedParts(
         fields: (json['fields'] as List<dynamic>).map((e) => e as String).toList(),
         options: (json['options'] as List<dynamic>).map((e) => NoteTypeProtectedPartsOptionsItem.fromJson(e as Map<String, dynamic>)).toList(),
         sections: (json['sections'] as List<dynamic>).map((e) => e as String).toList(),
+        whole: json['whole'] as bool,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'fields': fields.map((e) => e).toList(),
         'options': options.map((e) => e.toJson()).toList(),
         'sections': sections.map((e) => e).toList(),
+        'whole': whole,
       };
 }
 

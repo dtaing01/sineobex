@@ -2457,6 +2457,8 @@ export interface components {
             }[];
             /** @description Section ids */
             sections: string[];
+            /** @description Nothing in it can be changed, its title and what an edit would add included: the Red flags note */
+            whole: boolean;
         };
         NoteTypeRevision: {
             /** @description The team’s revision this write took */

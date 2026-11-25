@@ -23,6 +23,8 @@ const LIST = '/team/presets/note-types';
 const REASON_LINE = 'Reason: Give a reason of 3 to 300 characters.';
 const FIELDS_TITLE = 'Some fields need changing. Check each one below.';
 const PROTECTED = 'This part can’t be changed.';
+const WHOLE_PROTECTED = 'Nothing in this note type can be changed.';
+const IN_USE = 'Another field’s question asks about this, or a field fills from it, so it can’t be hidden.';
 const NOT_COPYABLE =
   'This section comes from a note type for other visits or other readers, so it can’t be copied here.';
 const STALE = 'Someone else changed this while you were editing. Reload to see their version.';
@@ -439,7 +441,7 @@ test.describe('note types, /team/presets/note-types', () => {
 // ------------------------------------------------------------------------------------------------
 
 test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
-  test('@responsive a note type’s page opens from Edit with its facts, protected parts said as such, accessible in all three themes', async ({
+  test('@responsive a note type’s page opens from Edit with its facts, and says once that nothing in the Red flags note can be changed, accessible in all three themes', async ({
     page,
   }) => {
     await signIn(page, 'admin@example.com');
@@ -457,24 +459,20 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await expect(page.getByRole('main').locator('dt:text-is("Which visits") + dd')).toContainText(
       'A note type can’t change between Medical and Non-Medical: Add a new note type instead.',
     );
-    const editor = editorOf(page);
-    await expect(editor.held).toContainText('Nothing yet.');
-    // Every section of the Red flags note is protected: each says so, and offers no change.
-    for (const s of red.definition.sections) {
-      const section = editor.section(s.title);
-      await expect(section).toContainText(PROTECTED);
-      await expect(section.getByRole('button', { name: /^(Rename|Hide)/ })).toHaveCount(0);
-    }
-    await editor
-      .section(red.definition.sections[0]!.title)
-      .getByRole('button', { name: /^Show its fields/ })
-      .click();
-    // The section's sentence, and each field's, a group's own fields among them.
-    type Field = NoteType['definition']['sections'][number]['fields'][number] & { fields?: Field[] };
-    const count = (fields: Field[]): number => fields.reduce((n, f) => n + 1 + count(f.fields ?? []), 0);
-    await expect(editor.section(red.definition.sections[0]!.title).getByText(PROTECTED)).toHaveCount(
-      1 + count(red.definition.sections[0]!.fields),
-    );
+    // Every part of the Red flags note is protected, its title too (the list's `protected.whole`): the
+    // page says so once, lists its sections, and offers no change the API would refuse at Publish.
+    const sections = page.getByRole('region', { name: 'Sections', exact: true });
+    await expect(sections).toContainText(WHOLE_PROTECTED);
+    await expect(sections.getByRole('listitem')).toHaveText(red.definition.sections.map((s) => s.title));
+    await expect(editorOf(page).held).toHaveCount(0);
+    for (const name of [
+      'Rename the note type',
+      'Add a section of your own',
+      'Copy a section from another note type',
+      'Publish',
+    ])
+      await expect(page.getByRole('button', { name, exact: true }), name).toHaveCount(0);
+    await expect(page.getByRole('main')).not.toContainText('Change it here');
 
     await expectAccessible(page, `${LIST}/red_flags_disposition`);
     await expectReflow(page, `${LIST}/red_flags_disposition`);
@@ -649,7 +647,7 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     expect(csp).toEqual([]);
   });
 
-  test('a refused change is named in the alert and beside it, and nothing is published: a protected part, a section from another kind of note type, and an edit made stale meanwhile', async ({
+  test('a refused change is named in the alert and beside it, and nothing is published: a part in use, a section from another kind of note type, and an edit made stale meanwhile', async ({
     page,
   }) => {
     test.slow();
@@ -657,24 +655,24 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await signIn(page, 'admin@example.com');
     const traffic = watchTraffic(page);
 
-    // The Red flags note's title: the API answers that it can't be changed, naming the change.
-    await page.goto(`${LIST}/red_flags_disposition`);
+    // A field another one's question asks about (the button to Red flags shows for an answer of it):
+    // the API answers that it can't be hidden, naming the change.
+    await page.goto(`${LIST}/${key}`);
     let editor = editorOf(page);
-    const red = await noteType('red_flags_disposition');
-    await page.getByRole('button', { name: 'Rename the note type', exact: true }).click();
-    await page.getByLabel('New title').fill('Demo: Red flags, ours');
-    await page.keyboard.press('Enter');
-    await editor.reason.fill('Demo: a shorter title');
+    const encounter = editor.section('Outreach / community encounter');
+    await encounter.getByRole('button', { name: /^Show its fields/ }).click();
+    await encounter
+      .getByRole('button', { name: 'Hide the field “New need identified”', exact: true })
+      .click();
+    await editor.reason.fill('Demo: a shorter form');
     await editor.publish.click();
     await expect(editor.alert).toBeFocused();
-    await expect(editor.alert).toContainText(
-      `Change 1, Rename the note type to “Demo: Red flags, ours”: ${PROTECTED}`,
-    );
-    await expect(editor.heldItems.first()).toContainText(PROTECTED);
-    await expect(editor.reason).toHaveValue('Demo: a shorter title');
-    await expectAccessible(page, 'Publish, a protected part refused', { inPlace: true });
-    await expectReflow(page, 'Publish, a protected part refused');
-    expect((await noteType('red_flags_disposition')).version).toBe(red.version);
+    await expect(editor.alert).toContainText(`Change 1, Hide the field “New need identified”: ${IN_USE}`);
+    await expect(editor.heldItems.first()).toContainText(IN_USE);
+    await expect(editor.reason).toHaveValue('Demo: a shorter form');
+    await expectAccessible(page, 'Publish, a part in use refused', { inPlace: true });
+    await expectReflow(page, 'Publish, a part in use refused');
+    expect((await noteType(key)).version).toBe(1);
 
     // A section from a note type for other visits: 8.1's sentence beside the copy.
     await page.goto(`${LIST}/${key}`);

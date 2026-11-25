@@ -618,6 +618,8 @@ export interface NoteTypeDefinition {
 
 /** What an edit may not touch (design 5.4): sections by id, fields by path, options by path and code. */
 export interface ProtectedParts {
+  /** Nothing in it can be changed, its title and what an edit would add included: the Red flags note. */
+  whole: boolean;
   sections: string[];
   fields: string[];
   options: { path: string; code: string }[];

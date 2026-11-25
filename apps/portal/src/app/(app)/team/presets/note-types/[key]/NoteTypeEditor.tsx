@@ -358,9 +358,9 @@ function HeldHere({ section, held }: { section: NoteTypeSection; held: readonly 
 }
 
 /**
- * The type's own title, with Rename. The list marks no title protected, so Rename is offered on
- * every note type: on the Red flags note, whose every part is protected, the API refuses it at
- * Publish and the editor says so beside it (D114).
+ * The type's own title, with Rename. A note type every part of which is protected, its title
+ * included (the list's `protected.whole`: the Red flags note), gets no editor (page.tsx), so the
+ * title is offered on every note type the editor is drawn for.
  */
 function TitleBlock({ title, acts }: { title: string; acts: PartActs }) {
   const [renaming, setRenaming] = useState(false);
