@@ -6367,6 +6367,36 @@ void main() {
         }
       });
 
+      test(
+        'a member of another team reads none of the team’s flag changes, as records their team does not have',
+        () async {
+          const neighbour = 'e4000000-0000-4000-8000-0000000000e4';
+          server.permissions[neighbour] = FakeSyncServer.healthcareStaff;
+          // The other team holds flags of its own, so nothing here turns on its having none.
+          server.addPreset(otherTeam, 'flag', flagBody('High', 'primary', 'red', 10));
+          final frost = flagChange(patientA, flags['flag.frost_risk']!);
+          final high = flagChange(patientA, flags['flag.high']!);
+          final mistaken = flagChange(patientA, flags['flag.dehydration_risk']!, why: 'Demo: drank nothing all day');
+          expect(await send(dana, [frost, high, mistaken]), [taken(frost), taken(high), taken(mistaken)]);
+          final mark = markOf(idOf(mistaken));
+          expect(await send(dana, [mark]), [taken(mark)]);
+          final asked = [idOf(frost), idOf(high), idOf(mistaken)];
+          final before = server.serverAudit.length;
+          final body =
+              (await server.handle(neighbour, otherTeam, 'POST', '/v1/sync/records', {
+                    'records': [
+                      for (final id in asked) {'entity': entityFlagChange, 'id': id},
+                    ],
+                  }))!
+                  as Map<String, Object?>;
+          expect(body['records'], isEmpty);
+          expect([for (final m in (body['missing']! as List<Object?>)) (m! as Map<String, Object?>)['id']], asked);
+          expect(server.serverAudit.sublist(before), isEmpty);
+          // Their own team reads them.
+          expect((await syncRead(alex, asked)).missing, isEmpty);
+        },
+      );
+
       test('a retry of a mark kept in history gives the change’s reasons only to its author and Program Admins, as they are now', () async {
         // A patient of its own, so the other cases read only theirs.
         final elsewhere = server.seedPatient(preferredName: 'Demo Cedar');

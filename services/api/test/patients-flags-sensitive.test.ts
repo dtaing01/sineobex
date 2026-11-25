@@ -11,6 +11,7 @@ import {
   push,
   register,
   results,
+  secondTeam,
   setRole,
   setupTeam,
   type Change,
@@ -280,6 +281,24 @@ describe('the sync read', () => {
       expect(JSON.stringify(other)).not.toContain('drank nothing');
       expect(JSON.stringify(other)).not.toContain(ERROR_WHY);
     }
+  });
+
+  it('a member of another team reads none of the team’s flag changes, as records their team does not have', async () => {
+    const other = await secondTeam(h, 'Flags Neighbour Team', 'neighbour');
+    const before = await auditMark(h);
+    const asked = [frost, high, mistaken];
+    const r = await call(h, '/v1/sync/records', {
+      method: 'POST',
+      token: other.token,
+      teamId: other.teamId,
+      json: { records: asked.map((id) => ({ entity: 'patient_flag_change', id })) },
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.records).toEqual([]);
+    expect((r.body.missing as { id: string }[]).map((m) => m.id)).toEqual(asked);
+    await expectAudit(h, 'patient.viewed', { after: before, count: 0 });
+    // Their own team reads them.
+    expect((await syncRead(kim.token, asked)).missing).toEqual([]);
   });
 });
 

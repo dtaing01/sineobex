@@ -3881,11 +3881,11 @@ class FakeSyncServer {
   // ---- reads ----
 
   /// POST /v1/sync/records (routes/sync.ts requireRead, review.ts fetchRecords): each kind of record
-  /// needs its read permission, refused for the whole request; a sensitive problem, or its note,
-  /// is missing to a role without patients.view_sensitive; a note leaves out what the reader may
-  /// not see, and what hangs off a note goes with it (lifecycle 6.4). Each read is logged: a visit's
-  /// as encounter.viewed, a note's and what hangs off it as note.viewed, anything else as a view of
-  /// the patient (review finding P8).
+  /// needs its read permission, refused for the whole request; another team's flag change is missing,
+  /// as row-level security keeps it; a sensitive problem, or its note, is missing to a role without
+  /// patients.view_sensitive; a note leaves out what the reader may not see, and what hangs off a
+  /// note goes with it (lifecycle 6.4). Each read is logged: a visit's as encounter.viewed, a note's
+  /// and what hangs off it as note.viewed, anything else as a view of the patient (review finding P8).
   Map<String, Object?> _fetch(String userId, String teamId, Map<String, Object?> b) {
     final refs = (b['records']! as List<Object?>).cast<Map<String, Object?>>();
     final perms = permissionsOf(userId);
@@ -3898,7 +3898,10 @@ class FakeSyncServer {
     final missing = <Object?>[];
     for (final ref in refs) {
       final r = records[ref['id']];
-      final shown = r == null || r.entity != ref['entity'] ? null : _asRead(userId, teamId, perms, r);
+      // A record of another team is none of this one's, as row-level security keeps it (review
+      // finding MR-4). Only a flag change keeps its team here; a seed names none.
+      final ours = r != null && (r.teamId == null || r.teamId == teamId.toLowerCase());
+      final shown = !ours || r.entity != ref['entity'] ? null : _asRead(userId, teamId, perms, r);
       if (shown == null) {
         missing.add(ref);
         continue;
