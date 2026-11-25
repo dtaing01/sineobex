@@ -33,7 +33,8 @@ const CASEY = 'resident@example.com'; // Healthcare Staff
 const ROBIN = 'chw@example.com'; // the community health worker preset: no sensitive flag
 
 const SAVED = 'Flag saved. The history below shows the change.';
-const MARKED = 'Marked entered in error. It no longer counts among the patient’s flags.';
+const MARKED =
+  'Marked entered in error. The flags at the top of the page show the patient’s flags without it.';
 const DROPPED =
   'The connection dropped, so we can’t tell whether the flag was saved. Press Save again: if it was, it isn’t saved twice.';
 const DROPPED_MARK =
@@ -467,6 +468,9 @@ test('@responsive Entered in error is offered to the change’s author and to a 
   await expect(button).toHaveAttribute('aria-expanded', 'true');
   const heading = parts.panel.getByRole('heading', { name: /^Mark entered in error: Set Frost risk,/ });
   await expect(heading).toBeFocused();
+  await expect(parts.panel.locator('#flags-mark')).toContainText(
+    'This set no longer counts among the patient’s flags. It stays in the history, marked.',
+  );
   // Cancel gives focus back to the button that opened it.
   await parts.panel.getByRole('button', { name: 'Cancel' }).click();
   await expect(button).toBeFocused();
@@ -515,6 +519,34 @@ test('@responsive Entered in error is offered to the change’s author and to a 
   await expect(parts.rows.filter({ hasText: 'Frost risk' })).toContainText('Demo: set on the wrong patient');
   await expect(markOf(parts, 'Dehydration risk')).toHaveCount(1);
   await expectAccessible(page, 'the history with a change entered in error');
+});
+
+// Review finding R2: a clear marked entered in error brings back the flag it cleared, and says so.
+test('Entered in error on a clear says the flag it cleared can come back, and the header shows it back', async ({
+  page,
+}) => {
+  const patient = await freshPatient();
+  const high = await flagNamed('High');
+  await changeFlag(ADMIN, patient.id, high.flagId, 'set', 'Demo: open wound and nowhere warm');
+  await changeFlag(CASEY, patient.id, high.flagId, 'clear', 'Demo: pressed Clear by mistake');
+
+  await signIn(page, CASEY);
+  await page.goto(`/patients/${patient.id}`);
+  let parts = partsOf(page);
+  await expect(parts.pills).toHaveCount(0);
+  await parts.panel.getByRole('button', { name: /^Entered in error: Cleared High,/ }).click();
+  await expect(parts.panel.locator('#flags-mark')).toContainText(
+    'This clear no longer counts, so the flag it cleared can come back on the patient. It stays in the history, marked.',
+  );
+  await expect(parts.panel.locator('#flags-mark')).not.toContainText('leaves the patient’s flags');
+  const mark = page.getByRole('form', { name: 'Mark entered in error' });
+  await mark.getByLabel('Why it was entered in error').fill('Demo: cleared the wrong flag');
+  await mark.getByRole('button', { name: 'Mark entered in error' }).click();
+  await expect(page).toHaveURL(new RegExp(`/patients/${patient.id}\\?flag=marked$`));
+  parts = partsOf(page);
+  await expect(parts.status).toHaveText(MARKED);
+  await expect(parts.pills.getByRole('listitem')).toHaveText([pill(high)]);
+  expect((await chartFor(ADMIN, patient.id)).flags!.primary?.flagId).toBe(high.flagId);
 });
 
 // Review finding R1: an answer is the route handler's only in its shape; JSON from a gateway or a

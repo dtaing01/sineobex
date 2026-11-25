@@ -52,7 +52,9 @@ const DECIDED: Record<string, string> = {
 /** What the Flags panel says when the page is loaded again after its act (`?flag=`). */
 const FLAG_DONE: Record<string, string> = {
   saved: 'Flag saved. The history below shows the change.',
-  marked: 'Marked entered in error. It no longer counts among the patient’s flags.',
+  // One sentence for a set marked and a clear marked alike (a clear marked can bring its flag back):
+  // the header shows the patient's flags as they are now.
+  marked: 'Marked entered in error. The flags at the top of the page show the patient’s flags without it.',
 };
 
 const METHOD: Record<Schemas['ConsentView']['method'], string> = {

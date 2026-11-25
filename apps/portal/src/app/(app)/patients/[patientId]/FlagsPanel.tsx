@@ -369,8 +369,11 @@ export function FlagsPanel({
             Mark entered in error: {changeWords(marked)}
           </h3>
           <p>
-            It leaves the patient’s flags and stays in the history, marked. Only the person who made the
-            change and Program Admins see the reasons.
+            {marked.action === 'set'
+              ? 'This set no longer counts among the patient’s flags.'
+              : 'This clear no longer counts, so the flag it cleared can come back on the patient.'}{' '}
+            It stays in the history, marked. Only the person who made the change and Program Admins see the
+            reasons.
           </p>
           <form className="px-form" onSubmit={mark} noValidate aria-label="Mark entered in error">
             {markProblem && (
