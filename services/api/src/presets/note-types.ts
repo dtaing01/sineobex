@@ -508,8 +508,11 @@ export function publishNoteType(
     if (held.state === 'archived') throw refusal('archived');
     if (input.baseVersion !== held.currentVersion) throw refusal('stale', { held });
     const versions = await versionsOf(w, held);
-    const active = w.team.all.filter((n) => n.state === 'active');
-    const current = Object.fromEntries(active.map((n) => [n.key, n.definition]));
+    // Every note type the team holds, a removed one too: it keeps its mapsTo and comes back as it is,
+    // so a part it maps to is still in use (in_use), and an option operation still reaches the fields
+    // that share its list (rule 5). Left out, a hide or a retire made while the quick encounter is
+    // removed would leave it, once restored, mapping to what wound care no longer has.
+    const current = Object.fromEntries(w.team.all.map((n) => [n.key, n.definition]));
     const platform = platformNewest();
     // Every version of each note type an option operation may reach, so a code it makes is above
     // every one they have used (rule 3), and the version rules check each against all of its own;
@@ -517,7 +520,7 @@ export function publishNoteType(
     const reachable = mayReach({ key: held.key, versions, team: current, platform });
     const loaded = await versionsFor(w.tx, w.teamId, reachable);
     const team = Object.fromEntries(
-      active.map((n) => [
+      w.team.all.map((n) => [
         n.key,
         n.key === held.key ? versions : (loaded.get(n.key)?.map((v) => v.definition) ?? [n.definition]),
       ]),
