@@ -57,6 +57,11 @@ class ChartMeta {
     // change reaches them at the next refresh (D100).
     'timeline': c.timeline?.toJson(),
     'recentVisits': c.recentVisits?.map((v) => v.toJson()).toList(),
+    // Phase 5 (design 6.1): the flag changes the chart lists, whose records come with it, and the flags
+    // as the server worked them out for this person, so the profile draws them where the presets
+    // aren't held. Both are read with the flag rule and replaced whole at each refresh, as above.
+    'flagChangeIds': [for (final s in c.flagChanges ?? const <RecordSnapshot>[]) s.id],
+    'flags': c.flags?.toJson(),
   });
 
   /// An index entry opened offline (design 6.5): only the index's fields, marked partial.
@@ -130,13 +135,13 @@ class ChartMeta {
   /// `flagChanges`, imported as records with the chart. A change made here shows until the chart
   /// lists it; a server copy the chart no longer lists is not counted. Empty for a partial copy or a
   /// chart cached before phase 5.
-  List<String> get flagChangeIds => throw UnimplementedError('P5-chart-cache');
+  List<String> get flagChangeIds => _ids('flagChangeIds');
 
   /// The patient's flags as the server worked them out for this person (6.1, 7): each flag's name,
   /// tier, colour and rank as the flag is now, and the history, so the profile draws them where the
   /// presets aren't held. Read for this person when the chart was, and replaced whole with it. Null
   /// for a partial copy, a chart that came without them, or one that no longer reads.
-  ChartFlags? get flags => throw UnimplementedError('P5-chart-cache');
+  ChartFlags? get flags => _read(json['flags'], ChartFlags.fromJson);
 
   /// The group's referrals as the timeline lists them, which the phone need not hold as records:
   /// each read on its own, so one that no longer reads leaves the rest.
@@ -186,10 +191,11 @@ ServerRecord _record(RecordSnapshot s, {Map<String, ServerField> extra = const {
 );
 
 /// Imports one downloaded chart into the store, in one transaction: the patient record with the
-/// chart's meta, the group's street names, allergies and problems (closed: scopes keep them), its
-/// ID links (tokens only when the role may copy them), and its search names (origin `cache`: the
-/// preferred name, street names and description, never the legal name, D40). [opened] adds or
-/// extends the 24-hour `opened` scope; a refresh never extends one (design 7.2).
+/// chart's meta, the group's street names, allergies, problems and flag changes (closed: scopes keep
+/// them; a flag change is filed under its patient, so it can be marked entered in error offline,
+/// phase 5 design 6.1), its ID links (tokens only when the role may copy them), and its search names
+/// (origin `cache`: the preferred name, street names and description, never the legal name, D40).
+/// [opened] adds or extends the 24-hour `opened` scope; a refresh never extends one (design 7.2).
 void importChart(LocalStore store, PatientChart chart, {required bool opened, required DateTime now}) {
   store.transaction(() {
     final canonical = chart.canonicalId;
@@ -200,7 +206,7 @@ void importChart(LocalStore store, PatientChart chart, {required bool opened, re
       ),
       open: false,
     );
-    for (final s in [...chart.aliases, ...chart.allergies, ...?chart.problems]) {
+    for (final s in [...chart.aliases, ...chart.allergies, ...?chart.problems, ...?chart.flagChanges]) {
       store.importServerRecord(_record(s), open: false);
     }
     IdLinks.importChartLinks(store, canonical, chart.idLinks);
