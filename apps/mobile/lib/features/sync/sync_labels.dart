@@ -102,6 +102,9 @@ String? problemLabel(String? problem) => switch (problem) {
   'excluded_pair' ||
   'exclusive_with_others' => 'This answer doesn’t fit the note’s form. Open the note and change it.',
   'referral_in_future' => 'A referral can’t be dated in the future.',
+  // Phase 5 (design 6.2, 8.2): a flag change's two refusals a worker can fix.
+  'unknown_flag' => 'This flag isn’t on your team’s list. Choose a flag.',
+  'reason_invalid' => 'The reason is empty or too long. Change the reason.',
   _ => null,
 };
 
@@ -135,6 +138,8 @@ String noticeLabel(String kind, String? field) => switch (kind) {
   'note_cosigned' => 'A visit you charted was co-signed.',
   'note_attested' => 'A visit you signed was attested.',
   'note_assigned' => 'A note was assigned to you to finish.',
+  // Phase 5 (design 6.2, 8.2): a held flag change a Program Admin didn't apply.
+  'flag_change_not_applied' => 'A flag you set wasn’t applied. Open the patient to set it again.',
   _ => 'Something changed after it synced.',
 };
 

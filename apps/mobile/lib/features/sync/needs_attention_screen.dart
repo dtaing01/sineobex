@@ -9,6 +9,7 @@ import '../../app_providers.dart';
 import '../../auth/session_controller.dart';
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
+import '../../design/widgets/form_bits.dart' show ErrorMessage;
 import '../../design/widgets/status_chip.dart';
 import '../../encounters/encounter_models.dart' show VisitKind;
 import '../../encounters/encounter_repository.dart'
@@ -25,6 +26,7 @@ import '../../encounters/referrals.dart' show settledByDate;
 import '../../forms/definition.dart' show ChoiceDef;
 import '../../forms/field_at.dart' show fieldAt;
 import '../../forms/forms_api.dart' show NoteTypeVersion;
+import '../../patients/flags.dart' show FlagView, settledByFlag, settledByReason;
 import '../../patients/patient_providers.dart';
 import '../../sync/entities.dart' show entityCorrection, entitySignoff;
 import '../../sync/local_store.dart';
@@ -42,10 +44,11 @@ import '../encounters/encounter_labels.dart'
 import '../encounters/encounter_widgets.dart' show ChoiceTile, SheetGate, choosePatient, encountersOpen, fetchNote;
 import '../encounters/note_type_list.dart' show noteLocation;
 import '../encounters/referrals_sheet.dart' show askReferralDate, changeReferralDateAction;
+import '../patients/flag_sheet.dart' show FlagMark, FlagReasonBox;
 import '../patients/patient_labels.dart' show longDate, problemStatusText, shortDate;
 import '../patients/patient_picker.dart';
 import '../patients/patient_widgets.dart' show FrozenNotice, confirm, errorText, todayOf;
-import '../patients/sheet_gate.dart' show DialogGate;
+import '../patients/sheet_gate.dart' show DialogGate, SheetGate;
 import 'sync_labels.dart';
 
 /// Rejected changes and conflicts, until someone resolves them (module 9 "Rejections", Oct 19
@@ -506,6 +509,12 @@ class _RejectionCard extends ConsumerWidget {
     // A referral dated past what the server takes: Change the date (review finding PS-3). A referral
     // does not wait for the clock (3.11), so neither does its fix.
     final byDate = n != null && settledByDate(e);
+    // A flag change refused for its flag, or for its reason (phase 5 design 6.2, 8.2; D121): Choose a
+    // flag, from its tier's flags the person may set, or why there is none; Change the reason. Each
+    // sends the refused change again through the flags domain class, once the clock allows.
+    final byFlag = s != null && settledByFlag(e);
+    final byReason = s != null && settledByReason(e);
+    final flagChoices = byFlag ? _flagsToChoose(s, e) : const <FlagView>[];
     final visitId = switch (e.entity) {
       entityEncounter => e.recordId,
       entityNote =>
@@ -572,6 +581,14 @@ class _RejectionCard extends ConsumerWidget {
       await settle(() => n!.repository.removeRefusedNote(e.changeId));
     }
 
+    Future<void> chooseFlag() async {
+      if (await _chooseFlag(context, s!, e, flagChoices)) await ref.read(syncControllerProvider).syncNow();
+    }
+
+    Future<void> changeReason() async {
+      if (await _changeFlagReason(context, s!, e)) await ref.read(syncControllerProvider).syncNow();
+    }
+
     Future<void> attachTo() async {
       final patientId = await pickPatient(context, s!, today: todayOf(ref));
       if (patientId == null) return;
@@ -592,7 +609,11 @@ class _RejectionCard extends ConsumerWidget {
           Semantics(header: true, child: Text(what, style: text.titleLarge)),
           const SizedBox(height: FieldSpace.s1),
           Text(
-            completedAgain != null ? waitsForNoteLine : problemLabel(problem) ?? reasonLabel(e.reason),
+            completedAgain != null
+                ? waitsForNoteLine
+                : byFlag && flagChoices.isEmpty
+                ? noFlagToChoose
+                : problemLabel(problem) ?? reasonLabel(e.reason),
             style: text.titleMedium,
           ),
           if (completedAgain == null && problemLabel(problem) == null && e.message != null) ...[
@@ -669,6 +690,16 @@ class _RejectionCard extends ConsumerWidget {
                   FilledButton(onPressed: () => unawaited(attachTo()), child: const Text('Attach to another patient')),
                 if (byDate)
                   FilledButton(onPressed: () => unawaited(changeDate()), child: const Text(changeReferralDateAction)),
+                if (byFlag && flagChoices.isNotEmpty)
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(chooseFlag()),
+                    child: const Text(chooseFlagAction),
+                  ),
+                if (byReason)
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(changeReason()),
+                    child: const Text(changeReasonAction),
+                  ),
                 if (byVisit && n.repository.hasVisitsToChoose(e.changeId))
                   FilledButton(
                     onPressed: paused ? null : () => unawaited(chooseVisit()),
@@ -692,7 +723,7 @@ class _RejectionCard extends ConsumerWidget {
               const SizedBox(height: FieldSpace.s1),
               Text('Cards can be made once the phone’s clock is right.', style: text.bodyMedium),
             ],
-            if (byVisit && paused) ...[
+            if ((byVisit || byReason || (byFlag && flagChoices.isNotEmpty)) && paused) ...[
               const SizedBox(height: FieldSpace.s1),
               Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
             ],
@@ -752,7 +783,13 @@ class _NoticeCard extends StatelessWidget {
         else if (onOpen != null)
           OutlinedButton(
             onPressed: onOpen,
-            child: Text(notice.patientId == null ? 'Open the problem' : 'Open the chart'),
+            child: Text(
+              notice.kind == noticeFlagChangeNotApplied
+                  ? openPatientAction
+                  : notice.patientId == null
+                  ? 'Open the problem'
+                  : 'Open the chart',
+            ),
           ),
         TextButton(onPressed: onDone, child: const Text('Got it')),
       ],
@@ -761,6 +798,231 @@ class _NoticeCard extends StatelessWidget {
 }
 
 const correctAgainAction = 'Correct again';
+
+/// A flag change's fixes (phase 5 design 8.2), and the notice's way to the patient.
+const chooseFlagAction = 'Choose a flag';
+const changeReasonAction = 'Change the reason';
+const noFlagToChoose = 'This flag can’t be set on this phone. Tell a Program Admin.';
+const openPatientAction = 'Open patient';
+
+/// What Choose a flag offers for [e]: none once the store froze, or for a change it doesn't settle.
+List<FlagView> _flagsToChoose(PatientServices services, OutboxEntry e) {
+  try {
+    return services.flags.flagsToChoose(e.changeId);
+  } on ChartingPaused {
+    return const [];
+  } on StateError {
+    return const [];
+  }
+}
+
+/// The reason a refused flag change was sent with: Choose a flag and Change the reason start from it.
+String _refusedReason(OutboxEntry e) => switch (e.value) {
+  {'reason': final String reason} => reason,
+  _ => '',
+};
+
+/// **Choose a flag** (phase 5 design 6.2, 8.2; D121): the flags of the refused change's tier the
+/// person may set, by their pills, and the refused change's reason, shown and editable; Send it again
+/// sends the refused create with both, through the flags domain class, which settles the refusal once
+/// the server takes it. A sheet in [SheetGate], so a freeze takes it, and what was typed with it.
+/// True when it was sent.
+Future<bool> _chooseFlag(BuildContext context, PatientServices services, OutboxEntry e, List<FlagView> choices) async {
+  final sent = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => SheetGate.patients(
+      services: services,
+      child: _ChooseFlagSheet(services: services, entry: e, choices: choices),
+    ),
+  );
+  return sent ?? false;
+}
+
+class _ChooseFlagSheet extends StatefulWidget {
+  const _ChooseFlagSheet({required this.services, required this.entry, required this.choices});
+  final PatientServices services;
+  final OutboxEntry entry;
+  final List<FlagView> choices;
+
+  @override
+  State<_ChooseFlagSheet> createState() => _ChooseFlagSheetState();
+}
+
+class _ChooseFlagSheetState extends State<_ChooseFlagSheet> {
+  late final _reason = TextEditingController(text: _refusedReason(widget.entry));
+  String? _flag;
+
+  /// Presses of Send it again, so each refusal is a new node, said again.
+  int _tries = 0;
+  String? _problem;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    _tries++;
+    try {
+      widget.services.flags.chooseFlag(widget.entry.changeId, flagId: _flag!, reason: _reason.text);
+    } on Exception catch (x) {
+      return setState(() => _problem = errorText(x));
+    } on StateError {
+      return setState(() => _problem = flagFixGone);
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final ready = _flag != null && _reason.text.trim().isNotEmpty;
+    // The choices and the reason scroll; Send it again stays under them, in reach at any text size.
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s2),
+                children: [
+                  // Compact, so the choices, the reason and Send it again all show at once, at any
+                  // text size.
+                  Semantics(header: true, child: Text(chooseFlagAction, style: text.titleMedium)),
+                  RadioGroup<String>(
+                    groupValue: _flag,
+                    onChanged: (v) => setState(() {
+                      _flag = v;
+                      _problem = null;
+                    }),
+                    child: Column(
+                      children: [
+                        for (final f in widget.choices)
+                          RadioListTile<String>(
+                            value: f.flagId,
+                            contentPadding: EdgeInsets.zero,
+                            minVerticalPadding: 0,
+                            visualDensity: VisualDensity.compact,
+                            title: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FlagMark(flag: f),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  FlagReasonBox(controller: _reason, onChanged: (_) => setState(() {})),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(FieldSpace.s4, FieldSpace.s2, FieldSpace.s4, FieldSpace.s4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_problem case final problem?) ...[
+                    ErrorMessage(problem, key: ValueKey('flag.choose.problem.$_tries')),
+                    const SizedBox(height: FieldSpace.s2),
+                  ],
+                  FilledButton(onPressed: ready ? _send : null, child: const Text(sendAgainAction)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A refused flag change settled since its card was drawn (another phone's fix, a sync).
+const flagFixGone = 'This change was settled already.';
+
+/// **Change the reason** (phase 5 design 6.2, 8.2; D121): the refused change's reason, shown and
+/// editable; Send it again sends the same change with the new reason, through the flags domain
+/// class. A dialog in [DialogGate], so a freeze closes it. True when it was sent.
+Future<bool> _changeFlagReason(BuildContext context, PatientServices services, OutboxEntry e) async {
+  final sent = await showDialog<bool>(
+    context: context,
+    builder: (_) => DialogGate<bool>.patients(
+      services: services,
+      cancel: false,
+      child: _ChangeReasonDialog(
+        reason: _refusedReason(e),
+        send: (reason) {
+          try {
+            services.flags.changeReason(e.changeId, reason);
+            return null;
+          } on Exception catch (x) {
+            return errorText(x);
+          } on StateError {
+            return flagFixGone;
+          }
+        },
+      ),
+    ),
+  );
+  return sent ?? false;
+}
+
+class _ChangeReasonDialog extends StatefulWidget {
+  const _ChangeReasonDialog({required this.reason, required this.send});
+  final String reason;
+
+  /// Sends the change again with the reason given; the refusal's words, or null once sent.
+  final String? Function(String reason) send;
+
+  @override
+  State<_ChangeReasonDialog> createState() => _ChangeReasonDialogState();
+}
+
+class _ChangeReasonDialogState extends State<_ChangeReasonDialog> {
+  late final _reason = TextEditingController(text: widget.reason);
+  int _tries = 0;
+  String? _problem;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    _tries++;
+    final refused = widget.send(_reason.text);
+    if (refused == null) return Navigator.of(context).pop(true);
+    setState(() => _problem = refused);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text(changeReasonAction),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FlagReasonBox(controller: _reason, onChanged: (_) => setState(() {})),
+        if (_problem case final problem?) ...[
+          const SizedBox(height: FieldSpace.s2),
+          ErrorMessage(problem, key: ValueKey('flag.reason.problem.$_tries')),
+        ],
+      ],
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+      FilledButton(onPressed: _reason.text.trim().isEmpty ? null : _submit, child: const Text(sendAgainAction)),
+    ],
+  );
+}
 
 /// A note's answer whose value is more than a few words: the form shows it.
 const openTheNoteToSee = 'Open the note to see it';
