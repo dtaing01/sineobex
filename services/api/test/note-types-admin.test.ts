@@ -899,28 +899,88 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
   });
 
   it('never edits from a stored version that is not the row it says, nor lists one', async () => {
-    // A row written by hand, its hash another definition's: the list and a publish answer a fault
-    // and write nothing, rather than make the next version from it (D79).
-    const t = await presetsTeam(h, 'Note Types Rows');
-    const theirs = noteTypesApi(t.teamId, t.admin);
-    const [v1] = await versionsOf(t.teamId, 'social_needs');
-    await h.scratch.owner.begin(async (tx) => {
-      const revision = await takeRevision(tx as unknown as InstallSql, t.teamId);
-      await tx`
-        insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
-        values (${t.teamId}, 'social_needs', 2, ${tx.json({ ...v1!.definition, version: 2, title: 'Demo: By hand' } as never)},
-                ${v1!.hash}, 'team')`;
-      await tx`
-        update sineobex.note_types set current_version = 2, revision = ${revision}
-        where team_id = ${t.teamId} and key = 'social_needs'`;
-    });
-    expect((await theirs.list()).status).toBe(500);
+    // Rows written by hand, each hash another definition's: the list and a publish answer a fault
+    // and write nothing, rather than make the next version from one (D79), whether the row is the
+    // current version or one before it, which a publish reads too.
+    const byHand = async (label: string, bad: number, current: number) => {
+      const t = await presetsTeam(h, label);
+      const [v1] = await versionsOf(t.teamId, 'social_needs');
+      await h.scratch.owner.begin(async (tx) => {
+        const revision = await takeRevision(tx as unknown as InstallSql, t.teamId);
+        for (let version = 2; version <= current; version++) {
+          const definition = { ...v1!.definition, version, title: `Demo: By hand ${version}` };
+          const hash = version === bad ? v1!.hash : await sha256Hex(canonicalJson(definition));
+          await tx`
+            insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin)
+            values (${t.teamId}, 'social_needs', ${version}, ${tx.json(definition as never)}, ${hash}, 'team')`;
+        }
+        await tx`
+          update sineobex.note_types set current_version = ${current}, revision = ${revision}
+          where team_id = ${t.teamId} and key = 'social_needs'`;
+      });
+      return { t, theirs: noteTypesApi(t.teamId, t.admin) };
+    };
+    const atCurrent = await byHand('Note Types Rows', 2, 2);
+    expect((await atCurrent.theirs.list()).status).toBe(500);
     await refusedUnwritten(
-      () => theirs.publish('social_needs', 2, [{ op: 'rename_type', title: 'Demo: From a bad row' }]),
+      () =>
+        atCurrent.theirs.publish('social_needs', 2, [{ op: 'rename_type', title: 'Demo: From a bad row' }]),
       500,
       'internal',
+      atCurrent.t.teamId,
+    );
+    const before = await byHand('Note Types Rows Before', 2, 3);
+    expect((await before.theirs.list()).status).toBe(200);
+    await refusedUnwritten(
+      () => before.theirs.publish('social_needs', 3, [{ op: 'rename_type', title: 'Demo: Over a bad row' }]),
+      500,
+      'internal',
+      before.t.teamId,
+    );
+  });
+
+  it('checks each note type a carried operation changes: a retire that leaves a condition of the reached one naming nothing', async () => {
+    // Wound care shows the drainage type only for some drainage amounts, which the quick encounter's
+    // drainage maps into: retiring one of them there retires it in wound care too, whose condition
+    // would then name a code it no longer has.
+    const t = await presetsTeam(h, 'Note Types Reached Check');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const row = await rowOf('quick_encounter', theirs);
+    const wound = await rowOf('wound_care', theirs);
+    const details = await refusedUnwritten(
+      () =>
+        theirs.publish('quick_encounter', row.version, [
+          { op: 'retire_option', path: 'wound.drainage', code: 'scant' },
+        ]),
+      422,
+      'invalid',
       t.teamId,
     );
+    expect(
+      [...new Set((details.problems as { file: string }[]).map((p) => p.file))],
+      JSON.stringify(details),
+    ).toEqual([`note-types/wound_care/v${wound.version + 1}.json`]);
+  });
+
+  it('rewords an option carried into the quick encounter, each version declaring its own rename', async () => {
+    const t = await presetsTeam(h, 'Note Types Reached Rename');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const wound = await rowOf('wound_care', theirs);
+    const quick = await rowOf('quick_encounter', theirs);
+    const r = await theirs.publish('wound_care', wound.version, [
+      { op: 'rename_option', path: 'wound.treatment.dressing', code: 'gauze', label: 'Demo: Gauze pad' },
+    ]);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.alsoPublished).toEqual(['quick_encounter']);
+    for (const [key, version, path] of [
+      ['wound_care', wound.version + 1, 'wound.treatment.dressing'],
+      ['quick_encounter', quick.version + 1, 'wound.dressing'],
+    ] as const) {
+      const { definition } = await storedAs(key, version, t.teamId);
+      expect(fieldOf(definition, path).options!.find((o) => o.code === 'gauze')!.label, key).toBe(
+        'Demo: Gauze pad',
+      );
+    }
   });
 });
 
@@ -1425,6 +1485,46 @@ describe('adding, removing, restoring and taking an update: what each checks', (
       expect([made.update, made.updateOnOffer]).toEqual([null, false]);
       expect((await rowOf('social_needs', theirs)).state).toBe('archived');
       await storedAs(key, 1, t.teamId);
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('refuses to take an update as new on the auto note type, which can’t be removed', async () => {
+    const t = await presetsTeam(h, 'Note Types Take Auto');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const row = await rowOf('red_flags_disposition', theirs);
+    await refusedUnwritten(
+      () =>
+        theirs.takeUpdate('red_flags_disposition', {
+          baseVersion: row.version,
+          platformVersion: 2,
+          asNew: true,
+        }),
+      409,
+      'not_removable',
+      t.teamId,
+    );
+  });
+
+  it('takes an update in place over a label the team reworded: the platform words its own paths', async () => {
+    const { t, theirs, next, unrelease, row } = await teamWithOffer('Note Types Take Label', 'outreach');
+    try {
+      // The team rewords a field the platform's version words as it always did.
+      const reworded = await theirs.publish('outreach', row.version, [
+        { op: 'rename_label', path: 'outreach.new_need', label: 'Demo: Anything new they need?' },
+      ]);
+      expect(reworded.status, JSON.stringify(reworded.body)).toBe(200);
+      const r = await theirs.takeUpdate('outreach', {
+        baseVersion: row.version + 1,
+        platformVersion: next.version,
+        asNew: false,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const { definition } = await storedAs('outreach', row.version + 2, t.teamId);
+      expect(fieldOf(definition, 'outreach.new_need').label).toBe(
+        fieldOf(next.definition, 'outreach.new_need').label,
+      );
     } finally {
       unrelease();
     }
