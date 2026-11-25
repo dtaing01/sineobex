@@ -602,6 +602,62 @@ test('an answer that isn’t the route handler’s own is read as a dropped conn
   expect(history.map((h) => [h.name, h.action, h.enteredInError])).toEqual([['Frost risk', 'set', null]]);
 });
 
+/** Words drawn across two lines in the Flags history: none should be, but for one longer than its column. */
+function splitWords(): string[] {
+  const out: string[] = [];
+  const table = document.querySelector('#flags table');
+  if (!table) return out;
+  // Stacked, the table's heading row is kept for screen readers in a box one pixel wide.
+  const head = table.querySelector('thead');
+  const headShown = !!head && head.getBoundingClientRect().width > 1;
+  const range = document.createRange();
+  const walker = document.createTreeWalker(table, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const el = node.parentElement;
+    if (!el || el.closest('.sr-only') || (!headShown && el.closest('thead'))) continue;
+    const text = node.textContent ?? '';
+    for (const m of text.matchAll(/\S{2,}/g)) {
+      range.setStart(node, m.index);
+      range.setEnd(node, m.index + m[0].length);
+      const lines = new Set(
+        [...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)),
+      );
+      if (lines.size > 1) out.push(m[0]);
+    }
+  }
+  return out;
+}
+
+// Review finding R3: one long reason took nearly all of the history's width, and every other column
+// split mid-word, at the default width and at 200% zoom.
+test('the Flags history splits no word with a reason of 500 characters, at 1280 and 640 px and on a phone', async ({
+  page,
+}) => {
+  const patient = await freshPatient();
+  const frost = await flagNamed('Frost risk');
+  const dehydration = await flagNamed('Dehydration risk');
+  const long =
+    `Demo: ${'slept outside again in the made-up park by the river path with wet clothes and no blanket, '.repeat(6)}`
+      .slice(0, 500)
+      .trim();
+  expect([...long].length).toBeLessThanOrEqual(500);
+  await changeFlag(CASEY, patient.id, frost.flagId, 'set', long);
+  await changeFlag(ADMIN, patient.id, dehydration.flagId, 'set', 'Demo: no water source nearby');
+
+  await signIn(page, ADMIN);
+  await page.goto(`/patients/${patient.id}`);
+  const parts = partsOf(page);
+  await expect(parts.rows).toHaveCount(2);
+  for (const width of [1280, 640, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await parts.panel.locator('table').scrollIntoViewIfNeeded();
+    expect(await page.evaluate(splitWords), `split words at ${width} px`).toEqual([]);
+    await expectReflow(page, `the Flags history at ${width} px`, width);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expectAccessible(page, 'the Flags history with a long reason', { inPlace: true });
+});
+
 // ------------------------------------------------------------------------------------------------
 // A flag no longer on the team's list (5.1), and each refusal said beside its field (7)
 // ------------------------------------------------------------------------------------------------

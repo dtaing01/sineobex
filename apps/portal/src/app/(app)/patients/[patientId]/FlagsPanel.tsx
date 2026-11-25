@@ -292,7 +292,7 @@ export function FlagsPanel({
       {history.length === 0 ? (
         <p>No flag has been set or cleared.</p>
       ) : (
-        <table className={`px-table ${styles.stack}`}>
+        <table className={`px-table ${styles.stack} ${local.history}`}>
           <caption className="sr-only">Each flag set or cleared, oldest first</caption>
           <thead>
             <tr>
@@ -326,8 +326,10 @@ export function FlagsPanel({
                     )}
                   </td>
                   <td data-label="By">{row.authorName}</td>
-                  <td data-label="When">{formatDateTime(row.effectiveAt)}</td>
-                  <td data-label="Why">
+                  <td data-label="When">
+                    <span className={local.whole}>{formatDateTime(row.effectiveAt)}</span>
+                  </td>
+                  <td data-label="Why" className={local.why}>
                     {row.reason ?? 'Only the person who made it and Program Admins see why.'}
                     {error?.reason && (
                       <span className={styles.meta}>Entered in error because: {error.reason}</span>
@@ -342,7 +344,7 @@ export function FlagsPanel({
                             if (el) markButtons.current.set(row.changeId, el);
                             else markButtons.current.delete(row.changeId);
                           }}
-                          className="sx-btn sx-btn--secondary"
+                          className={`sx-btn sx-btn--secondary ${local.whole}`}
                           aria-expanded={marking === row.changeId}
                           aria-controls={marking === row.changeId ? 'flags-mark' : undefined}
                           onClick={() => openMark(row)}
