@@ -1,5 +1,5 @@
 {
-  "note": "Hand-written from the phase 3 design (2.1, 2.6, 2.8). Valid and invalid values for every patient-side change, read by services/api (Zod, sync-values.test.ts and the entity rules), apps/mobile lib/sync/entities.dart and the phone's fake server. An invalid value fails its schema at `expect.paths` (issue paths, '' for the value itself), or passes it and breaks the named rule `expect.problem` (a validation rejection with details.problem). Every valid change lists the `parents` both registries derive from it: records that must exist in the team, or be held. Rules are checked against `today`, the server date. Strings are never trimmed for you: an untrimmed one is refused. Phase 4 (lifecycle 4.6, 4.7, 4.8) adds the sign-off, the addendum, the correction and the referral, and the two offline audit actions of a visit; a referral is dated no more than a day after `today` (referral_in_future). Phase 5 (design 4.5, 6.2) adds the flag change: a create names its patient and one of the team's flags, sets or clears it, and carries a reason, which the rule reason_invalid refuses when it is not trimmed, is empty, or holds more than 500 code points (an astral character is one, though it is two UTF-16 units); its one field, enteredInError, takes a retraction of 3 to 300 characters, as a referral's.",
+  "note": "Hand-written from the phase 3 design (2.1, 2.6, 2.8). Valid and invalid values for every patient-side change, read by services/api (Zod, sync-values.test.ts and the entity rules), apps/mobile lib/sync/entities.dart and the phone's fake server. An invalid value fails its schema at `expect.paths` (issue paths, '' for the value itself), or passes it and breaks the named rule `expect.problem` (a validation rejection with details.problem). Every valid change lists the `parents` both registries derive from it: records that must exist in the team, or be held. Rules are checked against `today`, the server date. Strings are never trimmed for you: an untrimmed one is refused. Phase 4 (lifecycle 4.6, 4.7, 4.8) adds the sign-off, the addendum, the correction and the referral, and the two offline audit actions of a visit; a referral is dated no more than a day after `today` (referral_in_future). Phase 5 (design 4.5, 6.2) adds the flag change: a create names its patient and one of the team's flags, sets or clears it, and carries a reason, which the rule reason_invalid refuses when it is not trimmed, is empty, or holds more than 500 code points (an astral character is one, though it is two UTF-16 units); its one field, enteredInError, takes a retraction of 3 to 300 characters, as a referral's. Every length is counted in code points, as Zod 4 counts it, so two astral characters are two and never reach a minimum of 3; and a string with U+0085 (next line) at either end is untrimmed, as Dart’s trim takes it, everywhere a value must be trimmed (review finding MR-1).",
   "today": "2026-10-22",
   "valid": [
     {
@@ -1066,6 +1066,100 @@
         ],
         "resultCount": 3
       },
+      "parents": []
+    },
+    {
+      "name": "a flag change entered in error with a reason of 300 astral characters, 600 UTF-16 units",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊"
+      },
+      "parents": []
+    },
+    {
+      "name": "a flag change entered in error with a reason of two letters and an astral character, 4 UTF-16 units",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "ab🧊"
+      },
+      "parents": []
+    },
+    {
+      "name": "a referral entered in error with a reason of 300 astral characters",
+      "entity": "referral",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊"
+      },
+      "parents": []
+    },
+    {
+      "name": "a preferred name of 80 astral characters, 160 UTF-16 units",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊",
+      "parents": []
+    },
+    {
+      "name": "a correction whose reason is 500 astral characters",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.ems.activated",
+            "newValue": "yes",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.ems.called",
+            "newValue": "14:05",
+            "baseVersion": 0
+          }
+        ],
+        "reason": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "parents": [
+        {
+          "entity": "encounter_note",
+          "id": "a0a00000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a flag change whose reason has a next-line character (U+0085) inside it",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "Demo: one\u0085two"
+      },
+      "parents": [
+        {
+          "entity": "patient",
+          "id": "5eed0000-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "name": "a place typed by hand of 200 astral characters, 400 UTF-16 units",
+      "entity": "encounter",
+      "op": "set",
+      "field": "locationText",
+      "value": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊",
       "parents": []
     }
   ],
@@ -2601,6 +2695,339 @@
       "expect": {
         "paths": [
           "action"
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error with a reason of two astral characters, 4 UTF-16 units",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "🧊🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error with a reason of a letter and an astral character",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "a🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error with a reason of 301 astral characters",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a flag change entered in error whose reason ends in a next-line character (U+0085)",
+      "entity": "patient_flag_change",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "Demo: set on the wrong patient\u0085"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a street name removed with a reason of two astral characters",
+      "entity": "patient_alias",
+      "op": "set",
+      "field": "removal",
+      "value": {
+        "reason": "🧊🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "an allergy entered in error with a reason of two astral characters",
+      "entity": "patient_allergy",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "🧊🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a problem entered in error with a reason of a letter and an astral character",
+      "entity": "problem",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "a🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a referral entered in error with a reason of two astral characters",
+      "entity": "referral",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "🧊🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a referral entered in error with a reason of 301 astral characters",
+      "entity": "referral",
+      "op": "set",
+      "field": "enteredInError",
+      "value": {
+        "reason": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a correction whose reason is two astral characters",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.ems.activated",
+            "newValue": "yes",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.ems.called",
+            "newValue": "14:05",
+            "baseVersion": 0
+          }
+        ],
+        "reason": "🧊🧊",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a correction whose reason starts with a next-line character (U+0085)",
+      "entity": "note_correction",
+      "op": "create",
+      "value": {
+        "noteId": "a0a00000-0000-4000-8000-000000000001",
+        "changes": [
+          {
+            "field": "data.ems.activated",
+            "newValue": "yes",
+            "baseVersion": 1
+          },
+          {
+            "field": "data.ems.called",
+            "newValue": "14:05",
+            "baseVersion": 0
+          }
+        ],
+        "reason": "\u0085Demo: EMS was called after all",
+        "requestedByPatient": false,
+        "declined": false,
+        "claimedCredential": "attending",
+        "signoffId": null
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "intake whose consent reason is two astral characters",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Ray",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "unable",
+          "method": "not_applicable",
+          "scriptVersion": "2026-10-1",
+          "language": "en",
+          "reason": "🧊🧊"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "not_offered",
+          "reason": "Asleep, ask at next visit"
+        }
+      },
+      "expect": {
+        "paths": [
+          "consent.reason"
+        ]
+      }
+    },
+    {
+      "name": "intake whose privacy notice reason is a letter and an astral character",
+      "entity": "patient",
+      "op": "create",
+      "value": {
+        "preferredName": "Ray",
+        "consent": {
+          "id": "c0c00000-0000-4000-8000-000000000001",
+          "decision": "unable",
+          "method": "not_applicable",
+          "scriptVersion": "2026-10-1",
+          "language": "en",
+          "reason": "Asleep, ask at next visit"
+        },
+        "privacyNotice": {
+          "id": "c0c00000-0000-4000-8000-000000000002",
+          "decision": "not_offered",
+          "reason": "a🧊"
+        }
+      },
+      "expect": {
+        "paths": [
+          "privacyNotice.reason"
+        ]
+      }
+    },
+    {
+      "name": "a privacy notice declined with a reason of two astral characters",
+      "entity": "patient_consent",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "kind": "privacy_notice",
+        "decision": "declined",
+        "method": "verbal",
+        "scriptVersion": "2026-10-1",
+        "language": "en",
+        "reason": "🧊🧊"
+      },
+      "expect": {
+        "paths": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "a preferred name of 81 astral characters",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a preferred name ending in a next-line character (U+0085)",
+      "entity": "patient",
+      "op": "set",
+      "field": "preferredName",
+      "value": "Del\u0085",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a flag change whose reason ends in a next-line character (U+0085)",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "Demo: missed two follow-ups\u0085"
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "a flag change whose reason is only a next-line character (U+0085)",
+      "entity": "patient_flag_change",
+      "op": "create",
+      "value": {
+        "patientId": "5eed0000-0000-4000-8000-000000000001",
+        "flagId": "f1a90000-0000-4000-8000-000000000001",
+        "action": "set",
+        "reason": "\u0085"
+      },
+      "expect": {
+        "problem": "reason_invalid"
+      }
+    },
+    {
+      "name": "an encounter summary ending in a next-line character (U+0085)",
+      "entity": "encounter",
+      "op": "set",
+      "field": "summary",
+      "value": "Demo: cough and fever\u0085",
+      "expect": {
+        "paths": [
+          ""
+        ]
+      }
+    },
+    {
+      "name": "a place typed by hand of 201 astral characters",
+      "entity": "encounter",
+      "op": "set",
+      "field": "locationText",
+      "value": "🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊🧊",
+      "expect": {
+        "paths": [
+          ""
         ]
       }
     }

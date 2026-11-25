@@ -65,14 +65,20 @@ String _at(String path, String key) => path.isEmpty ? key : '$path.$key';
 _Schema _string({int min = 0, int? max, RegExp? pattern, List<bool Function(String)> refine = const []}) =>
     (v, path, issues) {
       if (v is! String) return issues.add(path, abort: true);
-      if (v.length < min || (max != null && v.length > max)) issues.add(path);
+      // In code points, as Zod 4 counts a string's length: an astral character is one, where
+      // [String.length] counts two, so a reason of two such characters, which the server refuses as
+      // too short, would otherwise be queued and stay refused on the phone (D51; review finding MR-1).
+      final length = v.runes.length;
+      if (length < min || (max != null && length > max)) issues.add(path);
       if (pattern != null && !pattern.hasMatch(v)) issues.add(path);
       for (final ok in refine) {
         if (!ok(v)) issues.add(path);
       }
     };
 
-/// Strings are validated, never trimmed (review finding 21): an untrimmed one is refused.
+/// Strings are validated, never trimmed (review finding 21): an untrimmed one is refused. Trimmed as
+/// Dart trims, U+0085 (next line) included, which the server's check takes as whitespace too
+/// (values.ts untrimmed).
 _Schema _trimmed(int min, int max) => _string(min: min, max: max, refine: [(s) => s == s.trim()]);
 
 _Schema _oneOf(Set<Object> values) => (v, path, issues) {

@@ -113,6 +113,15 @@ export const AnswerField = z
 const EncounterKind = z.enum(['medical', 'non_medical']);
 
 /**
+ * Whether [s] has whitespace at either end as the phone trims it: JavaScript's, and U+0085 (next
+ * line), which Dart's String.trim takes and JavaScript's keeps. Every value check that refuses an
+ * untrimmed string asks this, so the phone and the server refuse the same strings (review finding
+ * MR-1): a value the phone refuses is never taken here, nor one it queues refused.
+ */
+export const untrimmed = (s: string): boolean =>
+  s !== s.trim() || s.startsWith('\u0085') || s.endsWith('\u0085');
+
+/**
  * Free text, as values.ts takes it: validated, never transformed, so the server stores the string the
  * phone hashed. The phone trims what it sends; a space at either end is refused, never trimmed here.
  * The database measures the same `length()` without trimming, so it is never the stricter of the two.
@@ -122,7 +131,7 @@ const Text = (max: number) =>
     .string()
     .min(1)
     .max(max)
-    .refine((s) => s === s.trim(), { message: 'untrimmed' });
+    .refine((s) => !untrimmed(s), { message: 'untrimmed' });
 
 /** The place typed by hand (PRD main 378); the assessment written on the summary screen (433). */
 const LocationText = Text(200);
