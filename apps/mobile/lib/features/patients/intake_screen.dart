@@ -1493,6 +1493,9 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   /// (a private box). No conditions here: the profile's flags row sets them. Where the presets aren't
   /// held, or while the clock is paused, the row says why and offers nothing, and the patient saves
   /// without one. It hears the team's services, so a pull or a cleared copy shows at once.
+  // PLAN-OPEN (BM-70): what does intake offer of flags? The risk level, optional, None by default,
+  // with a required reason, and no condition flags (PRD main 944 lists "priority flag"): intake stays
+  // short, and a condition is set from the chart once the person is registered.
   Widget _riskLevelSection(bool paused) => ListenableBuilder(
     listenable: _s,
     builder: (context, _) {
