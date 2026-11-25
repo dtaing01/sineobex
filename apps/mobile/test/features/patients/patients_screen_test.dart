@@ -423,5 +423,34 @@ void main() {
       expect(find.descendant(of: find.byType(Dialog), matching: find.text('Blue · Demo: Frost risk')), findsOneWidget);
       expect(find.textContaining('Pregnancy'), findsNothing);
     });
+
+    // Note 2 of the second part: an archived flag a patient carries says so beside its pill, as a
+    // status chip (flag_pill.dart has no archived state), on the list's row as on the profile.
+    testWidgets('an archived risk level a patient carries says so beside its pill, offline', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signIn(tester);
+      final team = h.patients.teamId;
+      final high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      final quill = h.server.seedPatient(preferredName: 'Demo Quill');
+      h.server
+        ..seed(entityFlagChange, {'patientId': quill, 'flagId': high, 'action': 'set', 'reason': 'Demo: a reason'})
+        ..archivePreset(team, high);
+      await syncAndRefresh(tester, h);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quill');
+      await tester.pump(const Duration(milliseconds: 700));
+      await settle(tester);
+      final row = rowOf('Demo Quill');
+      await reveal(tester, row);
+      for (final words in ['Red · Demo: High', 'No longer on the team’s list']) {
+        expect(find.descendant(of: find.byType(PatientRow), matching: find.text(words)), findsOneWidget);
+      }
+      expect(tester.getSemantics(row).label, contains('Red, Demo: High, no longer on the team’s list'));
+      // Never offered as a filter: the team's list no longer holds it.
+      expect(find.widgetWithText(ActionChip, 'Risk level'), findsNothing);
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
   });
 }
