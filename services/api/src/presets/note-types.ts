@@ -1,13 +1,44 @@
-import { canonicalJson, copyPart, PRESETS, type Preset, type ResolvedNoteType } from '@sineobex/forms';
+import {
+  applyNoteTypeEdits,
+  canonicalJson,
+  copyPart,
+  PRESETS,
+  sha256Hex,
+  takeRevision,
+  validate,
+  versionProblems,
+  type FileProblem,
+  type NoteTypeEdit,
+  type NoteTypeEditCode,
+  type NoteTypeEditRefusal,
+  type Preset,
+  type Rename,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
+import type { AuditEvent } from '../auth/context.ts';
 import type { Tx } from '../db/database.ts';
-import { checkedRow } from '../forms/definitions.ts';
+import { checkedRow, versionsFor } from '../forms/definitions.ts';
+import { ApiError, invalid, notFound } from '../lib/errors.ts';
+import { lockTeamWrites } from '../sync/locks.ts';
+import { PresetReason, type PresetWriteScope } from './store.ts';
 
 /**
- * A team's note types as Team setup's note type pages read and change them (phase 5 design 4.3,
- * 5.1, 5.2, 5.4, 7, 9): the heads (note_types, 0023), each with its current version's resolved
- * definition, read as definitionFor reads a version (D79), and what a platform version on offer
- * would write. The definitions are phase 4's rows (note_type_versions, 0017), which no write here
- * ever changes: a version a team makes is a new row.
+ * The one writer of a team's note types besides the installer (phase 5 design 4.3, 5.1, 5.4, 7, 9;
+ * D129): every admin act on a note type goes through here, and the installer (packages/forms
+ * install.ts) is the only other writer of a head. The definitions are phase 4's rows
+ * (note_type_versions, 0017), never changed: an edit, a copy and an update taken are each a new
+ * row, so a note is read on the version it began on (5.4 rule 4). Each write
+ *  - is made in a scope that holds team.manage_presets and a recent sign-in (presetWriteScope), as
+ *    every preset write is, and asks the sign-in again, so no caller can skip it;
+ *  - takes the team lock (lockTeamWrites) as its transaction's first statement, which the installer
+ *    takes too before it writes a key's next version, so the two never collide on 0017's key, and
+ *    reads the team's note types under it, each definition checked as definitionFor checks it;
+ *  - refuses before it writes anything, so a refusal leaves no row and takes no revision;
+ *  - names every version it stores as its own row (4.3: its key and version the row's), and checks
+ *    it with phase 4's validate and version rules, the size limit among them, before it stores it;
+ *  - then takes one revision (takeRevision), stamped on every head it writes;
+ *  - keeps its reason in team_preset_events, by the person, and audits in the same transaction,
+ *    with the version and the operations' names only: never a reason, a title or a label (9).
  */
 
 /** A note type's head with its current version's definition. */
@@ -132,4 +163,370 @@ export function noteTypeUpdateOf(held: HeldNoteType): NoteTypeUpdate | null {
     definition: { ...copyPart(preset.definition), version: held.currentVersion + 1 },
     changesFixed: changedFixed(held.definition, preset.definition),
   };
+}
+
+// ------------------------------------------------------------------------------------------------
+// The reason
+// ------------------------------------------------------------------------------------------------
+
+/** The reason as it is kept (PresetReason, as every preset write keeps it), or the request's refusal. */
+function reasonOf(raw: string): string {
+  const parsed = PresetReason.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  throw new ApiError(422, 'validation_failed', 'Some fields are missing or invalid.', {
+    fields: [{ path: 'reason', problem: parsed.error.issues[0]?.code ?? 'invalid' }],
+  });
+}
+
+// ------------------------------------------------------------------------------------------------
+// One write
+// ------------------------------------------------------------------------------------------------
+
+/** A version a write stores: the team's own (`origin = 'team'`), or a platform version taken. */
+interface NewVersion {
+  key: string;
+  definition: ResolvedNoteType;
+  origin: 'team' | 'preset';
+  /** The platform version a taken one is; null for the team's own. */
+  presetVersion: number | null;
+}
+
+/** What one write changes, worked out before anything is written; `commit` writes it all at once. */
+interface Changes {
+  /** Versions, each named as its own row already (its definition's key and version). */
+  versions: NewVersion[];
+  /** New heads: a note type added, or an update taken as a new one. */
+  made: { key: string; title: string; platformLatest: number | null; customized: boolean }[];
+  /** Heads changed; a column left out keeps its value. */
+  changed: {
+    key: string;
+    title?: string;
+    state?: 'active' | 'archived';
+    version?: number;
+    customized?: boolean;
+  }[];
+  /** One act on each note type the write changes, with the write's reason and person. */
+  events: {
+    key: string;
+    act: 'created' | 'updated' | 'archived' | 'restored' | 'update_taken';
+    version: number;
+  }[];
+  /** The audit events, given the revision the write took. */
+  audits: (revision: number) => AuditEvent[];
+}
+
+interface Write {
+  tx: Tx;
+  teamId: string;
+  userId: string;
+  team: TeamNoteTypes;
+}
+
+/**
+ * Runs one write: a recent sign-in again, so no caller can skip it; the team lock as the
+ * transaction's first statement; the team's note types read under it; then `act`, which works out
+ * the write, refusing by throwing, and answers what to write and what to answer.
+ */
+function noteTypeWrite<T>(
+  scope: PresetWriteScope,
+  reason: string,
+  act: (w: Write) => Promise<{ changes: Changes; answer: (revision: number) => T }>,
+): Promise<T> {
+  scope.requireRecentAuth();
+  const kept = reasonOf(reason);
+  const { teamId } = scope.team;
+  return scope.tx(async (tx, audit) => {
+    await lockTeamWrites(tx, teamId);
+    const w: Write = {
+      tx,
+      teamId,
+      userId: scope.principal.userId,
+      team: await loadTeamNoteTypes(tx, teamId),
+    };
+    const { changes, answer } = await act(w);
+    const revision = await commit(w, changes, kept);
+    for (const event of changes.audits(revision)) await audit(event);
+    return answer(revision);
+  });
+}
+
+/**
+ * Takes the write's one revision and writes everything it changes, each kind of row in one
+ * statement: the versions, each with the hash of its canonical definition, as definitionFor checks
+ * it; the heads changed, then the new ones, each stamped with the revision; then the events. Rows
+ * travel as one JSON text cast to jsonb, as the installer sends them.
+ */
+async function commit(w: Write, changes: Changes, reason: string): Promise<number> {
+  const { tx, teamId, userId } = w;
+  const rows = (list: readonly object[]) => JSON.stringify(list);
+  const revision = await takeRevision(tx, teamId);
+  if (changes.versions.length > 0) {
+    const versions = await Promise.all(
+      changes.versions.map(async (v) => ({
+        key: v.key,
+        version: v.definition.version,
+        definition: v.definition,
+        hash: await sha256Hex(canonicalJson(v.definition)),
+        origin: v.origin,
+        platform: v.presetVersion,
+      })),
+    );
+    await tx`
+      insert into sineobex.note_type_versions (team_id, key, version, definition, hash, origin, preset_version)
+      select ${teamId}::uuid, v.key, v.version, v.definition, v.hash, v.origin, v.platform
+      from jsonb_to_recordset(${rows(versions)}::text::jsonb)
+        as v (key text, version integer, definition jsonb, hash text, origin text, platform integer)`;
+  }
+  if (changes.changed.length > 0) {
+    const updated = await tx<{ key: string }[]>`
+      update sineobex.note_types as t
+      set title = coalesce(u.title, t.title), state = coalesce(u.state, t.state),
+          current_version = coalesce(u.version, t.current_version),
+          customized = coalesce(u.customized, t.customized),
+          revision = ${revision}::bigint, updated_by = ${userId}::uuid
+      from jsonb_to_recordset(${rows(
+        changes.changed.map((c) => ({
+          key: c.key,
+          title: c.title ?? null,
+          state: c.state ?? null,
+          version: c.version ?? null,
+          customized: c.customized ?? null,
+        })),
+      )}::text::jsonb) as u (key text, title text, state text, version integer, customized boolean)
+      where t.team_id = ${teamId}::uuid and t.key = u.key
+      returning t.key`;
+    // Read under the lock, so every head is there; one missing is a fault, never half a write.
+    if (updated.length !== changes.changed.length)
+      throw new Error('a note type write changed fewer heads than it worked out; undo the transaction');
+  }
+  if (changes.made.length > 0)
+    await tx`
+      insert into sineobex.note_types
+        (team_id, key, title, state, current_version, platform_latest, customized, revision, updated_by)
+      select ${teamId}::uuid, h.key, h.title, 'active', 1, h.platform_latest, h.customized,
+             ${revision}::bigint, ${userId}::uuid
+      from jsonb_to_recordset(${rows(
+        changes.made.map((m) => ({
+          key: m.key,
+          title: m.title,
+          platform_latest: m.platformLatest,
+          customized: m.customized,
+        })),
+      )}::text::jsonb) as h (key text, title text, platform_latest integer, customized boolean)`;
+  await tx`
+    insert into sineobex.team_preset_events (team_id, note_type_key, act, version, reason, created_by)
+    select ${teamId}::uuid, e.key, e.act, e.version, ${reason}, ${userId}::uuid
+    from jsonb_to_recordset(${rows(changes.events)}::text::jsonb) as e (key text, act text, version integer)`;
+  return revision;
+}
+
+// ------------------------------------------------------------------------------------------------
+// What each act reads, and how it is refused
+// ------------------------------------------------------------------------------------------------
+
+/** The note type an act names: one the team holds a head of; anything else is 404. */
+function noteTypeOf(team: TeamNoteTypes, key: string): HeldNoteType {
+  const held = team.get(key);
+  if (!held) throw notFound('note type');
+  return held;
+}
+
+/** Why an act on a note type is refused, as 5.1 names it for presets. */
+type NoteTypeRefusal =
+  | 'archived'
+  | 'not_archived'
+  | 'stale'
+  | 'no_change'
+  | 'fixed_field'
+  | 'name_taken'
+  | 'referenced'
+  | 'not_removable'
+  | 'no_update';
+
+const MESSAGES: Record<NoteTypeRefusal, string> = {
+  archived: 'This note type is removed. Restore it first.',
+  not_archived: 'This note type isn’t removed.',
+  stale: 'Someone else changed this while you were editing. Reload to see their version.',
+  no_change: 'Nothing was changed.',
+  fixed_field: 'This update changes something that can’t be changed here. Add it as a new note type instead.',
+  name_taken: 'Another note type already has that name.',
+  referenced: 'Field supplies use this note type. Take it out of those first.',
+  not_removable: 'This note type can’t be removed: a Medical note is never finished without it.',
+  no_update: 'No update is on offer for this note type.',
+};
+
+/**
+ * A refusal with what the person needs to fix it: the current version when stale (and, for a take,
+ * the platform version on offer now), the fields when a fixed one changed, the counts when
+ * referenced. Every one is 409 but an edit that changes nothing, which is 422, as for presets.
+ */
+function refusal(
+  code: NoteTypeRefusal,
+  context: {
+    held?: HeldNoteType;
+    fields?: string[];
+    referencedBy?: Record<string, number>;
+    platformVersion?: number | null;
+  } = {},
+): ApiError {
+  const details: Record<string, unknown> | undefined =
+    code === 'stale'
+      ? {
+          currentVersion: context.held?.currentVersion,
+          ...(context.platformVersion === undefined ? {} : { platformVersion: context.platformVersion }),
+        }
+      : code === 'fixed_field'
+        ? { fields: context.fields ?? [] }
+        : code === 'referenced'
+          ? { referencedBy: context.referencedBy ?? {} }
+          : undefined;
+  return new ApiError(code === 'no_change' ? 422 : 409, code, MESSAGES[code], details);
+}
+
+const EDIT_MESSAGES: Record<NoteTypeEditCode, string> = {
+  protected: 'This part can’t be changed.',
+  in_use: 'Something else uses this part, here or in another note type. Change that first.',
+  not_found: 'This names a part the note type doesn’t have. Reload it and try again.',
+  title_invalid: 'A note type’s name is 1 to 80 characters.',
+  label_invalid: 'A label needs words: it can’t be empty or only spaces.',
+  last_option: 'A choice keeps one option at least.',
+  last_field: 'A section or a group keeps one field at least.',
+  last_section: 'A note type keeps one section at least.',
+  too_many_fields: 'This note type has as many fields of the team’s own as it can hold.',
+  too_many_sections: 'This note type has as many sections of the team’s own as it can hold.',
+  not_copyable:
+    'This section comes from a note type for other visits or other readers, so it can’t be copied here.',
+  id_taken: 'This note type has used a part of that section before, so it can’t be copied here.',
+  invalid: 'Some fields are missing or invalid.',
+};
+
+/**
+ * An operation's refusal (5.4), answered with its index among the operations sent, the note type
+ * whose field refused it when that is another one (rule 5), and what the validator found for a copy.
+ */
+function editRefusal(opIndex: number, refusal: NoteTypeEditRefusal): ApiError {
+  return invalid(refusal.code, EDIT_MESSAGES[refusal.code], {
+    opIndex,
+    ...(refusal.noteTypeKey === undefined ? {} : { noteTypeKey: refusal.noteTypeKey }),
+    ...(refusal.problems === undefined ? {} : { problems: refusal.problems }),
+  });
+}
+
+/** What phase 4's validator and version rules found in the versions a write would store. */
+const refusedVersions = (problems: readonly FileProblem[]) =>
+  invalid('invalid', 'Some fields are missing or invalid.', { problems });
+
+/**
+ * Whether another active note type of the team holds the title, as lower() folds it in the
+ * database, which JavaScript cannot repeat for every script. `except` are the note types the act
+ * gives the title to or removes.
+ */
+async function titleHeld(w: Write, title: string, except: readonly string[]): Promise<boolean> {
+  const [row] = await w.tx<{ taken: boolean }[]>`
+    select exists (
+      select 1 from sineobex.note_types
+      where team_id = ${w.teamId}::uuid and state = 'active' and lower(title) = lower(${title})
+        and key <> all(${except as string[]}::text[])) as taken`;
+  return row!.taken;
+}
+
+/** The platform's note types, each at its newest released version, by key: what a copy reads. */
+function platformNewest(): Record<string, ResolvedNoteType> {
+  const newest = new Map<string, Preset>();
+  for (const preset of PRESETS)
+    if ((newest.get(preset.key)?.version ?? 0) < preset.version) newest.set(preset.key, preset);
+  return Object.fromEntries([...newest].map(([key, p]) => [key, p.definition]));
+}
+
+/**
+ * Every version of the note type, oldest first, each read as definitionFor reads it: the newest is
+ * the head's current one, since every writer moves the head with the version it writes.
+ */
+async function versionsOf(w: Write, held: HeldNoteType): Promise<ResolvedNoteType[]> {
+  const versions = ((await versionsFor(w.tx, w.teamId, [held.key])).get(held.key) ?? []).map(
+    (v) => v.definition,
+  );
+  if (versions.at(-1)?.version !== held.currentVersion)
+    throw new Error('a note type’s head is not at its newest version');
+  return versions;
+}
+
+/**
+ * What phase 4 checks in a version before it is stored (5.4): its validator, another note type
+ * looked up at the version this write gives it, else at the team's current one, removed ones
+ * included, since a removed note type's versions still read; the version rules against every
+ * earlier version, with the renames the operations declared, which are never stored (forms 2.6);
+ * and the size limit, which the validator measures as the hash is taken (MAX_DEFINITION_BYTES).
+ */
+function problemsOf(
+  team: TeamNoteTypes,
+  stored: ReadonlyMap<string, ResolvedNoteType>,
+  next: ResolvedNoteType,
+  earlier: readonly ResolvedNoteType[],
+  renames: readonly Rename[],
+): FileProblem[] {
+  const lookup = (key: string) => stored.get(key) ?? team.get(key)?.definition;
+  return [...validate(next, { noteType: lookup }), ...versionProblems(earlier, next, { renames })];
+}
+
+/** The audit event of a note type act: the version it made or stood on, never a title or a reason. */
+const noteTypeAudit = (action: string, key: string, details: Record<string, unknown>): AuditEvent => ({
+  action,
+  entity: 'note_type',
+  entityId: key,
+  details,
+});
+
+/** The distinct names of the operations applied, in the order first sent, and how many there were. */
+function operationsOf(ops: readonly NoteTypeEdit[]): { operations: string[]; count: number } {
+  return { operations: [...new Set(ops.map((o) => o.op))], count: ops.length };
+}
+
+// ------------------------------------------------------------------------------------------------
+// The acts (design 5.1, 5.4)
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * Publishes a team's edit of one of its note types (5.4): the operations applied in order to its
+ * newest version, by packages/forms' applyNoteTypeEdits, which refuses an operation with its code;
+ * the result named as the next version (4.3) and checked with phase 4's validate, version rules and
+ * size limit; then stored as the team's own (`origin = 'team'`, `customized`). An edit from a
+ * version that is not the current one is stale, and a removed note type is refused.
+ */
+export function publishNoteType(
+  scope: PresetWriteScope,
+  input: { key: string; baseVersion: number; ops: readonly NoteTypeEdit[]; reason: string },
+): Promise<{ version: number; alsoPublished: string[] }> {
+  return noteTypeWrite(scope, input.reason, async (w) => {
+    const held = noteTypeOf(w.team, input.key);
+    if (held.state === 'archived') throw refusal('archived');
+    if (input.baseVersion !== held.currentVersion) throw refusal('stale', { held });
+    const versions = await versionsOf(w, held);
+    const others = Object.fromEntries(
+      w.team.all.filter((n) => n.state === 'active' && n.key !== held.key).map((n) => [n.key, n.definition]),
+    );
+    const outcome = applyNoteTypeEdits(input.ops, { versions, team: others, platform: platformNewest() });
+    if (!outcome.ok) throw editRefusal(outcome.opIndex, outcome.refusal);
+    const next = outcome.definition;
+    // A version that only renumbers the current one would send every phone a new one for nothing.
+    if (canonicalJson({ ...next, version: held.currentVersion }) === canonicalJson(held.definition))
+      throw refusal('no_change');
+    const problems = problemsOf(w.team, new Map([[next.key, next]]), next, versions, outcome.renames);
+    if (problems.length > 0) throw refusedVersions(problems);
+    if (next.title !== held.title && (await titleHeld(w, next.title, [held.key])))
+      throw refusal('name_taken');
+    const { version } = next;
+    return {
+      changes: {
+        versions: [{ key: held.key, definition: next, origin: 'team', presetVersion: null }],
+        made: [],
+        changed: [{ key: held.key, title: next.title, version, customized: true }],
+        events: [{ key: held.key, act: 'updated', version }],
+        audits: () => [
+          noteTypeAudit('note_type.published', held.key, { version, ...operationsOf(input.ops) }),
+        ],
+      },
+      answer: () => ({ version, alsoPublished: [] }),
+    };
+  });
 }

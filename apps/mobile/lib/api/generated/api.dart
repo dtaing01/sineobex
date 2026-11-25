@@ -784,6 +784,22 @@ enum MyTeamTeamStatus {
   String toJson() => wire;
 }
 
+enum NewTextFieldLines {
+  one('one'),
+  many('many'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NewTextFieldLines(this.wire);
+  final String wire;
+
+  static NewTextFieldLines fromJson(String value) =>
+      NewTextFieldLines.values.firstWhere((e) => e.wire == value, orElse: () => NewTextFieldLines.unknown);
+
+  String toJson() => wire;
+}
+
 enum NoteAttestation {
   notNeeded('not_needed'),
   waiting('waiting'),
@@ -4149,6 +4165,104 @@ class MyTeam {
       };
 }
 
+class NewChoiceField {
+  const NewChoiceField({
+    required this.kind,
+    required this.label,
+    required this.many,
+    required this.options,
+  });
+
+  final String kind;
+  /// Words: not empty, not only spaces
+  final String label;
+  /// Choose any number, else one
+  final bool many;
+  /// The options’ labels, one at least; their codes are made by the server
+  final List<String> options;
+
+  factory NewChoiceField.fromJson(Map<String, dynamic> json) => NewChoiceField(
+        kind: json['kind'] as String,
+        label: json['label'] as String,
+        many: json['many'] as bool,
+        options: (json['options'] as List<dynamic>).map((e) => e as String).toList(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'kind': kind,
+        'label': label,
+        'many': many,
+        'options': options.map((e) => e).toList(),
+      };
+}
+
+class NewNumberField {
+  const NewNumberField({
+    required this.decimals,
+    required this.kind,
+    required this.label,
+    required this.max,
+    required this.min,
+    this.unit,
+  });
+
+  final Object? decimals;
+  final String kind;
+  /// Words: not empty, not only spaces
+  final String label;
+  final double max;
+  final double min;
+  final String? unit;
+
+  factory NewNumberField.fromJson(Map<String, dynamic> json) => NewNumberField(
+        decimals: json['decimals'],
+        kind: json['kind'] as String,
+        label: json['label'] as String,
+        max: (json['max'] as num).toDouble(),
+        min: (json['min'] as num).toDouble(),
+        unit: json['unit'] == null ? null : json['unit'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'decimals': decimals,
+        'kind': kind,
+        'label': label,
+        'max': max,
+        'min': min,
+        if (unit != null) 'unit': unit!,
+      };
+}
+
+class NewTextField {
+  const NewTextField({
+    required this.kind,
+    required this.label,
+    required this.lines,
+    required this.maxLength,
+  });
+
+  final String kind;
+  /// Words: not empty, not only spaces
+  final String label;
+  final NewTextFieldLines lines;
+  /// 1 to 4000 characters
+  final double maxLength;
+
+  factory NewTextField.fromJson(Map<String, dynamic> json) => NewTextField(
+        kind: json['kind'] as String,
+        label: json['label'] as String,
+        lines: NewTextFieldLines.fromJson(json['lines'] as String),
+        maxLength: (json['maxLength'] as num).toDouble(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'kind': kind,
+        'label': label,
+        'lines': lines.toJson(),
+        'maxLength': maxLength,
+      };
+}
+
 /// Every note of the visit that waits for this act and that the caller may act on, each with the hash of what they read
 class NoteActInput {
   const NoteActInput({
@@ -5523,6 +5637,54 @@ class ProblemViewEnteredInError {
         'at': at.toUtc().toIso8601String(),
         'by': by.toJson(),
         'reason': reason,
+      };
+}
+
+class PublishNoteType {
+  const PublishNoteType({
+    required this.baseVersion,
+    required this.ops,
+    required this.reason,
+  });
+
+  /// The version you opened: any other is refused as stale, with the current one
+  final int baseVersion;
+  final List<Object?> ops;
+  /// Why, in a few words: 3 to 300 characters. Kept in the history, never in the audit log.
+  final String reason;
+
+  factory PublishNoteType.fromJson(Map<String, dynamic> json) => PublishNoteType(
+        baseVersion: (json['baseVersion'] as num).toInt(),
+        ops: (json['ops'] as List<dynamic>).map((e) => e).toList(),
+        reason: json['reason'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'baseVersion': baseVersion,
+        'ops': ops.map((e) => e).toList(),
+        'reason': reason,
+      };
+}
+
+class PublishNoteTypeResult {
+  const PublishNoteTypeResult({
+    required this.alsoPublished,
+    required this.version,
+  });
+
+  /// The other note types the publish gave their next version, by key: an option change carried along mapsTo
+  final List<String> alsoPublished;
+  /// The version now live
+  final int version;
+
+  factory PublishNoteTypeResult.fromJson(Map<String, dynamic> json) => PublishNoteTypeResult(
+        alsoPublished: (json['alsoPublished'] as List<dynamic>).map((e) => e as String).toList(),
+        version: (json['version'] as num).toInt(),
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'alsoPublished': alsoPublished.map((e) => e).toList(),
+        'version': version,
       };
 }
 
@@ -8035,6 +8197,12 @@ class SineobexApi {
   Future<OwnerTeam> ownerSetTeamStatus({required String teamId, required TeamStatusChange body}) async {
     final json = await _transport.send('POST', '/v1/owner/teams/${Uri.encodeComponent(teamId)}/status', body: body.toJson());
     return OwnerTeam.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Publish an edit of a note type as its next version, through fixed operations, with a reason (recent sign-in)
+  Future<PublishNoteTypeResult> publishNoteType({required String key, required PublishNoteType body}) async {
+    final json = await _transport.send('PUT', '/v1/admin/note-types/${Uri.encodeComponent(key)}', body: body.toJson());
+    return PublishNoteTypeResult.fromJson(json as Map<String, dynamic>);
   }
 
   /// The team’s presets changed since a revision, for the phone’s copy (any member)

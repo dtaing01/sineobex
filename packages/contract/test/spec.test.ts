@@ -98,6 +98,12 @@ describe('openapi.json, patient data in requests and refusals', () => {
     PRESET_KIND_PATHS.includes(path) &&
     Array.isArray(s.enum) &&
     JSON.stringify([...s.enum].sort()) === JSON.stringify(PRESET_KINDS);
+  // A note type's key names a form, never a patient (phase 5 design 7). On the admin note type paths
+  // it is let through with exactly 0017's pattern, which a team's own key (`t_` and 12 hex
+  // characters) fits, and on no other path.
+  const NOTE_TYPE_KEY_PATHS = ['/v1/admin/note-types/{key}'];
+  const isNoteTypeKey = (path: string, name: string, s: Schema) =>
+    name === 'key' && NOTE_TYPE_KEY_PATHS.includes(path) && s.pattern === '^[a-z][a-z0-9_]{1,60}$';
   // The reader's time zone names a place, never a patient: the handoff prints its times in it
   // (lifecycle 5.7). Only on that route's query, and only with exactly the API's pattern.
   const QUERY_PATTERNS: Record<string, Record<string, string>> = {
@@ -121,7 +127,9 @@ describe('openapi.json, patient data in requests and refusals', () => {
             (s.pattern !== undefined && QUERY_PATTERNS[path]?.[p.name] === s.pattern);
           const formPart = s.pattern !== undefined && FORM_PATH_PATTERNS[path]?.[p.name] === s.pattern;
           const ok =
-            p.in === 'path' ? uuid || formPart || isPresetKind(path, p.name, s) : p.in === 'query' && query;
+            p.in === 'path'
+              ? uuid || formPart || isPresetKind(path, p.name, s) || isNoteTypeKey(path, p.name, s)
+              : p.in === 'query' && query;
           if (!ok) bad.push(`${method.toUpperCase()} ${path} ${p.in} ${p.name}`);
         }
       }
@@ -138,6 +146,16 @@ describe('openapi.json, patient data in requests and refusals', () => {
         for (const p of op.parameters ?? [])
           if (p.in === 'path' && isPresetKind(path, p.name, p.schema ?? {})) taken.add(path);
     expect([...taken].sort()).toEqual([...PRESET_KIND_PATHS].sort());
+  });
+
+  it('takes a note type’s key on exactly the admin note type paths, with 0017’s pattern', async () => {
+    const spec = await loadSpec();
+    const taken = new Set<string>();
+    for (const [path, item] of Object.entries(spec.paths))
+      for (const op of Object.values(item))
+        for (const p of op.parameters ?? [])
+          if (p.in === 'path' && isNoteTypeKey(path, p.name, p.schema ?? {})) taken.add(path);
+    expect([...taken].sort()).toEqual([...NOTE_TYPE_KEY_PATHS].sort());
   });
 
   it('never carries a chart value, a summary or a token in a 409', async () => {
