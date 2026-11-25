@@ -225,9 +225,9 @@ const markFlagChangeRoute = createRoute({
   tags: ['patients'],
   summary: 'Mark a flag change of the chart entered in error, once, with a reason',
   description:
-    'Needs patients.edit, and the change’s author or a Program Admin (team.manage_users), else 403, logged, as a ' +
-    'change of a flag the role may not see is; 404 for a change the patient’s chart does not hold; 409 ' +
-    'already_marked.',
+    'Needs patients.edit, and the change’s author or a Program Admin (team.manage_users), else 403, logged; 404 ' +
+    'for a change the patient’s chart does not hold, and for a change of a flag the role may not see, which is ' +
+    'logged, so the answer tells nothing of the flag; 409 already_marked.',
   security: [{ bearer: [] }],
   request: { params: FlagChangeParam, body: { required: true, ...json(MarkFlagChange) } },
   responses: {

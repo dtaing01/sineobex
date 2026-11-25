@@ -128,9 +128,10 @@ const idTaken = () =>
  * POST /v1/patients/{patientId}/flag-changes/{changeId}/entered-in-error: marks a change of the
  * patient's chart entered in error, once, with a reason, as a phone's mark does (the entity's
  * write, its history row and its event). 404 for a patient the team does not hold or a change their
- * merged group does not; 403, logged, for a flag hidden from the caller (D136), and for anyone but
- * the change's author or a Program Admin; 409 `already_marked`. A refusal about the caller comes
- * before the state, so it is logged whatever the change holds.
+ * merged group does not, and for a change of a flag hidden from the caller (D136), which is logged
+ * as a refusal about the caller (D98 as amended); 403, logged, for anyone but the change's author or
+ * a Program Admin; 409 `already_marked`. A refusal about the caller comes before the state, so it is
+ * logged whatever the change holds.
  */
 export async function markFlagChangeInError(
   scope: TeamScope,
@@ -157,7 +158,9 @@ export async function markFlagChangeInError(
         patientId: rec.patientId,
         details: { permission: 'patients.view_sensitive', route },
       });
-      return { refused: hiddenFlag() };
+      // Answered as a change the chart does not hold, so it tells nothing (D98 as amended): a 403
+      // would tell a reader the flag is hidden from which patient carries a change of it.
+      return { refused: notFound('flag change') };
     }
     // PLAN-OPEN (PL-19): who counts as a Program Admin, to mark someone else's flag change entered
     // in error, with no new keys? A holder of team.manage_users, as a phone's mark is checked
