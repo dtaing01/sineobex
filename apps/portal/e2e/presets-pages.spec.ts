@@ -63,6 +63,13 @@ const AREAS = [
     kinds: ['bag', 'settings'],
     noun: ['bag', 'bags'],
   },
+  // The team's note types (unit P4), read from their own list (GET /v1/admin/note-types).
+  {
+    title: 'Note types',
+    href: '/team/presets/note-types',
+    kinds: ['note_type'],
+    noun: ['note type', 'note types'],
+  },
 ] as const;
 
 /** The access.denied events the audit log holds for a seeded staff member, newest first. */
@@ -90,8 +97,12 @@ type Listed = { state: 'active' | 'archived'; updateOnOffer: boolean };
 async function expectedCards() {
   const token = await staffToken('admin@example.com');
   const lists = new Map<string, Listed[]>();
-  for (const kind of new Set(AREAS.flatMap((a) => a.kinds))) {
-    const res = await apiCall(token, 'GET', `/v1/admin/presets/${kind}`);
+  for (const kind of new Set<string>(AREAS.flatMap((a) => a.kinds))) {
+    const res = await apiCall(
+      token,
+      'GET',
+      kind === 'note_type' ? '/v1/admin/note-types' : `/v1/admin/presets/${kind}`,
+    );
     expect(res.status, kind).toBe(200);
     lists.set(kind, (await res.json()) as Listed[]);
   }

@@ -3,7 +3,7 @@ import {
   removeNoteTypeAction,
   restoreNoteTypeAction,
 } from '@/app/actions/presets-note-types';
-import { ActionForm, SelectField, SubmitButton } from '@/components/ActionForm';
+import { ActionForm, SubmitButton } from '@/components/ActionForm';
 import { BaseVersion } from '@/components/presets/BaseVersion';
 import { ChoiceGroup } from '@/components/presets/ChoiceGroup';
 import { Disclosure } from '@/components/presets/Disclosure';
@@ -11,7 +11,7 @@ import { FreeText } from '@/components/presets/FreeText';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import type { NoteTypeGroup, NoteTypeRow } from '@/lib/presets';
 import { NOTE_TYPE_SENTENCES } from '@/lib/refusals';
-import { KindsField } from './KindsField';
+import { CopyOfField, KindsField } from './KindsField';
 import { GROUPS } from './words';
 
 type Named = Pick<NoteTypeRow, 'key' | 'title' | 'version'>;
@@ -89,9 +89,7 @@ export function AddNoteType({ rows }: { rows: readonly Pick<NoteTypeRow, 'key' |
           label="Title"
           hint="What staff choose when they add a note, such as Night outreach."
         />
-        <SelectField
-          name="copyOf"
-          label="Copy of"
+        <CopyOfField
           hint="A copy starts with its sections, and is for the same visits and readers. A blank one starts with one section, Notes."
           options={copies}
         />

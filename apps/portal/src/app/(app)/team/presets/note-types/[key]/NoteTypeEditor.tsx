@@ -72,7 +72,7 @@ function RenameForm({
     onKeep(input.current?.value ?? '');
   };
   return (
-    <form className={editor.inline} onSubmit={keep} aria-label={label}>
+    <form className={editor.inline} onSubmit={keep}>
       <div className="px-field">
         <label htmlFor={id}>{label}</label>
         <div className="sx-input">
@@ -564,7 +564,7 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
 
   return (
     <div className={editor.editor}>
-      <p role="status" className="sr-only">
+      <p id="editor-said" role="status" className="sr-only">
         {said}
       </p>
       {changed && (
