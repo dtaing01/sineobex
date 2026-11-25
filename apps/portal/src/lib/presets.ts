@@ -285,8 +285,8 @@ export interface PresetArea {
   noun: readonly [one: string, many: string];
 }
 
-// The note types and field supplies cards are unit P4's (phase 5 design 13.4): each joins this
-// list with its page.
+// The field supplies card is unit P4's (phase 5 design 13.4, card P4-field-supplies): it joins this
+// list with its page, after Flags, in 8.1's order.
 export const PRESET_AREAS: readonly PresetArea[] = [
   {
     key: 'categories',
@@ -335,6 +335,14 @@ export const PRESET_AREAS: readonly PresetArea[] = [
     counted: 'bag',
     kinds: ['bag', 'settings'],
     noun: ['bag', 'bags'],
+  },
+  {
+    key: 'note-types',
+    title: 'Note types',
+    href: '/team/presets/note-types',
+    counted: 'note_type',
+    kinds: ['note_type'],
+    noun: ['note type', 'note types'],
   },
 ];
 
@@ -552,9 +560,11 @@ export async function presetFailure(
 }
 
 // ------------------------------------------------------------------------------------------------
-// Note types (phase 5 design 5.4, 7, 8.1): unit P4's pages read and change them here. Written ahead
-// of their code (card P4-tests): each call throws until card P4-list-page (and, for Publish,
-// P4-editor) builds it on the generated contract, as the actions' and the pages' tests hold.
+// Note types (phase 5 design 5.4, 7, 8.1): the note type pages read and change them here. A team
+// changes a note type through fixed operations (5.4), never by writing a definition; what each does,
+// what is protected and every refusal are the API's (packages/forms through the admin routes), so
+// nothing here repeats a rule (D114). A page reads a definition in the format of @sineobex/forms,
+// which the API holds every stored version to.
 // ------------------------------------------------------------------------------------------------
 
 /** Which encounters offer a note type: Medical only, Non-Medical only, or both (D56). */
@@ -627,17 +637,26 @@ export interface NoteTypeRow {
 /** One operation of a publish (design 5.4), as packages/forms writes it. */
 export type NoteTypeEdit = { op: string } & Record<string, unknown>;
 
+/** One act in a note type's history, as the history route answers it: who, when, whose version, why. */
+export type NoteTypeEvent = Schemas['NoteTypeEvent'];
+
 /** Every note type of the team, removed ones included, by title; reading them is not audited (PL-13). */
 export async function listNoteTypes(): Promise<NoteTypeRow[]> {
-  throw new Error('P4-list-page');
+  const rows = await unwrap((await api()).GET('/v1/admin/note-types'));
+  return rows as unknown as NoteTypeRow[];
+}
+
+/** Every act on one note type, oldest first, with who, when, whose version and why. */
+export async function noteTypeHistory(key: string): Promise<NoteTypeEvent[]> {
+  return unwrap((await api()).GET('/v1/admin/note-types/{key}/history', { params: { path: { key } } }));
 }
 
 /** Adds a note type: blank, with its kinds and timeline group, or a copy of one the team has. */
 export async function createNoteType(
   body: { title: string; reason: string } & ({ copyOf: string } | { kinds: NoteTypeKind[]; group: string }),
 ): Promise<{ key: string; version: 1 }> {
-  void body;
-  throw new Error('P4-list-page');
+  // A group the form sent as typed: the API answers one that is none of the six at its path.
+  return unwrap((await api()).POST('/v1/admin/note-types', { body: body as Schemas['CreateNoteType'] }));
 }
 
 /** Removes a note type (it is archived, never deleted), at the version the person was shown. */
@@ -646,26 +665,32 @@ export async function archiveNoteType(
   baseVersion: number,
   reason: string,
 ): Promise<{ revision: number }> {
-  void key;
-  void baseVersion;
-  void reason;
-  throw new Error('P4-list-page');
+  return unwrap(
+    (await api()).POST('/v1/admin/note-types/{key}/archive', {
+      params: { path: { key } },
+      body: { baseVersion, reason },
+    }),
+  );
 }
 
 export async function restoreNoteType(key: string, reason: string): Promise<{ revision: number }> {
-  void key;
-  void reason;
-  throw new Error('P4-list-page');
+  return unwrap(
+    (await api()).POST('/v1/admin/note-types/{key}/restore', { params: { path: { key } }, body: { reason } }),
+  );
 }
 
-/** Takes the platform update on offer, in place or as a new note type; as for presets (5.1). */
+/**
+ * Takes the platform update on offer, in place or as a new note type, as a preset's is taken (5.1):
+ * `platformVersion` is the list row's `update.platformVersion` and `baseVersion` the version shown
+ * beside it, so only what the person reviewed is taken.
+ */
 export async function takeNoteTypeUpdate(
   key: string,
   take: { baseVersion: number; platformVersion: number; asNew: boolean; reason: string },
 ): Promise<{ key: string; version: number; revision: number }> {
-  void key;
-  void take;
-  throw new Error('P4-list-page');
+  return unwrap(
+    (await api()).POST('/v1/admin/note-types/{key}/take-update', { params: { path: { key } }, body: take }),
+  );
 }
 
 /** Publishes the operations the editor held, as the note type's next version (design 5.4). */

@@ -1,0 +1,116 @@
+'use client';
+
+import { useState, type ReactNode } from 'react';
+import { takeNoteTypeUpdateAction } from '@/app/actions/presets-note-types';
+import { ActionForm, SubmitButton, useFormState } from '@/components/ActionForm';
+import { REMOVED_OFFER } from '@/components/presets/OfferForm';
+import { ReasonBox } from '@/components/presets/ReasonBox';
+import styles from '@/components/presets/presets.module.css';
+import type { ActionState } from '@/lib/forms';
+import { PRESET_SENTENCES } from '@/lib/refusals';
+
+/** The update on offer, as the list row gave it: the version to send back, and how it is taken. */
+export interface NoteTypeOfferProps {
+  noteType: { key: string; title: string; version: number; customized: boolean; removed: boolean };
+  offer: { platformVersion: number; changesFixed: boolean } | null;
+  /** The note type now beside Sineobex's new version (ReviewTable). */
+  review: ReactNode;
+}
+
+/**
+ * Review: the update's definition beside the note type's. A take refused stale reads the list again,
+ * and the review opens on what is on offer now, so the person sees it before they take it (8.1), as
+ * a preset's offer does (components/presets/OfferForm.tsx).
+ */
+function Review({ title, children }: { title: string; children: ReactNode }) {
+  const state = useFormState();
+  const [toggled, setToggled] = useState<{ open: boolean; at: ActionState } | null>(null);
+  const open =
+    toggled && toggled.at === state ? toggled.open : state.error !== undefined || (toggled?.open ?? false);
+  return (
+    <details
+      className={styles.reviewDetails}
+      open={open}
+      onToggle={(e) => setToggled({ open: e.currentTarget.open, at: state })}
+    >
+      <summary>
+        Review<span className="sr-only"> Sineobex’s update to {title}</span>
+      </summary>
+      {children}
+    </details>
+  );
+}
+
+/** A version the take sends back: the one a refused take sent, else the list's (OfferForm's reason). */
+function SentVersion({ name, version }: { name: 'baseVersion' | 'platformVersion'; version: number }) {
+  const sent = useFormState().values?.[name];
+  return <input type="hidden" name={name} value={sent ?? String(version)} />;
+}
+
+/**
+ * The update offer of 8.1 for one note type, a removed one's too: "Sineobex updated this preset.
+ * Your edited copy hasn’t changed." (the second sentence only of a note type the team edited), with
+ * Review and Replace with the new version; or, for an update that changes what is fixed at creation
+ * (kinds, group, sensitivity, quick or auto), Add as new with its sentence. A removed note type is
+ * offered its update as a new one only, as a removed preset is. A take sends back the version shown
+ * and the platform version reviewed, so only what was reviewed is taken (5.1).
+ *
+ * Placed for every note type the page shows: it draws nothing while nothing is on offer, and a take
+ * refused stays to say why, though the offer has gone by the time the list is read again.
+ */
+export function NoteTypeOffer({ noteType, offer, review }: NoteTypeOfferProps) {
+  const [refused, setRefused] = useState(false);
+  if (!offer && !refused) return null;
+  const { key, title } = noteType;
+  const asNew = noteType.removed || (offer?.changesFixed ?? false);
+  const take = async (state: ActionState, form: FormData) => {
+    const next = await takeNoteTypeUpdateAction(state, form);
+    setRefused(next.error !== undefined);
+    return next;
+  };
+  return (
+    <section aria-labelledby={`offer-${key}`} className={styles.flat}>
+      <h3 id={`offer-${key}`} className="px-h3">
+        {offer ? 'Update available' : 'Sineobex’s update'}
+        <span className="sr-only"> for {title}</span>
+      </h3>
+      <ActionForm id={`take-${key}`} action={take} label={`Take Sineobex’s update to ${title}`}>
+        {offer ? (
+          <>
+            <p>
+              {noteType.customized && !noteType.removed
+                ? 'Sineobex updated this preset. Your edited copy hasn’t changed.'
+                : 'Sineobex updated this preset.'}
+            </p>
+            {noteType.removed ? (
+              <p>{REMOVED_OFFER}</p>
+            ) : (
+              asNew && <p>{PRESET_SENTENCES.updateChangesFixed}</p>
+            )}
+            <Review title={title}>{review}</Review>
+            <input type="hidden" name="key" value={key} />
+            <SentVersion name="baseVersion" version={noteType.version} />
+            <SentVersion name="platformVersion" version={offer.platformVersion} />
+            <input type="hidden" name="asNew" value={asNew ? 'true' : 'false'} />
+            <ReasonBox />
+            <div className="px-actions">
+              <SubmitButton>
+                {asNew ? (
+                  <>
+                    Add as new<span className="sr-only"> from Sineobex’s update to {title}</span>
+                  </>
+                ) : (
+                  <>
+                    Replace with the new version<span className="sr-only"> of {title}</span>
+                  </>
+                )}
+              </SubmitButton>
+            </div>
+          </>
+        ) : (
+          <p>Nothing is on offer for this now.</p>
+        )}
+      </ActionForm>
+    </section>
+  );
+}

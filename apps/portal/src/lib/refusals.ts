@@ -397,3 +397,208 @@ export function presetRefusalState(
       return state(refusal.message || 'Something went wrong. Try again.');
   }
 }
+
+// ------------------------------------------------------------------------------------------------
+// The note type pages' refusals (phase 5 design 5.4, 7, 8.1)
+// ------------------------------------------------------------------------------------------------
+
+/** 8.1's sentences of the note type pages, word for word. */
+export const NOTE_TYPE_SENTENCES = {
+  protectedPart: 'This part can’t be changed.',
+  kindsFixed: 'A note type can’t change between Medical and Non-Medical: Add a new note type instead.',
+  notCopyable:
+    'This section comes from a note type for other visits or other readers, so it can’t be copied here.',
+} as const;
+
+/** What the editor says once a publish is live (8.1), with the version the API made. */
+export function publishedSentence(version: number): string {
+  return `Version ${version} is live. Notes already started stay on the version they began on.`;
+}
+
+/** What a note type page asked of the API, as the sentences below tell its acts apart. */
+export type NoteTypeAct = 'add' | 'remove' | 'restore' | 'take';
+
+/** The add form's words for its fields, for the error summary and beside each field. */
+const NOTE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  title: 'Title',
+  copyOf: 'Copy of',
+  kinds: 'Which visits',
+  group: 'Timeline group',
+  reason: 'Reason',
+};
+
+/**
+ * What a field of the add form says when the request's own check refused it (validation_failed):
+ * each asks one thing, whatever the check's code. The form sends each as chosen or typed (D114).
+ */
+const NOTE_TYPE_FIELD_PROBLEMS: Readonly<Record<string, string>> = {
+  title: 'Enter a title of 1 to 80 characters.',
+  copyOf: 'Choose a note type to copy, or start a blank one.',
+  kinds: 'Choose Medical, Non-Medical or both.',
+  group: 'Choose where the timeline files its notes.',
+  reason: REASON_PROBLEM,
+};
+
+/**
+ * What a note type form shows when the API refused it (phase 5 design 5.1, 7, 8.1): the sentence
+ * for its refusal and, where it is one field's to fix, that field's beside it, keyed by the name the
+ * form gives it. The form keeps what was sent. A take refused stale says which changed, as a
+ * preset's does. A refusal another admin's Remove or Restore caused meanwhile never reaches here:
+ * the action sends the browser back to the page, which says so.
+ */
+export function noteTypeRefusalState(
+  refusal: { code: string; message: string; details?: Record<string, unknown> },
+  values: Record<string, string>,
+  act: NoteTypeAct,
+): ActionState {
+  const { code, details } = refusal;
+  const state = (error: string, fieldErrors: Record<string, string> = {}): ActionState => ({
+    error,
+    ...(Object.keys(fieldErrors).length > 0 ? { fieldErrors } : {}),
+    values,
+  });
+  const field = (path: string, said: string) => `${NOTE_TYPE_LABELS[path] ?? path}: ${said}`;
+
+  switch (code) {
+    case 'stale':
+      return state(act === 'take' ? takeStale(details, values) : PRESET_SENTENCES.stale);
+    case 'referenced':
+      return state(referencedSentence(details?.referencedBy));
+    case 'not_removable':
+      return state(
+        act === 'take'
+          ? 'The Red flags note can’t be removed, so its update can’t be added as a new one.'
+          : 'The Red flags note can’t be removed: a Medical note can’t be finished without it.',
+      );
+    case 'not_copyable':
+      return state(FIELDS_TITLE, {
+        copyOf: field(
+          'copyOf',
+          'The quick encounter and the Red flags note can’t be copied. Choose another, or start a blank one.',
+        ),
+      });
+    case 'name_taken':
+      if (act === 'add')
+        return state(FIELDS_TITLE, { title: field('title', 'Another note type already has this name.') });
+      return state(
+        act === 'take'
+          ? 'Another note type has the name this update gives it. Rename that one first.'
+          : 'Another note type has this name now. Rename that one first.',
+      );
+    case 'fixed_field':
+      return state(PRESET_SENTENCES.updateChangesFixed);
+    case 'archived':
+      return state(act === 'remove' ? 'This was removed already.' : 'This was removed. Restore it first.');
+    case 'not_archived':
+      return state('This is on the list already.');
+    case 'no_update':
+      return state('There’s no update to take now.');
+    case 'not_found':
+      return state('This isn’t on your team’s list. Reload the page to see the list as it is now.');
+    case 'invalid':
+      return state(
+        act === 'take'
+          ? 'This update doesn’t fit your team’s other note types, so it can’t be taken as it is.'
+          : 'This note type doesn’t pass Sineobex’s checks, so it can’t be added as it is. Copy another, or start a blank one.',
+      );
+    case 'validation_failed': {
+      const fields = Array.isArray(details?.fields) ? (details.fields as { path?: unknown }[]) : [];
+      const fieldErrors: Record<string, string> = {};
+      for (const f of fields) {
+        const path = typeof f?.path === 'string' ? f.path.split('.')[0]! : '';
+        const said = NOTE_TYPE_FIELD_PROBLEMS[path];
+        if (said && !fieldErrors[path] && (act === 'add' || path === 'reason'))
+          fieldErrors[path] = field(path, said);
+      }
+      return Object.keys(fieldErrors).length > 0
+        ? state(FIELDS_TITLE, fieldErrors)
+        : state('Something in this form isn’t right. Reload the page and try again.');
+    }
+    default:
+      return state(refusal.message || 'Something went wrong. Try again.');
+  }
+}
+
+/**
+ * What an operation the API refused at Publish says (design 5.4), beside the change it refused: the
+ * codes of packages/forms' operations. Every refusal is the API's (D114); the editor only says it.
+ */
+const OPERATION_REFUSALS: Readonly<Record<string, string>> = {
+  protected: NOTE_TYPE_SENTENCES.protectedPart,
+  not_copyable: NOTE_TYPE_SENTENCES.notCopyable,
+  in_use: 'Another field’s question asks about this, or a field fills from it, so it can’t be hidden.',
+  not_found:
+    'This part isn’t in the note type at this point. Undo this change, or reload to see the note type as it is now.',
+  title_invalid: 'Give the note type a title of 1 to 80 characters.',
+  label_invalid: 'Type the words it shows: they can’t be left empty.',
+  last_option: 'A question needs one answer at least, so its last one can’t be retired.',
+  last_field: 'A section needs one field at least, so its last one can’t be hidden.',
+  last_section: 'A note type needs one section at least, so its last one can’t be hidden.',
+  too_many_fields: 'This note type holds as many fields of your team’s own as it can.',
+  too_many_sections: 'This note type holds as many sections of your team’s own as it can.',
+  id_taken:
+    'This note type has held this section, or parts of it, before, so it can’t be copied in again. Show the old one again instead.',
+  invalid: 'This change doesn’t fit the rest of the note type, so it can’t be made.',
+};
+
+/** What a refused Publish says, and which held change it names, where the API names one. */
+export interface PublishRefusal {
+  error: string;
+  /** The held change the API refused, by its place in what was sent. */
+  opIndex?: number;
+  /** Another note type, where a field of it that the change reaches refused it (rule 5). */
+  noteTypeKey?: string;
+  fieldErrors?: Record<string, string>;
+}
+
+/**
+ * A Publish refused (design 7's PUT): an operation's own code names the change by its index, and the
+ * editor says it beside that change; a refusal of the whole publish says what to do.
+ */
+export function publishRefusal(code: string, details: Record<string, unknown> | undefined): PublishRefusal {
+  const opIndex = details?.opIndex;
+  const noteTypeKey = details?.noteTypeKey;
+  if (typeof opIndex === 'number' && Number.isInteger(opIndex) && opIndex >= 0)
+    return {
+      error: OPERATION_REFUSALS[code] ?? 'This change can’t be made.',
+      opIndex,
+      ...(typeof noteTypeKey === 'string' ? { noteTypeKey } : {}),
+    };
+  switch (code) {
+    case 'stale':
+      return { error: PRESET_SENTENCES.stale };
+    case 'archived':
+      return {
+        error:
+          'This note type was removed while you were editing, so nothing was published. Restore it first.',
+      };
+    case 'no_change':
+      return { error: 'These changes leave the note type as it is, so there’s nothing to publish.' };
+    case 'not_found':
+      return {
+        error: 'This note type isn’t on your team’s list. Reload the page to see the list as it is now.',
+      };
+    case 'invalid':
+      return {
+        error:
+          'This version doesn’t pass Sineobex’s checks, so it wasn’t published. Undo the last change and try again.',
+      };
+    case 'validation_failed': {
+      const fields = Array.isArray(details?.fields)
+        ? (details.fields as { path?: unknown; problem?: unknown }[])
+        : [];
+      if (fields.some((f) => f?.path === 'reason'))
+        return { error: FIELDS_TITLE, fieldErrors: { reason: `Reason: ${REASON_PROBLEM}` } };
+      const ops = fields.find((f) => typeof f?.path === 'string' && f.path.split('.')[0] === 'ops');
+      if (ops?.path === 'ops' && ops.problem === 'too_small')
+        return { error: 'Make a change before you publish.' };
+      if (ops?.path === 'ops' && ops.problem === 'too_big')
+        return {
+          error: 'That’s more changes than one publish can hold. Publish some of them, then the rest.',
+        };
+      return { error: 'Something in these changes isn’t right. Reload the page and try again.' };
+    }
+    default:
+      return { error: 'Something went wrong, so nothing was published. Try again.' };
+  }
+}
