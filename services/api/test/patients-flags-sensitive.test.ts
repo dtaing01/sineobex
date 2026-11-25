@@ -375,6 +375,55 @@ describe('the review queue (D87)', () => {
     expect((await decide(t.adminToken, byChange(forAdmin, mark).id, 'reject')).status).toBe(200);
   });
 
+  it('lists a held mark without its reason, and refuses its accept, to a reviewer who neither made the change nor manages the team’s people', async () => {
+    // A patient of its own, so the chart cases below read only theirs.
+    const elsewhere = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Cedar' })).id;
+    // Its author reviews too: they may read why their own change is marked.
+    const author = await memberWith(h, t.teamId, ['patients.view', 'patients.edit', 'quarantine.review']);
+    const phone = await FakePhone.create();
+    await register(h, phone, author.token, t.teamId);
+    const made = await phone.change({
+      entity: FLAG_CHANGE,
+      op: 'create',
+      value: { patientId: elsewhere, flagId: ids['flag.frost_risk'], action: 'set', reason: WHY },
+    });
+    expect(results((await push(h, phone, author.token, t.teamId, [made])).body).map((r) => r.status)).toEqual(
+      ['accepted'],
+    );
+    // Ivy neither made it nor manages the team's people: her mark is held.
+    const mark = await ivy.phone.change({
+      entity: FLAG_CHANGE,
+      recordId: made.recordId,
+      op: 'set',
+      field: 'enteredInError',
+      value: { reason: ERROR_WHY },
+    });
+    expect((await ivy.send(mark)).map((r) => [r.reason, r.quarantined])).toEqual([['permission', true]]);
+    const itemFor = async (token: string) => {
+      const r = await call(h, `/v1/team/quarantine?userId=${ivy.id}`, { token, teamId: t.teamId });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      return (
+        r.body.items as {
+          id: string;
+          changeId: string;
+          field: string | null;
+          value: unknown;
+          hidden?: true;
+        }[]
+      ).find((i) => i.changeId === mark.changeId)!;
+    };
+    const hidden = await itemFor(reviewer.token);
+    expect(hidden).toMatchObject({ field: null, value: null, hidden: true });
+    expect(JSON.stringify(hidden)).not.toContain(ERROR_WHY);
+    const refused = await decide(reviewer.token, hidden.id, 'accept');
+    expect([refused.status, (refused.body.error as { code: string }).code]).toEqual([403, 'change_hidden']);
+    // The change's author and a Program Admin read why, and may decide.
+    for (const token of [author.token, t.adminToken]) {
+      expect(await itemFor(token)).toMatchObject({ field: 'enteredInError', value: { reason: ERROR_WHY } });
+    }
+    expect((await decide(t.adminToken, hidden.id, 'accept')).status).toBe(200);
+  });
+
   it('hides a held change naming a flag the team does not hold from every reviewer, who may still reject it', async () => {
     // The flag rule's team half: a flag that is none of the team's is shown to nobody, a Program
     // Admin included, so nothing of the change is read and it cannot be accepted.
