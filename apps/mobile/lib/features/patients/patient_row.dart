@@ -5,7 +5,9 @@ import '../../design/theme.dart';
 import '../../design/tokens.dart';
 import '../../design/widgets/allergy_badge.dart';
 import '../../design/widgets/status_chip.dart';
+import '../../patients/flags.dart' show FlagView;
 import '../../patients/patient_search.dart';
+import 'flag_sheet.dart' show FlagMark, flagArchivedText, flagSpoken;
 import 'patient_labels.dart';
 
 /// The name a list shows for someone: what they go by, else a street name, else what they look
@@ -15,8 +17,9 @@ String listName(FoundPatient p) =>
 
 /// Everything a result row shows, as one sentence for a screen reader (design 12.1): "Del, also
 /// known as Smitty, born 1946, age 80, usually found by the Elm St underpass, last seen October 3.
-/// Allergy: penicillin, severe. Matched: close to a street name."
-String rowLabel(FoundPatient p, DateTime today) {
+/// Red, High. Allergy: penicillin, severe. Matched: close to a street name." [riskLevel] is the
+/// patient's risk level as the person may see it (phase 5 design 8.2), said as its pill is.
+String rowLabel(FoundPatient p, DateTime today, {FlagView? riskLevel}) {
   final name = listName(p);
   final aka = [
     for (final a in p.aliases)
@@ -34,6 +37,7 @@ String rowLabel(FoundPatient p, DateTime today) {
   final why = matchReasonTexts(p.reasons);
   return [
     parts.join(', '),
+    if (riskLevel != null) '${flagSpoken(riskLevel)}${riskLevel.archived ? ', ${flagArchivedText.toLowerCase()}' : ''}',
     allergies,
     if (p.possibleDuplicate) 'Possible duplicate',
     if (p.notSynced) 'On this phone only',
@@ -45,13 +49,23 @@ String _countText(FoundPatient p) => p.allergyCount == 0
     ? 'No allergies listed'
     : '${p.allergyCount == 1 ? '1 allergy' : '${p.allergyCount} allergies'}${p.severeAllergy ? ', one severe' : ''}';
 
-/// One person in a result list: one button whose label reads the whole row.
+/// One person in a result list: one button whose label reads the whole row. [riskLevel], where the
+/// list gives one, shows as its pill among the row's badges, first (phase 5 design 8.2); a patient
+/// with none shows nothing of flags.
 class PatientRow extends StatelessWidget {
-  const PatientRow({super.key, required this.patient, required this.today, required this.onTap, this.trailing});
+  const PatientRow({
+    super.key,
+    required this.patient,
+    required this.today,
+    required this.onTap,
+    this.trailing,
+    this.riskLevel,
+  });
   final FoundPatient patient;
   final DateTime today;
   final VoidCallback onTap;
   final Widget? trailing;
+  final FlagView? riskLevel;
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +84,7 @@ class PatientRow extends StatelessWidget {
     // Switch Access and Voice Access need an action to activate the button.
     return Semantics(
       button: true,
-      label: rowLabel(p, today),
+      label: rowLabel(p, today, riskLevel: riskLevel),
       excludeSemantics: true,
       onTap: onTap,
       child: Material(
@@ -110,6 +124,7 @@ class PatientRow extends StatelessWidget {
                           spacing: FieldSpace.s2,
                           runSpacing: FieldSpace.s1,
                           children: [
+                            if (riskLevel case final level?) FlagMark(flag: level),
                             if (p.badge case final badge?)
                               AllergyBadgeView(badge: badge, compact: true)
                             else
