@@ -9,6 +9,7 @@ import { installTeamPresets, totalsOf } from '@sineobex/presets';
 import type { Sql } from 'postgres';
 import { DEMO_ENVIRONMENTS, getEnvironment } from '../src/migrate.ts';
 import { seedDemoEncounters } from './demo-encounters.ts';
+import { seedDemoFlags } from './demo-flags.ts';
 import { NEIGHBOUR_TEAM_ID, seedDemoPatients } from './demo-patients.ts';
 import { seedDemoPresets } from './demo-presets.ts';
 
@@ -193,6 +194,11 @@ export async function seed(
     // none (people are invited there), so it gets no visit.
     const { visits, skipped } = await seedDemoEncounters(tx, DEMO_TEAM_ID);
     log(skipped ? `  no demo visits: ${skipped}` : `  ${visits} made-up visit(s)`);
+
+    // Flags need the platform's flags above and staff who may set them, as a phone's change does:
+    // the preview has no such staff, so it gets no flag, as it gets no visit.
+    const flags = await seedDemoFlags(tx, DEMO_TEAM_ID);
+    log(flags.skipped ? `  no demo flags: ${flags.skipped}` : `  ${flags.changes} made-up flag change(s)`);
   });
 }
 
