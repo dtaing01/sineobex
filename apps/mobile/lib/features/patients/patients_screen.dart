@@ -403,16 +403,41 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     }
   }
 
-  /// "1 patient found on this phone", once per list, never per keystroke.
-  Widget _found(int n, {required bool onPhone}) => Semantics(
-    liveRegion: true,
-    child: Text(
-      n == 0
-          ? (onPhone ? 'No one found on this phone.' : 'No one found.')
-          : '${n == 1 ? '1 patient' : '$n patients'} found${onPhone ? ' on this phone' : ''}',
-      style: Theme.of(context).textTheme.titleMedium,
-    ),
-  );
+  /// "1 patient found on this phone", once per list, never per keystroke. A search the filters
+  /// narrowed to no one says they are why, and how to search everyone or add someone new, in the
+  /// same live region: New patient with this name waits for a search no filter narrows (review W3).
+  Widget _found(int n, {required bool onPhone, bool filtered = false}) {
+    final text = Theme.of(context).textTheme;
+    if (n == 0 && filtered) {
+      final said = onPhone
+          ? 'No one found on this phone with every flag chosen.'
+          : 'No one found with every flag chosen.';
+      return Semantics(
+        liveRegion: true,
+        container: true,
+        label: '$said $_clearFlagsToSearch',
+        excludeSemantics: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(said, style: text.titleMedium),
+            Text(_clearFlagsToSearch, style: text.bodyLarge),
+          ],
+        ),
+      );
+    }
+    return Semantics(
+      liveRegion: true,
+      child: Text(
+        n == 0
+            ? (onPhone ? 'No one found on this phone.' : 'No one found.')
+            : '${n == 1 ? '1 patient' : '$n patients'} found${onPhone ? ' on this phone' : ''}',
+        style: text.titleMedium,
+      ),
+    );
+  }
+
+  static const _clearFlagsToSearch = 'Clear the flags to search everyone, or to add someone new.';
 
   /// The filters' chips, beside Born: each tier's only where the team's list offers the person a flag
   /// of it, so a team without flags, or a phone without its setup, shows none; and none where the
@@ -582,7 +607,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                       if (_problem != null) ...[ErrorMessage(_problem!), const SizedBox(height: FieldSpace.s3)],
                       if (run != null && !_emptyQuery) ...[
                         // Once per run, never per keystroke.
-                        _found(hits.length, onPhone: onPhone),
+                        _found(hits.length, onPhone: onPhone, filtered: _filtering),
                         const SizedBox(height: FieldSpace.s2),
                         for (final p in hits) ...[
                           PatientRow(patient: p, today: today, riskLevel: _riskLevelOf(p), onTap: () => _open(p)),
