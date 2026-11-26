@@ -577,6 +577,30 @@ void main() {
       await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(conditionsDoneAction)));
       await settle(tester);
       expectFocusOn(ActionChip, 'Conditions');
+      // The chooser opened from a condition's own chip: focus comes back to that chip while it is still
+      // chosen, and goes to Conditions once it isn't.
+      final frost = find.descendant(
+        of: find.byType(ChosenFilterChip),
+        matching: find.text('Condition: Blue · Demo: Frost risk'),
+      );
+      await enterFromSearch(tester, frost);
+      expect(find.byType(Dialog), findsOneWidget);
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(conditionsDoneAction)));
+      await settle(tester);
+      expectFocusOn(ChosenFilterChip, 'Condition: Blue · Demo: Frost risk');
+      await enterFromSearch(tester, frost);
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Blue · Demo: Frost risk')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(conditionsDoneAction)));
+      await settle(tester);
+      expect(find.text('Condition: Blue · Demo: Frost risk'), findsNothing);
+      expectFocusOn(ActionChip, 'Conditions');
+      // Chosen again, and cleared by its button.
+      await enterOn(tester, find.descendant(of: find.byType(ActionChip), matching: find.text('Conditions')));
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Blue · Demo: Frost risk')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(conditionsDoneAction)));
+      await settle(tester);
       await enterFromSearch(tester, clearOf('Clear Demo: Frost risk'));
       expect(find.text('Condition: Blue · Demo: Frost risk'), findsNothing);
       expectFocusOn(ActionChip, 'Conditions');
@@ -710,11 +734,12 @@ void main() {
 
     // Review finding W3: under a filter, a typed search the filter emptied said only "No one found.",
     // and took New patient with this name away without a word.
-    for (final online in [false, true]) {
+    // Offline in every run; online once.
+    for (final (online, run) in <(bool, Run?)>[for (final run in runs) (false, run), (true, null)]) {
       testWidgets('under a filter, a search that finds no one says the flags are why and how to search everyone '
-          '(${online ? 'online' : 'offline'})', (tester) async {
+          '(${online ? 'online' : 'offline, ${runName(run!)}'})', (tester) async {
         final handle = tester.ensureSemantics();
-        final h = await signIn(tester);
+        final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
         final high = h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: High', 'primary', 'red', 10));
         final round = h.server.seedPatient(preferredName: 'Demo Round');
         h.server.seed(entityFlagChange, {
@@ -736,13 +761,14 @@ void main() {
             ? 'No one found with every flag chosen.'
             : 'No one found on this phone with every flag chosen.';
         const next = 'Clear the flags to search everyone, or to add someone new.';
-        expect(find.text(said), findsOneWidget);
-        expect(find.text(next), findsOneWidget);
-        await reveal(tester, find.text(said));
+        // Built, if under the pinned search box at a large text size, then scrolled to.
+        expect(find.text(said, skipOffstage: false), findsOneWidget);
+        expect(find.text(next, skipOffstage: false), findsOneWidget);
+        await reveal(tester, find.text(next, skipOffstage: false));
         // Both, in the one live region the count is said in.
         expect(tester.getSemantics(find.text(said)), isSemantics(isLiveRegion: true, label: '$said $next'));
         expect(tester.getSemantics(find.text(next)), isSemantics(isLiveRegion: true, label: '$said $next'));
-        expect(find.text('New patient with this name'), findsNothing);
+        expect(find.text('New patient with this name', skipOffstage: false), findsNothing);
         await expectScreenOk(tester);
 
         // The flag cleared, the search runs again: whom the filter left out, in the search's own words.
