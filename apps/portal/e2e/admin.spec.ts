@@ -9,7 +9,7 @@ test('done when: a Program Admin invites a user, upgrades a student to resident 
   page,
 }) => {
   // A sign-in with its code, five pages and nine axe checks, three of them at 320 px after the reflow
-  // checks: about 26 s on a machine shared with another suite, past the default 30 s on a busier one.
+  // checks: about 30 s on a machine shared with another suite, past the default 30 s at times.
   test.slow();
   const csp = watchCsp(page);
 
