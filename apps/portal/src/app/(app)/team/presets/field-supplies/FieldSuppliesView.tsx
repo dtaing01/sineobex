@@ -20,6 +20,7 @@ import {
   choiceKey,
   choiceOf,
   describeAnswer,
+  formerDefinition,
   placeAt,
   placesOf,
   retiredRowAt,
@@ -43,19 +44,22 @@ export const LINES_HINT =
   'Suggested on the supply screen after the note, for staff to confirm or change before they sign.';
 
 /**
- * Why a mapping suggests nothing now (8.1's warning row): its note type, field or answer has left the
- * note type's current version. A note started on an earlier version is read on that version, and
- * still has them (5.4, rule 4).
+ * Why a mapping suggests nothing now (8.1's warning row), and what to do: its note type, field or
+ * answer has left the note type's current version. A note started on an earlier version is read on
+ * that version, and still has them (5.4, rule 4). A mapping whose field the version lacks can't be
+ * saved (the API refuses an edit of it, unknown_path), and its field can't be changed, so it is
+ * removed, and another made where one is needed; one whose answer was retired takes another answer.
  */
 export const WARNINGS = {
   noteTypeUnknown: 'This note type isn’t on your team’s list, so this mapping suggests nothing.',
   noteTypeRemoved: 'This note type was removed, so this mapping suggests nothing.',
-  fieldHidden: 'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
+  fieldHidden:
+    'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
   answerRetired:
-    'This answer was retired from the note type’s current version, so this mapping suggests nothing.',
+    'This answer was retired from the note type’s current version, so this mapping suggests nothing. Choose another answer under Edit, or remove it.',
   /** A grid's row picked from an answer since retired: the field is there, the row is not. */
   rowRetired:
-    'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing.',
+    'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
 } as const;
 
 /** What a mapping fires on, in the words of its note type's current version. */
@@ -65,6 +69,8 @@ interface Read {
   place: AnswerPlace | null;
   /** What the field holds, where the version still has it: on a retired row, its cell's. */
   holds: Holds | null;
+  /** What it held in the version that last had it, for the words of what the current one lacks. */
+  named: Holds | null;
   noteTypeWords: string;
   fieldWords: string;
   answerWords: string | null;
@@ -78,6 +84,8 @@ function readMapping(body: FieldSupplyBody, noteTypes: readonly NoteTypeRow[]): 
   const rowGone =
     noteType && body.path !== undefined && !place ? retiredRowAt(noteType.definition, body.path) : null;
   const holds = (place ?? rowGone)?.holds ?? null;
+  // What the current version lacks, in the words of the version that last had it (the list's hidden).
+  const former = noteType && body.path !== undefined ? placeAt(formerDefinition(noteType), body.path) : null;
   const code =
     body.when === undefined
       ? null
@@ -98,15 +106,17 @@ function readMapping(body: FieldSupplyBody, noteTypes: readonly NoteTypeRow[]): 
         : retired
           ? WARNINGS.answerRetired
           : null;
-  const named = place ?? rowGone;
+  const named = place ?? former ?? rowGone;
+  const namedHolds = former?.holds ?? holds;
   return {
     noteType,
     place,
     holds,
-    // A key the list doesn't hold is shown as it is stored, as is a field the version has no words for.
+    named: namedHolds,
+    // A key the list doesn't hold is shown as it is stored, as is a field no version has words for.
     noteTypeWords: noteType?.title ?? body.noteTypeKey,
     fieldWords: body.path === undefined ? EVERY_NOTE : named ? `${named.section}: ${named.label}` : body.path,
-    answerWords: body.when === undefined ? null : describeAnswer(body.when, holds),
+    answerWords: body.when === undefined ? null : describeAnswer(body.when, namedHolds),
     warning,
   };
 }
@@ -119,7 +129,10 @@ function lineWords(
 ): string {
   const item = names[line.itemId] ?? 'Not on your team’s list';
   if (typeof line.qty === 'number') return `${item} × ${line.qty}`;
-  const from = noteType ? placeAt(noteType.definition, line.qty.fromPath) : null;
+  const from = noteType
+    ? (placeAt(noteType.definition, line.qty.fromPath) ??
+      placeAt(formerDefinition(noteType), line.qty.fromPath))
+    : null;
   return `${item} × the number in “${from ? from.label : line.qty.fromPath}”`;
 }
 
@@ -161,7 +174,10 @@ export function EditMapping({
         hint="Which field a mapping fires on can’t be changed later."
       />
       {body.when !== undefined && (
-        <EditAnswer answers={answerChoices(read.holds, body.when)} current={choiceKey(choiceOf(body.when))} />
+        <EditAnswer
+          answers={answerChoices(read.holds, body.when, read.named)}
+          current={choiceKey(choiceOf(body.when))}
+        />
       )}
       {counted ? (
         <ItemLines

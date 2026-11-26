@@ -111,13 +111,14 @@ describe('the field supplies page', () => {
     expect(sectionOf(draw(), 'Demo: Every wound visit')).toContain('Every note of this type');
   });
 
-  it('warns where the field is hidden, or the answer retired, in the note type’s current version', () => {
+  it('warns where the field is hidden, or the answer retired, in the note type’s current version, saying what to do', () => {
     const html = draw();
+    // An edit of it is refused while its field is hidden (unknown_path): remove it, or map another.
     expect(sectionOf(html, 'Demo: Pad given')).toContain(
-      'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
+      'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
     );
     expect(sectionOf(html, 'Demo: Film given')).toContain(
-      'This answer was retired from the note type’s current version, so this mapping suggests nothing.',
+      'This answer was retired from the note type’s current version, so this mapping suggests nothing. Choose another answer under Edit, or remove it.',
     );
     expect(sectionOf(html, 'Demo: Gauze given')).not.toContain('suggests nothing');
   });
@@ -326,7 +327,7 @@ describe('a mapping on a grid’s row its picker no longer offers (B-13), and a 
   it('says the row was retired, names the field in the version’s words, and its answer by the cell’s', () => {
     const vaccine = sectionOf(html, 'Demo: Pneumococcal vaccine given');
     expect(vaccine).toContain(
-      'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing.',
+      'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
     );
     expect(vaccine).not.toContain('This field is hidden');
     const { Field, Answer } = facts('Demo: Pneumococcal vaccine given');
@@ -353,5 +354,159 @@ describe('a mapping on a grid’s row its picker no longer offers (B-13), and a 
     for (const dd of [Field!, Answer!]) expect(dd.attrs).toMatch(/class="[^"]+"/);
     const css = readFileSync(new URL('./supplies.module.css', import.meta.url), 'utf8');
     expect(css).toMatch(/\.breaks\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  });
+});
+
+describe('a mapping named in the words of the version that last had its field or answer (item 10, B-6 and B-13’s rest)', () => {
+  const PADS = '30f10000-0000-4000-8000-000000000008';
+  const FILM = '30f10000-0000-4000-8000-000000000009';
+  const NODE = '30f10000-0000-4000-8000-00000000000a';
+  const VACCINE = '30f10000-0000-4000-8000-00000000000b';
+  // What the list says the current versions lack, as the newest version that had each held it.
+  const woundRow: NoteTypeRow = {
+    ...noteTypes[0]!,
+    hidden: [
+      {
+        kind: 'field',
+        path: 'wound.pads',
+        words: 'Demo: Pads applied',
+        showAgain: true,
+        part: { id: 'pads', kind: 'flag', label: 'Demo: Pads applied' },
+      },
+      { kind: 'option', path: 'wound.dressing', code: 'film', words: 'Demo: Film', showAgain: false },
+      {
+        kind: 'section',
+        path: 'lymph',
+        words: 'Demo: Lymph nodes',
+        showAgain: true,
+        part: {
+          id: 'lymph',
+          title: 'Demo: Lymph nodes',
+          fields: [
+            {
+              id: 'nodes',
+              kind: 'choice',
+              label: 'Demo: Nodes',
+              many: true,
+              options: [{ code: 'neck', label: 'Demo: Neck' }],
+            },
+            {
+              id: 'findings',
+              kind: 'grid',
+              label: 'Demo: Findings for each node',
+              rows: { pickedIn: 'lymph.nodes' },
+              cell: {
+                id: 'cell',
+                kind: 'group',
+                label: 'Demo: Findings',
+                fields: [{ id: 'enlarged', kind: 'flag', label: 'Demo: Enlarged' }],
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const clinicRow: NoteTypeRow = {
+    ...noteTypes[0]!,
+    key: 'general_primary_care',
+    title: 'Demo: Clinic visit',
+    definition: {
+      ...wound,
+      key: 'general_primary_care',
+      title: 'Demo: Clinic visit',
+      sections: [
+        {
+          id: 'preventive',
+          title: 'Demo: Preventive care',
+          fields: [
+            {
+              id: 'vaccines',
+              kind: 'choice',
+              label: 'Demo: Vaccines',
+              many: true,
+              options: [{ code: 'flu', label: 'Demo: Flu' }],
+            },
+            {
+              id: 'vaccine_status',
+              kind: 'grid',
+              label: 'Demo: Status for each vaccine',
+              rows: { pickedIn: 'preventive.vaccines' },
+              cell: {
+                id: 'status',
+                kind: 'choice',
+                label: 'Demo: Status',
+                options: [{ code: 'given_today', label: 'Demo: Given today' }],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    // Pneumococcal was retired from the vaccines, and with it the grid's row.
+    hidden: [
+      {
+        kind: 'option',
+        path: 'preventive.vaccines',
+        code: 'pneumococcal',
+        words: 'Demo: Pneumococcal',
+        showAgain: false,
+      },
+    ],
+  };
+  const rows = [
+    map(PADS, 'Demo: Pads given', {
+      path: 'wound.pads',
+      when: { answered: true },
+      lines: [{ itemId: GAUZE, qty: { fromPath: 'wound.pads' } }],
+    }),
+    map(FILM, 'Demo: Film given', { path: 'wound.dressing', when: { includes: 'film' } }),
+    map(NODE, 'Demo: Enlarged node', { path: 'lymph.findings.neck.enlarged', when: { answered: true } }),
+    map(VACCINE, 'Demo: Pneumococcal given', {
+      noteTypeKey: 'general_primary_care',
+      path: 'preventive.vaccine_status.pneumococcal',
+      when: { equals: 'given_today' },
+    }),
+  ];
+  const html = renderToStaticMarkup(
+    createElement(FieldSuppliesView, {
+      rows,
+      noteTypes: [woundRow, clinicRow],
+      items: [item],
+      histories: {},
+    }),
+  );
+  const fact = (name: string, term: string) =>
+    new RegExp(`<dt>${term}</dt><dd[^>]*>([^<]*)</dd>`).exec(sectionOf(html, name))?.[1];
+
+  it('names a hidden field, a field of a hidden section and a retired grid row in those words', () => {
+    expect(fact('Demo: Pads given', 'Field')).toBe('Demo: Wound: Demo: Pads applied');
+    expect(sectionOf(html, 'Demo: Pads given')).toContain(
+      'Demo: Gauze pad × the number in “Demo: Pads applied”',
+    );
+    expect(fact('Demo: Enlarged node', 'Field')).toBe(
+      'Demo: Lymph nodes: Demo: Findings for each node: Demo: Neck: Demo: Enlarged',
+    );
+    expect(fact('Demo: Pneumococcal given', 'Field')).toBe(
+      'Demo: Preventive care: Demo: Status for each vaccine: Demo: Pneumococcal',
+    );
+    // Still said to suggest nothing, by what the current version lacks.
+    expect(sectionOf(html, 'Demo: Pads given')).toContain('This field is hidden');
+    expect(sectionOf(html, 'Demo: Enlarged node')).toContain('This field is hidden');
+    expect(sectionOf(html, 'Demo: Pneumococcal given')).toContain('The row this mapping is on was retired');
+  });
+
+  it('names a retired answer in those words, in its facts and in its Edit form, offering the current answers to choose', () => {
+    expect(fact('Demo: Film given', 'Answer')).toBe('Demo: Film');
+    const edit = renderToStaticMarkup(
+      createElement(EditMapping, {
+        row: rows[1]!,
+        noteTypes: [woundRow],
+        items: [{ id: GAUZE, name: 'Demo: Gauze pad' }],
+        names: {},
+      }),
+    );
+    expect(edit).toContain('<option value="includes:film" selected="">Demo: Film</option>');
+    expect(edit).toContain('>Demo: Gauze</option>');
   });
 });

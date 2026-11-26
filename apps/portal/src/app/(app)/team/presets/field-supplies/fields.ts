@@ -1,4 +1,11 @@
-import type { AnswerTest, NoteTypeDefinition, NoteTypeField, NoteTypeOption } from '@/lib/presets';
+import type {
+  AnswerTest,
+  NoteTypeDefinition,
+  NoteTypeField,
+  NoteTypeOption,
+  NoteTypeRow,
+  NoteTypeSection,
+} from '@/lib/presets';
 
 /**
  * Where a field supply mapping may fire, read from a note type's definition as GET
@@ -35,6 +42,44 @@ export function placesOf(definition: NoteTypeDefinition): AnswerPlace[] {
   for (const section of definition.sections)
     walk(definition, places, section.title, section.fields, [section.id], [], false);
   return places;
+}
+
+/**
+ * A note type's definition with every part an earlier version had and its current version lacks put
+ * back (the list's `hidden`, design 8.1): sections, fields at any depth and answers, each as the
+ * newest version that had it held it, parents before what is inside them. For words only: what
+ * names a mapping on a field or an answer the current version no longer shows, so the page says it
+ * as the note type last did, never by its stored path or code. What a mapping fires on, and what a
+ * new one may be made on, stay the current version's.
+ */
+export function formerDefinition(row: Pick<NoteTypeRow, 'definition' | 'hidden'>): NoteTypeDefinition {
+  const definition = structuredClone(row.definition);
+  const fieldsAt = (path: string): NoteTypeField[] | undefined => {
+    const [sectionId, ...ids] = path.split('.');
+    let fields = definition.sections.find((s) => s.id === sectionId)?.fields;
+    for (const id of ids) fields = fields?.find((f) => f.id === id)?.fields;
+    return fields;
+  };
+  const depth = (path: string) => path.split('.').length;
+  for (const p of [...row.hidden].sort((a, b) => depth(a.path) - depth(b.path))) {
+    if (p.kind === 'section') {
+      if (p.part && !definition.sections.some((s) => s.id === p.path))
+        definition.sections.push(structuredClone(p.part as NoteTypeSection));
+    } else if (p.kind === 'field') {
+      const siblings = fieldsAt(p.path.slice(0, p.path.lastIndexOf('.')));
+      const id = p.path.slice(p.path.lastIndexOf('.') + 1);
+      if (p.part && siblings && !siblings.some((f) => f.id === id))
+        siblings.push(structuredClone(p.part as NoteTypeField));
+    }
+  }
+  // Answers last, so an answer of a field put back above lands in it too.
+  for (const p of row.hidden) {
+    if (p.kind !== 'option' || p.code === undefined) continue;
+    const field = fieldAt(definition, p.path);
+    if (field?.kind === 'choice' && !(field.options ?? []).some((o) => o.code === p.code))
+      field.options = [...(field.options ?? []), { code: p.code, label: p.words }];
+  }
+  return definition;
 }
 
 /** The field or grid cell a mapping's path names in the definition, or null when it has none there. */
@@ -226,9 +271,14 @@ export function describeAnswer(when: AnswerTest, holds: Holds | null): string {
  * The answers a form offers for a field (8.1): any answer, or one of a choice's options, a choose-one
  * being that option and a choose-many holding it among others; a tick, ticked. `current`, the answer
  * a mapping holds or a refused form sent, is offered as it is when none of those is it, so a save
- * that leaves the answer alone never changes it.
+ * that leaves the answer alone never changes it, said in the words `named` holds for it (the field
+ * as the version that last had that answer held it), else as stored.
  */
-export function answerChoices(holds: Holds | null, current?: AnswerTest): AnswerChoice[] {
+export function answerChoices(
+  holds: Holds | null,
+  current?: AnswerTest,
+  named: Holds | null = holds,
+): AnswerChoice[] {
   const offered: AnswerChoice[] =
     holds?.type === 'choice'
       ? [
@@ -243,7 +293,7 @@ export function answerChoices(holds: Holds | null, current?: AnswerTest): Answer
   if (current === undefined) return offered;
   const now = choiceOf(current);
   if (offered.some((c) => c.kind === now.kind && c.value === now.value)) return offered;
-  const kept = { ...now, label: describeAnswer(current, holds) };
+  const kept = { ...now, label: describeAnswer(current, named) };
   // A tick stores true alone, so "ticked" either way is the one choice.
   return holds?.type === 'tick' && kept.label === 'Ticked' ? [kept] : [...offered, kept];
 }
