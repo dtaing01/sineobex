@@ -1034,6 +1034,36 @@ void main() {
       final notice = store().notices().singleWhere((n) => n.kind == noticeFlagChangeNotApplied);
       expect(notice.patientId, kept);
     });
+
+    // Verification finding VS3: a held create stays held here once a Program Admin takes it. Where a
+    // chart this phone holds whole lists the change, the create was taken and a held mark is what wasn't
+    // applied; where the phone holds both held and no whole chart lists the change, either could be.
+    test('names the mark of a held create a whole chart lists, and no act once no whole chart lists it', () async {
+      final p = await openedPatient();
+      server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      final create = createOf(id).changeId;
+      await phone.engine.syncAll(force: true);
+      server.acceptHeld(create);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      flags().enterInError(id, 'Demo: set on the wrong patient');
+      final mark = flagChanges().single.changeId;
+      await phone.engine.syncAll(force: true);
+      server.rejectHeld(mark);
+      await services.notices.sync();
+      expect(flags().notAppliedOf(id), NotAppliedFlagChange.mark);
+
+      // Merged since into a patient whose chart this phone doesn't hold, as the index tells it.
+      final kept = server.seedPatient(preferredName: 'Demo Wrenna');
+      server.merge(p, kept);
+      await TeamIndexRefresher(
+        services.index,
+        phone.engine.api,
+        wallNow: () => phone.wall,
+      ).refresh(RefreshReason.manual);
+      expect([store().canonicalPatient(p), store().record(id)?.id], [kept, id]);
+      expect(flags().notAppliedOf(id), isNull);
+    });
   });
 
   // Card P5-phone-domain's own cases, beside those written ahead of it: intake's risk level in

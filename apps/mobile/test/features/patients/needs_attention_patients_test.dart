@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/api/generated/api.dart' show FetchChartsReason;
 import 'package:sineobex_field/features/patients/patient_screen.dart';
 import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
@@ -403,6 +404,38 @@ void main() {
         'Your Entered in error mark wasn’t applied. Open the patient to mark it again.',
       );
       await expectScreenOk(tester);
+      handle.dispose();
+    });
+
+    // Verification finding VS3: a held create stays held here once a Program Admin takes it, so the
+    // notice of its mark, held since and not applied, read as the create's.
+    testWidgets('a held set taken from review, then its Entered in error mark held and not applied: the notice '
+        'says it was the mark', (tester) async {
+      final handle = tester.ensureSemantics();
+      final (:h, :high) = await flagged(tester);
+      // The role lost patients.edit at the desk: the set is held, and a Program Admin takes it.
+      h.server.permissions[h.patients.userId] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      final id = h.patients.flags.record(p1Id, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      final create = h.sync.store!.outbox().singleWhere((e) => e.recordId == id).changeId;
+      await syncAndRefresh(tester, h);
+      h.server.acceptHeld(create);
+      await tester.runAsync(() => h.patients.charts.fetch([p1Id], reason: FetchChartsReason.refresh));
+      // On the chart now, so it can be marked; the mark is held too, and not applied.
+      h.patients.flags.enterInError(id, 'Demo: set on the wrong patient');
+      await rejected(tester, h, id);
+      await openAttention(tester);
+      const words = 'Your Entered in error mark wasn’t applied. Open the patient to mark it again.';
+      expect(await noticeWords(tester), words);
+      await expectScreenOk(tester);
+      // The same once the team's database is opened again, with nothing kept in memory.
+      await tester.runAsync(h.session.lock);
+      await settle(tester);
+      await enter(tester, 'PIN', '482913');
+      await tapText(tester, 'Unlock');
+      await tester.runAsync(h.sync.ready);
+      await settle(tester);
+      await openAttention(tester);
+      expect(await noticeWords(tester), words);
       handle.dispose();
     });
 
