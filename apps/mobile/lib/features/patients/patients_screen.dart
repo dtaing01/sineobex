@@ -303,9 +303,14 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     });
   }
 
-  void _clearFilter({bool risk = false, bool conditions = false}) => setState(() {
-    if (risk) _riskFilter = null;
-    if (conditions) _conditionFilter = const {};
+  void _clearRiskLevel() => setState(() {
+    _riskFilter = null;
+    _filtersChanged();
+  });
+
+  /// One chosen condition taken off, the others kept.
+  void _clearCondition(String id) => setState(() {
+    _conditionFilter = Set.unmodifiable({..._conditionFilter}..remove(id));
     _filtersChanged();
   });
 
@@ -331,29 +336,37 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   /// The filters' chips, beside Born: each tier's only where the team's list offers the person a flag
   /// of it, so a team without flags, or a phone without its setup, shows none; and none where the
-  /// phone holds no team index to narrow by ([_indexHeld]).
+  /// phone holds no team index to narrow by ([_indexHeld]). Each chosen flag is a chip of its own,
+  /// whole at any text size, that clears alone (review finding X4); Conditions stays to choose more.
   List<Widget> _filterChips() {
     if (!_indexHeld) return const [];
     final levels = _s.flags.teamFlags(FlagTier.primary);
     final conditions = _s.flags.teamFlags(FlagTier.secondary);
-    String named(String id, List<FlagView> flags, {required bool spoken}) =>
-        switch (flags.where((f) => f.flagId == id).firstOrNull) {
-          final f? => spoken ? flagSpoken(f) : flagWords(f),
-          null => flagArchivedText.toLowerCase(),
-        };
-    Widget chosen(String words, String spokenWords) =>
-        Semantics(label: spokenWords, excludeSemantics: true, child: Text(words));
+    FlagView? flagOf(String id, List<FlagView> flags) => flags.where((f) => f.flagId == id).firstOrNull;
+    String named(FlagView? f, {required bool spoken}) => switch (f) {
+      final f? => spoken ? flagSpoken(f) : flagWords(f),
+      null => flagArchivedText.toLowerCase(),
+    };
+    Widget conditionChip(String id) {
+      final f = flagOf(id, conditions);
+      return ChosenFilterChip(
+        label: '$_conditionLabel: ${named(f, spoken: false)}',
+        spoken: '$_conditionLabel: ${named(f, spoken: true)}',
+        clearTooltip: f == null ? 'Clear this condition' : 'Clear ${f.name}',
+        onPressed: () => unawaited(_chooseConditions()),
+        onCleared: () => _clearCondition(id),
+      );
+    }
+
     return [
       if (levels.isNotEmpty || _riskFilter != null)
         if (_riskFilter case final id?)
-          InputChip(
-            label: chosen(
-              '$riskLevelLabel: ${named(id, levels, spoken: false)}',
-              '$riskLevelLabel: ${named(id, levels, spoken: true)}',
-            ),
+          ChosenFilterChip(
+            label: '$riskLevelLabel: ${named(flagOf(id, levels), spoken: false)}',
+            spoken: '$riskLevelLabel: ${named(flagOf(id, levels), spoken: true)}',
+            clearTooltip: 'Clear risk level',
             onPressed: () => unawaited(_chooseRiskLevel()),
-            onDeleted: () => _clearFilter(risk: true),
-            deleteButtonTooltipMessage: 'Clear risk level',
+            onCleared: _clearRiskLevel,
           )
         else
           ActionChip(
@@ -362,26 +375,19 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
             tooltip: 'Find patients by risk level',
             onPressed: () => unawaited(_chooseRiskLevel()),
           ),
-      if (conditions.isNotEmpty || _conditionFilter.isNotEmpty)
-        if (_conditionFilter.isNotEmpty)
-          InputChip(
-            label: chosen(
-              '$conditionsLabel: ${[for (final id in _conditionFilter) named(id, conditions, spoken: false)].join(', ')}',
-              '$conditionsLabel: ${[for (final id in _conditionFilter) named(id, conditions, spoken: true)].join('; ')}',
-            ),
-            onPressed: () => unawaited(_chooseConditions()),
-            onDeleted: () => _clearFilter(conditions: true),
-            deleteButtonTooltipMessage: 'Clear conditions',
-          )
-        else
-          ActionChip(
-            avatar: const Icon(LucideIcons.flag, size: 18),
-            label: const Text(conditionsLabel),
-            tooltip: 'Find patients by condition',
-            onPressed: () => unawaited(_chooseConditions()),
-          ),
+      if (conditions.isNotEmpty)
+        ActionChip(
+          avatar: const Icon(LucideIcons.flag, size: 18),
+          label: const Text(conditionsLabel),
+          tooltip: 'Find patients by condition',
+          onPressed: () => unawaited(_chooseConditions()),
+        ),
+      for (final id in _conditionFilter) conditionChip(id),
     ];
   }
+
+  /// One chosen condition, as its chip names it.
+  static const _conditionLabel = 'Condition';
 
   @override
   Widget build(BuildContext context) {
@@ -472,11 +478,12 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                               onPressed: () => unawaited(_chooseBorn()),
                             )
                           else
-                            InputChip(
-                              label: Text('Born ${_bornText(_born!)}'),
+                            ChosenFilterChip(
+                              label: 'Born ${_bornText(_born!)}',
+                              spoken: 'Born ${_bornText(_born!)}',
+                              clearTooltip: 'Clear born',
                               onPressed: () => unawaited(_chooseBorn()),
-                              onDeleted: _clearBorn,
-                              deleteButtonTooltipMessage: 'Clear born',
+                              onCleared: _clearBorn,
                             ),
                           ..._filterChips(),
                         ],
@@ -580,6 +587,79 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     BirthDate(:final year, :final month, :final day) => '${monthNames[month - 1].substring(0, 3)} $day, $year',
     _ => '${b.year}',
   };
+}
+
+/// A filter the person chose, beside the choosers: its words, then its clear button, in the chips'
+/// look. Material's chips draw a label on one line and fade the rest, and lay out a label of more
+/// lines at the height of fewer, so a chosen flag's words were cut off at 200% text (review finding
+/// X4): this chip's words wrap, whole, at any text size and width. Pressing them opens their chooser
+/// again. Heard as an InputChip is: a button of [spoken], and a button named [clearTooltip].
+class ChosenFilterChip extends StatelessWidget {
+  const ChosenFilterChip({
+    super.key,
+    required this.label,
+    required this.spoken,
+    required this.clearTooltip,
+    required this.onPressed,
+    required this.onCleared,
+  });
+
+  final String label;
+  final String spoken;
+  final String clearTooltip;
+  final VoidCallback onPressed;
+  final VoidCallback onCleared;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.field;
+    final style = ChipTheme.of(context).labelStyle ?? Theme.of(context).textTheme.bodyLarge;
+    return Material(
+      color: c.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(FieldRadius.md),
+        side: BorderSide(color: c.lineStrong, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            // The press is this node's own, so Switch Access and Voice Access can activate it.
+            child: Semantics(
+              container: true,
+              button: true,
+              label: spoken,
+              child: InkWell(
+                onTap: onPressed,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: FieldTap.min),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      FieldSpace.s3,
+                      FieldSpace.s2,
+                      FieldSpace.s1,
+                      FieldSpace.s2,
+                    ),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      widthFactor: 1,
+                      child: ExcludeSemantics(child: Text(label, style: style)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: clearTooltip,
+            onPressed: onCleared,
+            icon: Icon(LucideIcons.x, size: 18, color: c.inkMuted),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// "Patient list updated 2 hours ago · 1,204 patients", the offline form, or why there is none.

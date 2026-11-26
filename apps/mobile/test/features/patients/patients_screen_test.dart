@@ -1,8 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter/services.dart' show FontLoader, rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sineobex_field/design/tokens.dart' show FieldFonts, FieldTheme;
 import 'package:sineobex_field/features/patients/flag_sheet.dart' show conditionsDoneAction;
 import 'package:sineobex_field/features/patients/patient_row.dart' show PatientRow;
 import 'package:sineobex_field/features/patients/patients_screen.dart';
@@ -615,6 +618,170 @@ void main() {
       expect(tester.getSemantics(row).label, contains('Red, Demo: High, no longer on the team’s list'));
       // Never offered as a filter: the team's list no longer holds it.
       expect(find.widgetWithText(ActionChip, 'Risk level'), findsNothing);
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
+  });
+
+  // Review finding X4, last in the file: the app's own font, which these cases load, stays loaded for
+  // every case after them. A chosen filter's words were cut off on its chip, as a Material chip draws
+  // its label on one line and fades the rest: the guidelines can't see that, so each case measures
+  // the words as they are laid out, in the font the app draws them in.
+  group('a chosen filter’s words, in the app’s font, at 200% text and 320 wide', () {
+    Future<void> loadAppFont(WidgetTester tester) => tester.runAsync(() async {
+      final loader = FontLoader(FieldFonts.sans)
+        ..addFont(rootBundle.load('assets/fonts/AtkinsonHyperlegibleNext-Variable.ttf'));
+      await loader.load();
+    });
+
+    /// [words] on screen, laid out whole: every line of them within the box their text was given and
+    /// the screen, none cut at a last line or faded, in the app's font, not the tests' square one.
+    void expectWhole(WidgetTester tester, String words) {
+      final text = find.text(words);
+      expect(text, findsOneWidget, reason: '"$words" on screen');
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: text, matching: find.byType(RichText)),
+      );
+      TextPainter laidOut(InlineSpan span, {double maxWidth = double.infinity}) =>
+          TextPainter(text: span, textDirection: paragraph.textDirection, textScaler: paragraph.textScaler)
+            ..layout(maxWidth: maxWidth);
+      final style = paragraph.text.style;
+      expect(style?.fontFamily, FieldFonts.sans);
+      expect(
+        laidOut(TextSpan(text: 'iiiiiiii', style: style)).width,
+        lessThan(laidOut(TextSpan(text: 'MMMMMMMM', style: style)).width),
+        reason: 'measured in a proportional font, the app’s',
+      );
+      final whole = laidOut(paragraph.text, maxWidth: paragraph.size.width);
+      expect(paragraph.didExceedMaxLines, isFalse, reason: '"$words" cut after its last line');
+      expect(
+        whole.height,
+        lessThanOrEqualTo(paragraph.size.height + 0.5),
+        reason: '"$words" needs ${whole.height} px, in a box ${paragraph.size.height} px tall',
+      );
+      for (final line in whole.computeLineMetrics()) {
+        expect(line.width, lessThanOrEqualTo(paragraph.size.width + 0.5), reason: '"$words" runs past its box');
+      }
+      final box = tester.getRect(text);
+      expect(box.left, greaterThanOrEqualTo(0));
+      expect(box.right, lessThanOrEqualTo(tester.view.physicalSize.width / tester.view.devicePixelRatio));
+    }
+
+    Future<void> tapInDialog(WidgetTester tester, String words) async {
+      final target = find.descendant(of: find.byType(Dialog), matching: find.text(words));
+      await tester.scrollUntilVisible(
+        target,
+        100,
+        scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).first,
+      );
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    Map<String, Object?> flag(String name, String tier, String color, int rank) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': false,
+    };
+
+    for (final theme in FieldTheme.values) {
+      testWidgets('each chosen flag is shown whole, on a chip of its own that clears alone, offline (${theme.name})', (
+        tester,
+      ) async {
+        await loadAppFont(tester);
+        final handle = tester.ensureSemantics();
+        final h = await signIn(tester, theme: theme, scale: 2, narrow: true);
+        final team = h.patients.teamId;
+        final high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+        final frost = h.server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+        final dry = h.server.addPreset(team, 'flag', flag('Demo: Dehydration risk', 'secondary', 'teal', 20));
+        void set(String patientId, String flagId) => h.server.seed(entityFlagChange, {
+          'patientId': patientId,
+          'flagId': flagId,
+          'action': 'set',
+          'reason': 'Demo: a reason',
+        });
+        final round = h.server.seedPatient(preferredName: 'Demo Round');
+        final fern = h.server.seedPatient(preferredName: 'Demo Fern');
+        for (final id in [high, frost, dry]) {
+          set(round, id);
+        }
+        set(fern, high);
+        set(fern, dry);
+        await syncAndRefresh(tester, h);
+        h.server.offline = true;
+        await openPatientsTab(tester);
+
+        await tapOn(tester, find.widgetWithText(ActionChip, 'Risk level'));
+        await tapInDialog(tester, 'Red · Demo: High');
+        await settle(tester);
+        await tapOn(tester, find.widgetWithText(ActionChip, 'Conditions'));
+        await tapInDialog(tester, 'Blue · Demo: Frost risk');
+        await tapInDialog(tester, 'Teal · Demo: Dehydration risk');
+        await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(conditionsDoneAction)));
+        await settle(tester);
+        await expectShown(tester, find.text('1 patient found on this phone'));
+
+        // Each chosen flag on a chip of its own, its words whole, said as its pill is said.
+        for (final (words, spoken, clear) in [
+          ('Risk level: Red · Demo: High', 'Risk level: Red, Demo: High', 'Clear risk level'),
+          ('Condition: Blue · Demo: Frost risk', 'Condition: Blue, Demo: Frost risk', 'Clear Demo: Frost risk'),
+          (
+            'Condition: Teal · Demo: Dehydration risk',
+            'Condition: Teal, Demo: Dehydration risk',
+            'Clear Demo: Dehydration risk',
+          ),
+        ]) {
+          await reveal(tester, find.text(words));
+          expectWhole(tester, words);
+          expect(
+            tester.getSemantics(find.bySemanticsLabel(spoken)),
+            isSemantics(isButton: true, hasTapAction: true, isFocusable: true),
+          );
+          expect(find.byTooltip(clear), findsOneWidget);
+        }
+        await expectScreenOk(tester);
+
+        // One condition of the two cleared alone: the list is narrowed by the other and the level.
+        await tapOn(tester, find.byTooltip('Clear Demo: Frost risk'));
+        expect(find.text('Condition: Blue · Demo: Frost risk'), findsNothing);
+        await reveal(tester, find.text('Condition: Teal · Demo: Dehydration risk'));
+        expectWhole(tester, 'Condition: Teal · Demo: Dehydration risk');
+        expectWhole(tester, 'Risk level: Red · Demo: High');
+        await expectShown(tester, find.text('2 patients found on this phone'));
+        for (final name in ['Demo Round', 'Demo Fern']) {
+          await reveal(tester, find.bySemanticsLabel(RegExp('^$name[,.]')));
+        }
+        await expectScreenOk(tester);
+        handle.dispose();
+      });
+    }
+
+    testWidgets('a full date chosen under Born is shown whole too', (tester) async {
+      await loadAppFont(tester);
+      final handle = tester.ensureSemantics();
+      final h = await signIn(tester, scale: 2, narrow: true);
+      seedP1(h.server);
+      await syncAndRefresh(tester, h);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tapOn(tester, find.widgetWithText(ActionChip, 'Born'));
+      await tester.enterText(find.byKey(const ValueKey('phi.born')), '03/07/1946');
+      await tester.pump(const Duration(milliseconds: 900));
+      await settle(tester);
+      for (final words in ['Yes, that’s right', 'Use this']) {
+        final control = find.descendant(of: find.byType(BottomSheet), matching: find.text(words));
+        await tester.ensureVisible(control);
+        await tester.pumpAndSettle();
+        await tester.tap(control);
+        await settle(tester);
+      }
+      await reveal(tester, find.text('Born Mar 7, 1946'));
+      expectWhole(tester, 'Born Mar 7, 1946');
+      expect(find.byTooltip('Clear born'), findsOneWidget);
       await expectScreenOk(tester);
       handle.dispose();
     });
