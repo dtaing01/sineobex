@@ -549,6 +549,27 @@ test('Entered in error on a clear says the flag it cleared can come back, and th
   expect((await chartFor(ADMIN, patient.id)).flags!.primary?.flagId).toBe(high.flagId);
 });
 
+// Item 23: the page's notices are its own (notices.ts), so a name every object inherits, which
+// handed React a function, draws the page with none.
+test('an address naming no notice of the page’s own, such as ?corrected=constructor, draws the page with none', async ({
+  page,
+}) => {
+  const patient = await freshPatient();
+  await signIn(page, ADMIN);
+  const notices = page.getByRole('main').locator('.px-alert--ok');
+  for (const query of ['corrected=constructor', 'decided=toString', 'flag=__proto__', 'decided=valueOf']) {
+    await page.goto(`/patients/${patient.id}?${query}`);
+    await expect(page.getByRole('heading', { level: 1 }), query).toBeVisible();
+    await expect(partsOf(page).panel, query).toBeVisible();
+    await expect(notices, query).toHaveCount(0);
+  }
+  // One the page knows is said.
+  await page.goto(`/patients/${patient.id}?corrected=birth`);
+  await expect(notices).toHaveText([
+    'Date of birth corrected. The old value, the new one and your reason are in the history.',
+  ]);
+});
+
 // Review finding R4: the panel records no change that would change nothing, as the phone's sheet
 // writes only what differs.
 test('a Set of a flag the patient has, or a Clear of one they don’t, is said beside it and never sent', async ({

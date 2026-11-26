@@ -21,6 +21,7 @@ import {
 } from '../format';
 import styles from '../patients.module.css';
 import { FlagsPanel } from './FlagsPanel';
+import { pageNotices } from './notices';
 import { Timeline } from './Timeline';
 
 // Never a name: titles land in the history and on screen shares (module 9).
@@ -37,25 +38,6 @@ const DETAILS = [
   'preferredLanguage',
   'idCardChoice',
 ] as const;
-
-const CORRECTED: Record<string, string> = {
-  legalName: 'Legal name corrected. The old value, the new one and your reason are in the history.',
-  birth: 'Date of birth corrected. The old value, the new one and your reason are in the history.',
-  declined: 'The declined request is recorded with your reason. The chart is unchanged.',
-};
-
-const DECIDED: Record<string, string> = {
-  current: 'Decided. The chart keeps its value, and the other stays in its history.',
-  alternate: 'Decided. The chart now shows the value you chose; the one it replaced stays in its history.',
-};
-
-/** What the Flags panel says when the page is loaded again after its act (`?flag=`). */
-const FLAG_DONE: Record<string, string> = {
-  saved: 'Flag saved. The history below shows the change.',
-  // One sentence for a set marked and a clear marked alike (a clear marked can bring its flag back):
-  // the header shows the patient's flags as they are now.
-  marked: 'Marked entered in error. The flags at the top of the page show the patient’s flags without it.',
-};
 
 const METHOD: Record<Schemas['ConsentView']['method'], string> = {
   verbal: ', verbally',
@@ -145,8 +127,7 @@ export default async function PatientPage({
   const [chart, { me, team }] = await Promise.all([loadChart(patientId), currentUser()]);
   const today = teamToday();
   const id = chart.canonicalId;
-  const corrected = CORRECTED[typeof query.corrected === 'string' ? query.corrected : ''];
-  const decided = DECIDED[typeof query.decided === 'string' ? query.decided : ''];
+  const { corrected, decided, flag } = pageNotices(query);
   // The flags the panel offers are the API's for this person (D114), asked only where they may change one.
   const canFlag = can(team, 'patients.edit');
   const listed = chart.flags && canFlag ? await listFlags() : [];
@@ -239,11 +220,7 @@ export default async function PatientPage({
             markable={markableChanges(chart, { userId: me.user.id, permissions: team?.permissions ?? [] })}
             canEdit={canFlag}
             changeId={randomUUID()}
-            notice={
-              typeof query.flag === 'string' && Object.hasOwn(FLAG_DONE, query.flag)
-                ? FLAG_DONE[query.flag]
-                : undefined
-            }
+            notice={flag}
           />
         </section>
       )}
