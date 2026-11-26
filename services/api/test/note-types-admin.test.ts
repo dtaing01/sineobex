@@ -1705,6 +1705,153 @@ describe('adding, removing, restoring and taking an update: what each checks', (
     }
   });
 
+  // Review finding A1: every action writes its audit event in its transaction (CLAUDE.md), as
+  // presets-audit.test.ts holds the preset writes: what a write leaves and its audit row share one
+  // transaction id, and a write whose audit event cannot be written is undone whole.
+  /** The transaction that last wrote `key`'s head, its current version and its newest event. */
+  async function writesOf(teamId: string, key: string) {
+    const [head] = await h.scratch.owner<{ xid: string; version: number }[]>`
+      select xmin::text as xid, current_version as version from sineobex.note_types
+      where team_id = ${teamId} and key = ${key}`;
+    const [version] = await h.scratch.owner<{ xid: string }[]>`
+      select xmin::text as xid from sineobex.note_type_versions
+      where team_id = ${teamId} and key = ${key} and version = ${head!.version}`;
+    const [event] = await h.scratch.owner<{ xid: string }[]>`
+      select xmin::text as xid from sineobex.team_preset_events
+      where team_id = ${teamId} and note_type_key = ${key}
+      order by created_at desc, xmin::text::bigint desc limit 1`;
+    return { head: head!.xid, version: version!.xid, event: event!.xid };
+  }
+  /** The team's note type audit events after `mark`, each with its key and the transaction that wrote it. */
+  const noteTypeAudits = async (teamId: string, mark: string) =>
+    (await auditAfter(h, mark))
+      .filter((e) => e.teamId === teamId && e.action.startsWith('note_type.'))
+      .map((e) => ({ action: e.action, key: e.entityId, xid: e.xid }));
+
+  it('writes each act’s audit event in the act’s transaction: an add, a publish, a remove and a restore', async () => {
+    const t = await presetsTeam(h, 'Note Types Audit In Write');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    let mark = await auditMark(h);
+    const added = await theirs.create({
+      title: 'Demo: Audited in its write',
+      kinds: ['non_medical'],
+      group: 'outreach',
+    });
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+    const key = added.body.key as string;
+    const inOne = async (action: string, wroteVersion: boolean) => {
+      const w = await writesOf(t.teamId, key);
+      const audits = await noteTypeAudits(t.teamId, mark);
+      expect(
+        audits.map((a) => [a.action, a.key]),
+        action,
+      ).toEqual([[action, key]]);
+      expect([w.head, w.event, ...(wroteVersion ? [w.version] : [])], action).toEqual(
+        Array.from({ length: wroteVersion ? 3 : 2 }, () => audits[0]!.xid),
+      );
+    };
+    await inOne('note_type.created', true);
+    mark = await auditMark(h);
+    const published = await theirs.publish(key, 1, [{ op: 'rename_type', title: 'Demo: Audited, renamed' }]);
+    expect(published.status, JSON.stringify(published.body)).toBe(200);
+    await inOne('note_type.published', true);
+    mark = await auditMark(h);
+    expect((await theirs.archive(key, 2)).status).toBe(200);
+    await inOne('note_type.archived', false);
+    mark = await auditMark(h);
+    expect((await theirs.restore(key)).status).toBe(200);
+    await inOne('note_type.restored', false);
+  });
+
+  it('writes a take’s audit events in the take’s transaction, in place and as new', async () => {
+    const inPlace = await teamWithOffer('Note Types Audit Take', 'psychological');
+    try {
+      const mark = await auditMark(h);
+      const r = await inPlace.theirs.takeUpdate('psychological', {
+        baseVersion: inPlace.row.version,
+        platformVersion: inPlace.next.version,
+        asNew: false,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const w = await writesOf(inPlace.t.teamId, 'psychological');
+      const audits = await noteTypeAudits(inPlace.t.teamId, mark);
+      expect(audits.map((a) => [a.action, a.key])).toEqual([
+        ['note_type.platform_update_taken', 'psychological'],
+      ]);
+      expect([w.head, w.version, w.event]).toEqual([audits[0]!.xid, audits[0]!.xid, audits[0]!.xid]);
+    } finally {
+      inPlace.unrelease();
+    }
+    const asNew = await teamWithOffer('Note Types Audit Take New', 'harm_reduction', (d) => ({
+      ...d,
+      sensitivity: 'none',
+    }));
+    try {
+      const mark = await auditMark(h);
+      const r = await asNew.theirs.takeUpdate('harm_reduction', {
+        baseVersion: asNew.row.version,
+        platformVersion: asNew.next.version,
+        asNew: true,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const key = r.body.key as string;
+      const made = await writesOf(asNew.t.teamId, key);
+      const old = await writesOf(asNew.t.teamId, 'harm_reduction');
+      const audits = await noteTypeAudits(asNew.t.teamId, mark);
+      expect(audits.map((a) => [a.action, a.key])).toEqual([
+        ['note_type.archived', 'harm_reduction'],
+        ['note_type.platform_update_taken', key],
+      ]);
+      expect(
+        new Set([made.head, made.version, made.event, old.head, old.event, ...audits.map((a) => a.xid)]).size,
+      ).toBe(1);
+    } finally {
+      asNew.unrelease();
+    }
+  });
+
+  it('undoes an add or a publish whole when its audit event cannot be written', async () => {
+    const t = await presetsTeam(h, 'Note Types Audit Refused');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const added = await theirs.create({
+      title: 'Demo: Audited first',
+      kinds: ['non_medical'],
+      group: 'outreach',
+    });
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+    const key = added.body.key as string;
+    await h.scratch.owner.unsafe(`
+      create function sineobex.test_fail_note_type_audit() returns trigger language plpgsql as $$
+      begin
+        if new.action like 'note_type.%' then raise exception 'refused for the test'; end if;
+        return new;
+      end $$;
+      create trigger test_fail_note_type_audit before insert on sineobex.audit_events
+        for each row execute function sineobex.test_fail_note_type_audit()`);
+    try {
+      for (const [name, act] of [
+        [
+          'add',
+          () => theirs.create({ title: 'Demo: Never audited', kinds: ['non_medical'], group: 'outreach' }),
+        ],
+        ['publish', () => theirs.publish(key, 1, [{ op: 'rename_type', title: 'Demo: Never renamed' }])],
+      ] as [string, () => Promise<Answer>][]) {
+        const before = await footprint(t.teamId);
+        const r = await act();
+        expect(r.status, `${name}: ${JSON.stringify(r.body)}`).toBe(500);
+        expect(await footprint(t.teamId), name).toEqual(before);
+      }
+    } finally {
+      await h.scratch.owner.unsafe(`
+        drop trigger test_fail_note_type_audit on sineobex.audit_events;
+        drop function sineobex.test_fail_note_type_audit()`);
+    }
+    // And each goes through once the audit chain takes it again.
+    expect(
+      (await theirs.publish(key, 1, [{ op: 'rename_type', title: 'Demo: Renamed at last' }])).status,
+    ).toBe(200);
+  });
+
   it('copies a removed note type too, keeps what its marks protect, and stores kinds in one order', async () => {
     const t = await presetsTeam(h, 'Note Types Adds');
     const theirs = noteTypesApi(t.teamId, t.admin);

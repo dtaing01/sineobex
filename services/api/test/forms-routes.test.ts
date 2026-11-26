@@ -188,6 +188,36 @@ describe('GET /v1/forms/note-types', () => {
     expect(await eventsAfter(again)).toEqual([]);
   });
 
+  // Review finding A1: the install and its audit event are one transaction, as the pull's installer
+  // is (presets-pull.test.ts).
+  it('installs and audits in the list’s transaction: when the audit fails, nothing is installed', async () => {
+    const teamId = await createTeam(h, 'Demo Forms Unaudited Team');
+    const member = await memberWith(h, teamId, []);
+    await h.scratch.owner.unsafe(`
+      create function sineobex.test_fail_forms_audit() returns trigger language plpgsql as $$
+      begin
+        if new.action = 'forms.presets_installed' then raise exception 'refused for the test'; end if;
+        return new;
+      end $$;
+      create trigger test_fail_forms_audit before insert on sineobex.audit_events
+        for each row execute function sineobex.test_fail_forms_audit()`);
+    try {
+      expect((await list(member.token, teamId)).res.status).toBe(500);
+    } finally {
+      await h.scratch.owner.unsafe(`
+        drop trigger test_fail_forms_audit on sineobex.audit_events;
+        drop function sineobex.test_fail_forms_audit()`);
+    }
+    const written = () => h.scratch.owner<{ heads: number; versions: number; revisions: number }[]>`
+      select (select count(*)::int from sineobex.note_types where team_id = ${teamId}) as heads,
+             (select count(*)::int from sineobex.note_type_versions where team_id = ${teamId}) as versions,
+             (select count(*)::int from sineobex.team_preset_state where team_id = ${teamId}) as revisions`;
+    expect(await written()).toEqual([{ heads: 0, versions: 0, revisions: 0 }]);
+    // And the next list installs, once the audit chain takes it.
+    expect((await list(member.token, teamId)).res.status).toBe(200);
+    expect((await written())[0]!.versions).toBe(presets.length);
+  });
+
   it('lists each key’s newest version', async () => {
     const teamId = await createTeam(h, 'Demo Forms Versions Team');
     const member = await memberWith(h, teamId, ['patients.view']);
