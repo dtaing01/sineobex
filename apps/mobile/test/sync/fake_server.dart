@@ -101,11 +101,13 @@ import 'test_note_types.dart';
 /// idx1+sens for a reader the flag rule shows a sensitive flag to; and search's flagIds, read in
 /// lowercase and each once, refused 403 before anything is searched when one names a flag hidden from
 /// the caller or one the team does not hold, narrowing the hits before the cut, and counted in the
-/// search's event. Not mirrored: the search body's schema, as for the rest of the search (a flag
-/// alone, as a year alone, and a flag ID that is no UUID, each 422); the `access.denied` a refused
-/// search is logged with; and the index's version moving at a flag change that changes no entry the
-/// reader holds, as the API's triggers move its counter at every one: here it moves when what the
-/// reader's entries or the redirect list show changes, as for every other record.
+/// search's event. The index's counter is the team's, only goes up, and a taken flag change's receipt,
+/// and its taken mark's, answer it as `indexVersion` ([_indexCounter]; review finding VR1). Not
+/// mirrored: the search body's schema, as for the rest of the search (a flag alone, as a year alone,
+/// and a flag ID that is no UUID, each 422); the `access.denied` a refused search is logged with; and
+/// the counter moving at a flag change that changes nothing the index shows, as the API's triggers
+/// move it at every one: here it moves when what the team's index shows changes, under any
+/// projection, as for every other record.
 class FakeSyncServer {
   FakeSyncServer({required this.now});
 
@@ -1274,8 +1276,9 @@ class FakeSyncServer {
           });
       // Its time is the change's, never later than the server's receipt, a held change's hold time
       // (4.5, D90), so a phone whose clock runs ahead never wins every change. Its one field is the
-      // mark, so it writes no history of its own. The answer carries both times as stored, kept in
-      // the receipt for a retry (patient-flag-change.ts flagChangeTimes; review finding S1).
+      // mark, so it writes no history of its own. The answer carries both times as stored and the
+      // team index's counter after it, kept in the receipt for a retry (patient-flag-change.ts
+      // flagChangeTimes and teamIndexCounter; review findings S1, VR1).
       case entityFlagChange:
         final made = DateTime.parse(at);
         final receipt = record.storedAt!;
@@ -1290,7 +1293,11 @@ class FakeSyncServer {
             'effectiveAt': _isoMs(made.isBefore(receipt) ? made : receipt),
             'clockVerified': c['clockVerified'] == true,
           });
-        details = {'receivedAt': _isoMs(receipt), 'effectiveAt': record.attributes['effectiveAt']};
+        details = {
+          'receivedAt': _isoMs(receipt),
+          'effectiveAt': record.attributes['effectiveAt'],
+          'indexVersion': _indexCounter(record.teamId!),
+        };
       case entityEncounter:
         // What the server keeps with a visit and no set changes (encounter.ts load).
         record.attributes.addAll({
@@ -1603,7 +1610,11 @@ class FakeSyncServer {
     if (s.rec.entity == entityEncounter && s.field == 'patientId' && s.value is String) {
       _seen(s.value! as String, DateTime.parse(s.rec.attributes['startedAt']! as String));
     }
-    return _accepted(version);
+    // A flag change's mark taken is answered the team index's counter after it (writeAnswer).
+    return _accepted(
+      version,
+      details: s.rec.entity == entityFlagChange ? {'indexVersion': _indexCounter(s.rec.teamId!)} : null,
+    );
   }
 
   /// The patient was seen when the visit started (encounter.ts seen): the earlier of that and the
@@ -2949,13 +2960,51 @@ class FakeSyncServer {
     };
   }
 
-  /// The index's version: it moves whenever anything an entry the reader holds or the redirect list
-  /// shows changes, as the server's statement-level triggers bump its counter, and names the
-  /// reader's projection after it, as team-index.ts does (`<counter>.<projection>`).
-  final _indexVersions = <String, int>{};
+  /// The team index's counter, by team (0009's team_index_versions): it only goes up, as the API's,
+  /// whose statement-level triggers bump it at every write the index shows. Here it moves whenever
+  /// what the team's index shows differs from what it last showed, every projection's entries and
+  /// the redirect list, checked when an index is asked for and when a flag change or its mark is
+  /// stored, so a receipt can name the counter after its change ([_indexCounter]). The version names
+  /// the reader's projection after it, as team-index.ts does (`<counter>.<projection>`).
+  final _indexCounters = <String, int>{};
+  final _indexShown = <String, String>{};
 
   /// How many index pages were downloaded (tests watch a resumed download).
   int indexPages = 0;
+
+  /// Who reads each projection of the index: a reader the flag rule hides sensitive flags from, and
+  /// one it shows them to.
+  static const _plainReader = {'patients.view', 'encounters.chart'};
+  static const _sensitiveReader = {'patients.view', 'encounters.chart', 'patients.view_sensitive'};
+
+  /// [teamId]'s index entries as a reader with [perms] holds them: the team's active patients by ID,
+  /// each with the group's current flags as the reader may see them.
+  List<Map<String, Object?>> _indexEntries(String teamId, Set<String> perms) {
+    final flags = _teamFlags(teamId);
+    // The team's patients only (team-index.ts reads them under the team, row-level security behind).
+    final active =
+        records.values.where((r) => r.entity == entityPatient && r.status == 'active' && _inTeam(r, teamId)).toList()
+          ..sort((a, b) => a.id.compareTo(b.id));
+    return [
+      for (final p in active) _indexEntry(p, _currentFlags(perms, teamId, flags, _ofGroup(entityFlagChange, p.id))),
+    ];
+  }
+
+  /// [teamId]'s index counter now: moved on first if what the index shows, under either projection,
+  /// differs from what it showed when the counter last moved.
+  int _indexCounter(String teamId) {
+    final team = teamId.toLowerCase();
+    final shown = valueHash({
+      'idx1': _indexEntries(team, _plainReader),
+      'idx1+sens': _indexEntries(team, _sensitiveReader),
+      'redirects': _redirects(teamId: team),
+    });
+    if (_indexShown[team] != shown) {
+      _indexShown[team] = shown;
+      _indexCounters[team] = (_indexCounters[team] ?? 0) + 1;
+    }
+    return _indexCounters[team]!;
+  }
 
   Map<String, Object?> _index(String userId, String teamId, Map<String, Object?> b) {
     final perms = permissionsOf(userId);
@@ -2965,16 +3014,8 @@ class FakeSyncServer {
     // A reader the flag rule shows a sensitive flag to holds another copy (team-index.ts, phase 5
     // design 6.1), so a role that gains or loses sight of one downloads the index anew.
     final projection = _flagHidden(perms, (teamId: teamId.toLowerCase(), sensitive: true)) ? 'idx1' : 'idx1+sens';
-    final flags = _teamFlags(teamId);
-    // The team's patients only (team-index.ts reads them under the team, row-level security behind).
-    final active =
-        records.values.where((r) => r.entity == entityPatient && r.status == 'active' && _inTeam(r, teamId)).toList()
-          ..sort((a, b) => a.id.compareTo(b.id));
-    final all = [
-      for (final p in active) _indexEntry(p, _currentFlags(perms, teamId, flags, _ofGroup(entityFlagChange, p.id))),
-    ];
-    final content = valueHash({'entries': all, 'redirects': _redirects(teamId: teamId)});
-    final version = '${_indexVersions.putIfAbsent(content, () => _indexVersions.length + 1)}.$projection';
+    final all = _indexEntries(teamId, perms);
+    final version = '${_indexCounter(teamId)}.$projection';
     // Dated by the server's clock that dates a receipt, to the millisecond as the API answers it
     // (team-index.ts, review finding S1).
     final base = {'version': version, 'projection': projection, 'generatedAt': _isoMs(now())};

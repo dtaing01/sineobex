@@ -40,7 +40,9 @@ class _OtherHash implements ApiTransport {
 
 /// The test server behind a hand that holds the next push, once [hold] is set, until it completes: a
 /// push the API is still storing, waiting on the team's write lock. The server then stores it as of
-/// when it was sent, as the API dates a change by when its push's transaction began. Every request
+/// when it was sent, as the API dates a change by when its push's transaction began. It holds the next
+/// index request too, once [indexHold] is set: one still on its way to the server, which then answers
+/// it, or with [indexTimesOut] times out as the transport does, so the phone asks again. Every request
 /// and answer is written down, in order.
 class _HeldPush implements ApiTransport {
   _HeldPush(this.inner, {required this.serverTime, required this.setServerTime});
@@ -48,13 +50,24 @@ class _HeldPush implements ApiTransport {
   final DateTime Function() serverTime;
   final void Function(DateTime) setServerTime;
   Completer<void>? hold;
+  Completer<void>? indexHold;
+  bool indexTimesOut = false;
 
-  /// `sent <path>` and `answered <path>`, as they happened.
+  /// `sent <path>`, `timed out <path>` and `answered <path>`, as they happened.
   final events = <String>[];
 
   @override
   Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
     events.add('sent $path');
+    final heldIndex = path == '/v1/patients/index' ? indexHold : null;
+    if (heldIndex != null) {
+      indexHold = null;
+      await heldIndex.future;
+      if (indexTimesOut) {
+        events.add('timed out $path');
+        throw const NetworkException('timeout');
+      }
+    }
     final held = path == '/v1/sync/push' ? hold : null;
     final Object? answer;
     if (held == null) {
@@ -1089,8 +1102,9 @@ void main() {
       indexAfterThePush();
     });
 
-    test('High set offline over the index’s Low, its push held while the index is asked for: the index comes '
-        'after the push, with High, on the profile and the list row', () async {
+    /// The verifier's flow: Low on the server and in the index, a list-only copy opened offline, and
+    /// High set on it offline, not yet sent.
+    Future<({String patient, String high, String low})> highOverTheIndexLow() async {
       Map<String, Object?> flag(String name, int rank) => {
         'name': name,
         'tier': 'primary',
@@ -1119,8 +1133,19 @@ void main() {
       advance(const Duration(minutes: 1));
       services.flags.record(patient, flagId: high, action: 'set', reason: 'Demo: worse tonight');
       server.offline = false;
-
       link.events.clear();
+      return (patient: patient, high: high, low: low);
+    }
+
+    /// What the patient's profile and its list row show as the risk level, through [s].
+    List<String?> shown(PatientServices s, String patient) => [
+      s.flags.flagsOf(patient).riskLevel?.flagId,
+      s.flags.riskLevelOf(patient)?.flagId,
+    ];
+
+    test('High set offline over the index’s Low, its push held while the index is asked for: the index comes '
+        'after the push, with High, on the profile and the list row', () async {
+      final (:patient, :high, low: _) = await highOverTheIndexLow();
       final (push, held) = await heldPush();
       // The push waits on the team's write lock; two seconds on, the timer asks for the index.
       advance(const Duration(seconds: 2));
@@ -1131,13 +1156,94 @@ void main() {
       await refresh;
       expect(p.store.outbox(), isEmpty, reason: 'confirmed');
       expect(isPartialChart(p.store, patient), isTrue);
-      expect(
-        [services.flags.flagsOf(patient).riskLevel?.flagId, services.flags.riskLevelOf(patient)?.flagId],
-        [high, high],
-        reason: 'the profile and the list row',
-      );
+      expect(shown(services, patient), [high, high], reason: 'the profile and the list row');
       expect(services.index.flagsOf(patient)?.primary, high, reason: 'the index was worked out after the push');
       indexAfterThePush();
+    });
+
+    // Verification finding VR1: the wait holds back only a refresher that hasn't started. The timer's
+    // index request is already on its way when the push begins, and is worked out during the push,
+    // after the push's change was dated and before it was stored: the receipt's time is before the
+    // index's, though the index leaves the change out. Only the team index's counter the receipt
+    // names tells the phone that index doesn't hold it.
+    for (final timesOut in [true, false]) {
+      final how = timesOut
+          ? 'times out and is asked again during the push'
+          : 'reaches the server only after the push began';
+      test('High set offline over the index’s Low, the timer’s index request on its way when the push begins $how: '
+          'High on the profile and the list row', () async {
+        final (:patient, :high, :low) = await highOverTheIndexLow();
+        final onItsWay = link.indexHold = Completer<void>();
+        link.indexTimesOut = timesOut;
+        final refresh = p.engine.runRefreshers(RefreshReason.timer);
+        await settle();
+        // The push begins while the index request is on its way, and waits on the team's write lock.
+        final held = link.hold = Completer<void>();
+        final push = p.engine.syncAll(force: true);
+        await settle();
+        expect(link.events, ['sent /v1/patients/index', 'sent /v1/sync/push']);
+        advance(const Duration(seconds: 2));
+        onItsWay.complete();
+        await settle();
+        held.complete();
+        expect(await push, isA<SyncDone>());
+        await refresh;
+        expect(
+          link.events.indexOf('answered /v1/patients/index'),
+          lessThan(link.events.indexOf('answered /v1/sync/push')),
+          reason: 'the index was worked out while the push waited: ${link.events}',
+        );
+        expect(services.index.flagsOf(patient)?.primary, low, reason: 'so it leaves the change out');
+        expect(p.store.outbox(), isEmpty, reason: 'confirmed');
+        expect(isPartialChart(p.store, patient), isTrue);
+        expect(shown(services, patient), [high, high], reason: 'the profile and the list row');
+      });
+    }
+
+    // Verification finding VR2: a lock while the push is on its way closes the database under it, and
+    // the unlock opens a new engine, which has no push of its own under way, so its refresh downloads
+    // the index at once. The old push's answer then finds its database closed, so its change waits and
+    // its stored receipt confirms it at the next push, dated when the server received it, before the
+    // index was worked out.
+    test('High set offline over the index’s Low, its push on its way across a lock and an unlock, the index '
+        'downloaded meanwhile: High on the profile and the list row once the stored receipt comes', () async {
+      final (:patient, :high, :low) = await highOverTheIndexLow();
+      final held = link.hold = Completer<void>();
+      final first = p.engine.syncAll(force: true).then<Object?>((o) => o, onError: (Object e) => e);
+      await settle();
+      expect(link.events, ['sent /v1/sync/push']);
+      // Locked for twenty minutes, then unlocked: a new store and engine on the same file.
+      advance(const Duration(minutes: 20));
+      await p.restart();
+      final unlocked = PatientServices(
+        OpenTeam(
+          userId: alex,
+          teamId: team,
+          store: p.store,
+          api: p.engine.api,
+          clock: p.clock,
+          permissions: FakeSyncServer.healthcareStaff.toList(),
+        ),
+        idLinkBaseUrl: 'http://localhost:3100',
+        copy: (_) async => true,
+        wallNow: () => p.wall,
+      );
+      p.engine.refreshers.add(TeamIndexRefresher(unlocked.index, p.engine.api, wallNow: () => p.wall));
+      await p.engine.runRefreshers(RefreshReason.opened);
+      expect(link.events, ['sent /v1/sync/push', 'sent /v1/patients/index', 'answered /v1/patients/index']);
+      expect(unlocked.index.flagsOf(patient)?.primary, low, reason: 'worked out while the push waited');
+      held.complete();
+      await first;
+      expect(
+        [for (final e in p.store.outbox()) e.entity],
+        contains(entityFlagChange),
+        reason: 'its answer found the database closed: the change waits',
+      );
+      advance(const Duration(seconds: 20));
+      expect(await p.engine.syncAll(force: true), isA<SyncDone>());
+      expect(p.store.outbox(), isEmpty, reason: 'confirmed by its stored receipt');
+      expect(isPartialChart(p.store, patient), isTrue);
+      expect(shown(unlocked, patient), [high, high], reason: 'the profile and the list row');
     });
   });
 }
