@@ -725,10 +725,12 @@ export function restorePreset(
     );
     if ('refuse' in effect) throw refusal(effect.refuse, { preset, archived });
     // A bundle comes back checked as a write of it is for what holds a medication (4.4): an item
-    // may have moved into a medication category while it was archived. Its other problems, a map
+    // may have moved into a medication category while it was archived. A map comes back checked
+    // for what only some readers may see (BM-77): a note type's version taken while it was archived
+    // may have hidden the answer it reads, and it would fire on that. Its other problems, a map
     // whose note type changed since, leave a preset that fires on nothing, and keep nothing away.
-    const medication = others.filter((p) => p.code === 'bundle_not_medical');
-    if (medication.length > 0) throw refusedBody(medication);
+    const kept = others.filter((p) => p.code === 'bundle_not_medical' || p.code === 'sensitive_path');
+    if (kept.length > 0) throw refusedBody(kept);
     return {
       changes: stateChange(preset, effect, 'restored', 'preset.restored'),
       answer: (revision) => ({ revision }),

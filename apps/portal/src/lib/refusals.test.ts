@@ -179,6 +179,19 @@ describe('a preset form the API refused', () => {
     expect(restored.fieldErrors).toBeUndefined();
   });
 
+  it('says a mapping restored onto an answer only some people may read now can’t be, and what to do (item 13)', () => {
+    // Taken while the mapping was removed, a note type's version hid the answer it reads: 422 invalid.
+    const restored = refused(
+      'invalid',
+      { kind: 'field_supply_map', act: 'restore' },
+      { problems: [{ path: 'path', code: 'sensitive_path' }] },
+    );
+    expect(restored.error).toBe(
+      'Only some people may read the answer this mapping uses now, so it can’t be restored. Add a mapping for another answer instead.',
+    );
+    expect(restored.fieldErrors).toBeUndefined();
+  });
+
   it('offers an update that changes a fixed field only as a new one, in 8.1’s words', () => {
     expect(refused('fixed_field', { kind: 'flag', act: 'take' }, { fields: ['tier'] }).error).toBe(
       'This update changes something that can’t be changed here. Add it as a new one: this one is removed, and kept in the history.',

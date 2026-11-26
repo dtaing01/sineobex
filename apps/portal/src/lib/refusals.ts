@@ -72,6 +72,8 @@ export const PRESET_SENTENCES = {
   restoredBundleNotMedical:
     'This bundle now holds a medication, so it must be Medical. Add a Medical bundle instead.',
   sensitivePath: 'Only some people may read this answer, so it can’t suggest supplies.',
+  restoredSensitivePath:
+    'Only some people may read the answer this mapping uses now, so it can’t be restored. Add a mapping for another answer instead.',
 } as const;
 
 /**
@@ -379,7 +381,9 @@ export function presetRefusalState(
         return state(
           has('bundle_not_medical')
             ? PRESET_SENTENCES.restoredBundleNotMedical
-            : 'This doesn’t fit your team’s other presets now, so it can’t be restored as it is.',
+            : has('sensitive_path')
+              ? PRESET_SENTENCES.restoredSensitivePath
+              : 'This doesn’t fit your team’s other presets now, so it can’t be restored as it is.',
         );
       const whole = problems.find((p) => p.path === '');
       return state(

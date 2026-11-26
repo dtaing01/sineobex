@@ -2249,6 +2249,35 @@ describe('a platform version under which a field supply map would fire on what s
       unrelease();
     }
   });
+
+  it('refuses to restore the map once that version is taken, as a map would be refused on it: 422 invalid, sensitive_path, nothing written (item 13)', async () => {
+    // Removed, the map let the version be taken in place; restored, it would fire on an answer only
+    // some readers of a wound care note may see (BM-77), as no create or edit may make it fire.
+    const { t, theirs, presets, next, unrelease, map } = await mappedTeam('Note Types Map Restore', true);
+    try {
+      await listed(t);
+      const row = await rowOf('wound_care', theirs);
+      expect((await presets.archive('field_supply_map', map.id, map.version)).status).toBe(200);
+      const taken = await theirs.takeUpdate('wound_care', {
+        baseVersion: row.version,
+        platformVersion: next.version,
+        asNew: false,
+      });
+      expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+      const details = await refusedUnwritten(
+        () => presets.restore('field_supply_map', map.id),
+        422,
+        'invalid',
+        t.teamId,
+      );
+      expect(details).toEqual({ problems: [{ path: 'path', code: 'sensitive_path' }] });
+      const [head] = await h.scratch.owner<{ state: string }[]>`
+        select state from sineobex.team_presets where id = ${map.id}`;
+      expect(head!.state).toBe('archived');
+    } finally {
+      unrelease();
+    }
+  });
 });
 
 describe('every note type write', () => {
