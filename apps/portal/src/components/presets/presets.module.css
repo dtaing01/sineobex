@@ -84,9 +84,14 @@
 .review td {
   padding: var(--space-2);
 }
+/* A list in a cell keeps its words whole too. The portal's lists break a word anywhere
+   (globals.css), which leaves the word out of the cell's narrowest width: the column would narrow
+   below it and split it ("Approximat/e") where the table should scroll in its group instead
+   (finding VR5). `break-word` counts the whole word, and `.scroll` keeps that width from the page. */
 .review ul {
   list-style: none;
   padding-left: 0;
+  overflow-wrap: break-word;
 }
 /* A history in its preset's own panel (HistoryTable's `flat`): its heading and table, unboxed. */
 .flat {
