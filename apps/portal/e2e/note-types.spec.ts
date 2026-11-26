@@ -889,6 +889,55 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     expect(csp).toEqual([]);
   });
 
+  test('a copy of a section the team made in another note type is refused naming the part of this one it would be confused with (item 10)', async ({
+    page,
+  }) => {
+    // Each note type numbers the parts the team makes in it, so these two each hold the team's first.
+    const kits = await added({ title: 'Demo: Kit round', copyOf: 'outreach' });
+    await publishedMeanwhile(kits, [
+      {
+        op: 'add_section',
+        title: 'Demo: Kit check',
+        afterSectionId: null,
+        fields: [{ kind: 'text', label: 'Demo: Kit given', lines: 'one', maxLength: 100 }],
+      },
+    ]);
+    const beds = await added({ title: 'Demo: Bed round', copyOf: 'outreach' });
+    await publishedMeanwhile(beds, [
+      {
+        op: 'add_field',
+        sectionId: 'outreach',
+        kind: 'text',
+        label: 'Demo: Needs a bed',
+        lines: 'one',
+        maxLength: 100,
+      },
+    ]);
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+
+    await page.goto(`${LIST}/${beds}`);
+    const editor = editorOf(page);
+    const copy = page.getByRole('region', { name: 'Copy a section', exact: true });
+    await copy.getByRole('button', { name: 'Copy a section from another note type', exact: true }).click();
+    await copy.getByLabel('From the note type').selectOption({ label: 'Demo: Kit round' });
+    await copy.getByLabel('The section').selectOption({ label: 'Demo: Kit check' });
+    await copy.getByRole('button', { name: 'Hold this copy', exact: true }).click();
+    await editor.reason.fill('Demo: kits here too');
+    await editor.publish.click();
+    await expect(editor.alert).toBeFocused();
+    await expect(editor.alert).toContainText(
+      'This section would be confused with the field “Demo: Needs a bed” this note type has, so it can’t be copied in. Add the fields you need instead.',
+    );
+    await expectAccessible(page, 'Publish, a copy refused by a part of this note type', { inPlace: true });
+    expect((await noteType(beds)).version).toBe(2);
+
+    await expectNothingStored(page, 'The editor after a copy refused');
+    expectOnlyKeys(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
   test('Sineobex’s update to a note type is drawn on its own page at heading level 2 and in the list at 3, reviewed and taken in place (B-1)', async ({
     page,
   }) => {
