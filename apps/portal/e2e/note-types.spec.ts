@@ -928,7 +928,7 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await editor.publish.click();
     await expect(editor.alert).toBeFocused();
     await expect(editor.alert).toContainText(
-      'This section would be confused with the field “Demo: Needs a bed” this note type has, so it can’t be copied in. Add the fields you need instead.',
+      'This section would be confused with the field “Demo: Needs a bed” this note type has, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     await expectAccessible(page, 'Publish, a copy refused by a part of this note type', { inPlace: true });
     expect((await noteType(beds)).version).toBe(2);

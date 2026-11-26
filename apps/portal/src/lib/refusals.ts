@@ -590,8 +590,10 @@ const OPERATION_REFUSALS: Readonly<Record<string, string>> = {
   too_many_fields: 'This note type holds as many fields of your team’s own as it can.',
   too_many_sections: 'This note type holds as many sections of your team’s own as it can.',
   // Said when the editor finds no part to name (copyTakenWords): true of every copy refused id_taken.
+  // Its last sentence, as idTakenBy's, names the way on: the held copy goes first, then a section of
+  // the team's own is made by hand (the a11y review, settled point 2).
   id_taken:
-    'This note type has, or had before, a part this section would be confused with, so it can’t be copied in. Add the fields you need instead.',
+    'This note type has, or had before, a part this section would be confused with, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
   invalid: 'This change doesn’t fit the rest of the note type, so it can’t be made.',
 };
 
@@ -626,7 +628,7 @@ export function idTakenBy(
 ) {
   const part = by.kind === 'option' ? 'answer' : by.kind;
   const has = by.before ? 'had before' : 'has';
-  return `${whole ? 'This section' : 'A part of this section'} would be confused with the ${part} “${by.words}” this note type ${has}, so it can’t be copied in. Add the fields you need instead.`;
+  return `${whole ? 'This section' : 'A part of this section'} would be confused with the ${part} “${by.words}” this note type ${has}, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.`;
 }
 
 /**
