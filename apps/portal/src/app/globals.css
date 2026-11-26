@@ -283,6 +283,16 @@ p {
 .px-h3 {
   font: 700 18px/24px var(--font-sans);
 }
+/* A heading breaks a word longer than its line, as a medication's name can be, rather than widen
+   the page at 320 px (review finding X3). `anywhere`, unlike `break-word`, also leaves that word out
+   of the heading's min-content width, which main and the shell's grid track are sized by; a word
+   that fits its line stays whole. */
+.px-h1,
+.px-h2,
+.px-h3,
+.px-card h2 {
+  overflow-wrap: anywhere;
+}
 .px-select {
   min-height: var(--tap-min);
   border: 1.5px solid var(--line-strong);

@@ -4522,6 +4522,143 @@ test.describe('a preset’s history and the review of its update, at 320 px', ()
   });
 });
 
+/** WCAG 1.4.12's text spacing on every element, as a reader's own style sheet sets it, or taken off. */
+async function textSpacing(page: Page, on: boolean) {
+  await page.evaluate((on) => {
+    const spacing: [string, string][] = [
+      ['line-height', '1.5'],
+      ['letter-spacing', '0.12em'],
+      ['word-spacing', '0.16em'],
+    ];
+    for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+      const set: [string, string][] = el.tagName === 'P' ? [...spacing, ['margin-bottom', '2em']] : spacing;
+      for (const [property, value] of set) {
+        if (on) el.style.setProperty(property, value, 'important');
+        else el.style.removeProperty(property);
+      }
+    }
+  }, on);
+}
+
+/**
+ * The words a heading in main draws across two lines although they fit on one of its lines: only a
+ * word longer than the heading's line may break. A word's width is its pieces' widths together.
+ */
+function headingWordsSplit(): string[] {
+  const out: string[] = [];
+  const range = document.createRange();
+  for (const heading of document.querySelectorAll<HTMLElement>('main h1, main h2, main h3')) {
+    const style = getComputedStyle(heading);
+    const line = heading.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement?.closest('.sr-only')) continue;
+      for (const m of (node.textContent ?? '').matchAll(/[^\s\-\u2010-\u2014/]+/g)) {
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+        if (new Set(rects.map((r) => Math.round(r.top))).size < 2) continue;
+        if (rects.reduce((width, r) => width + r.width, 0) <= line - 1) out.push(m[0]);
+      }
+    }
+  }
+  return out;
+}
+
+// Review finding X3: one word longer than a heading's line, as a medication's name is, pushed the
+// page sideways at 320 px, the nav and main widened to it. Each preset's page heads it with its name
+// (the note type list with an h2), and the shell sizes by what its headings can't break.
+test.describe('a preset named as medications are, with one word longer than its heading’s line', () => {
+  test('its page and its list break that word alone and never scroll sideways at 320 px, with or without text spacing, accessible in all three themes', async ({
+    page,
+  }) => {
+    test.slow();
+    const word = 'Medroxyprogesterone';
+    /** The team's active preset of the kind with this name, made as another admin would make it if none is. */
+    const once = async (kind: string, body: Record<string, unknown>) =>
+      (await listed(kind)).find((p) => p.name === body.name && p.state === 'active')?.id ?? made(kind, body);
+    const { id: rx } = await named<CategoryBody>('order_category', 'Rx');
+    const item = await once('item', {
+      name: `Demo: ${word} 150 mg`,
+      categoryId: rx,
+      unit: 'injection',
+      medical: true,
+      captureLot: true,
+      result: null,
+    });
+    const bundle = await once('bundle', {
+      name: `Demo: ${word} visit kit`,
+      medical: true,
+      prompt: '',
+      lines: [{ itemId: item, qty: 1, core: true }],
+    });
+    const flag =
+      (await listed<FlagBody>('flag')).find((f) => f.name === `Demo: ${word} due` && f.state === 'active')
+        ?.id ?? (await madeCondition(`Demo: ${word} due`, 'teal'));
+    const admin = await staffToken('admin@example.com');
+    const title = `Demo: ${word} visit`;
+    const noteTypes = (await (await apiCall(admin, 'GET', '/v1/admin/note-types')).json()) as {
+      key: string;
+      title: string;
+      state: string;
+    }[];
+    let key = noteTypes.find((n) => n.title === title && n.state === 'active')?.key;
+    if (!key) {
+      const res = await apiCall(admin, 'POST', '/v1/admin/note-types', {
+        title,
+        kinds: ['medical'],
+        group: 'clinical',
+        reason: 'Demo: set up for a test',
+      });
+      expect(res.status).toBe(201);
+      key = ((await res.json()) as { key: string }).key;
+    }
+
+    await signIn(page, 'admin@example.com');
+    const pages: [label: string, path: string, heading: string][] = [
+      ['An item’s page', `/team/presets/items/${item}`, `Demo: ${word} 150 mg`],
+      ['Items', '/team/presets/items', 'Items'],
+      ['A bundle’s page', `/team/presets/bundles/${bundle}`, `Demo: ${word} visit kit`],
+      ['Bundles', '/team/presets/bundles', 'Bundles'],
+      ['A flag’s page', `/team/presets/flags/${flag}`, `Demo: ${word} due`],
+      ['Flags', '/team/presets/flags', 'Flags'],
+      ['A note type’s page', `/team/presets/note-types/${key}`, title],
+      ['Note types', '/team/presets/note-types', 'Note types'],
+    ];
+    for (const [label, path, heading] of pages) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
+      await expect(page.getByRole('main')).toContainText(word);
+      await page.setViewportSize({ width: 320, height: 800 });
+      expect(await page.evaluate(headingWordsSplit), `${label}: words split that fit their line`).toEqual([]);
+      await expectReflow(page, label);
+      await textSpacing(page, true);
+      expect(
+        await page.evaluate(headingWordsSplit),
+        `${label}, text spacing: words split that fit their line`,
+      ).toEqual([]);
+      await expectReflow(page, `${label}, with text spacing`);
+      await textSpacing(page, false);
+      await expectAccessible(page, `${label} at 320 px`, { inPlace: true });
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    // The word breaks where the line ends, on the item's page at 320 px: drawn on more than one line.
+    await page.goto(`/team/presets/items/${item}`);
+    await page.setViewportSize({ width: 320, height: 800 });
+    const lines = await page.getByRole('heading', { level: 1 }).evaluate((h, word) => {
+      const text = h.firstChild!;
+      const range = document.createRange();
+      const at = (text.textContent ?? '').indexOf(word);
+      range.setStart(text, at);
+      range.setEnd(text, at + word.length);
+      return new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)))
+        .size;
+    }, word);
+    expect(lines, 'the medication’s name, broken at the line’s end').toBeGreaterThan(1);
+    await expectNothingStored(page, 'A preset named with one long word');
+  });
+});
+
 test.describe('a list of lines or of boxes, by keyboard', () => {
   test('Add moves focus to the new line or box, and Take out to the one that takes its place, else the one before it, else Add', async ({
     page,
