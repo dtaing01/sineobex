@@ -119,7 +119,7 @@ export default async function MemberPage({ params }: { params: Promise<{ members
         <h2 id="history-heading" className="px-h2">
           History
         </h2>
-        <table className={STACKED_TABLE}>
+        <table className={`${STACKED_TABLE} ${styles.history}`}>
           <caption className="sr-only">Changes to this person’s access, newest first</caption>
           <thead>
             <tr>
@@ -135,7 +135,9 @@ export default async function MemberPage({ params }: { params: Promise<{ members
                 <td data-label="When">{formatDateTime(c.changedAt)}</td>
                 <td data-label="Change">{KIND_LABELS[c.kind] ?? c.kind}</td>
                 <td data-label="By">{c.changedBy.displayName}</td>
-                <td data-label="Reason">{c.reason ?? '—'}</td>
+                <td data-label="Reason" className={styles.why}>
+                  {c.reason ?? '—'}
+                </td>
               </tr>
             ))}
           </tbody>

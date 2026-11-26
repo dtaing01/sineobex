@@ -216,10 +216,11 @@ export async function textSpacing(page: Page, on: boolean) {
 }
 
 /**
- * The words a table in main draws across two lines although they fit on one of its cell's lines:
- * only a word longer than that may break. A break after a hyphen or a slash is a line break, not a
- * split word; a stacked table's heading row, kept for screen readers in a box one pixel wide, is not
- * drawn.
+ * The words a table in main draws across two lines although they would fit on one line of the
+ * table: only a word wider than the table may break. A table whose columns can't give each word its
+ * room must stack instead, as a column squeezed to keep the page from scrolling splits nearly every
+ * word in it. A break after a hyphen or a slash is a line break, not a split word; a stacked table's
+ * heading row, kept for screen readers in a box one pixel wide, is not drawn.
  */
 export function tableWordsSplit(): string[] {
   const out: string[] = [];
@@ -227,7 +228,8 @@ export function tableWordsSplit(): string[] {
   for (const cell of document.querySelectorAll<HTMLElement>('main table th, main table td')) {
     if (cell.closest('thead') && cell.closest('thead')!.getBoundingClientRect().width <= 1) continue;
     const style = getComputedStyle(cell);
-    const line = cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const line =
+      cell.closest('table')!.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
     const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (node.parentElement?.closest('.sr-only')) continue;
@@ -246,12 +248,13 @@ export function tableWordsSplit(): string[] {
 /**
  * WCAG 1.4.10 under 1.4.12, as the preset pages check it: nothing scrolls sideways at 320 px, nor
  * with text spacing there and at 640 px (1280 px at 200% zoom), and no table splits a word that fits
- * its line; with `axe`, then axe in all three themes at 320 px, in place. The spacing is taken off
- * and the viewport put back after.
+ * a line of it, there or at the page's own width; with `axe`, then axe in all three themes at 320 px,
+ * in place. The spacing is taken off and the viewport put back after.
  */
 export async function expectReflowWithSpacing(page: Page, label: string, options: { axe?: boolean } = {}) {
   const before = page.viewportSize();
   for (const [width, spaced] of [
+    [before?.width ?? 1440, false],
     [320, false],
     [320, true],
     [640, true],
@@ -259,7 +262,7 @@ export async function expectReflowWithSpacing(page: Page, label: string, options
     await textSpacing(page, spaced);
     await page.setViewportSize({ width, height: before?.height ?? 800 });
     const at = `${label} at ${width} px${spaced ? ', with text spacing' : ''}`;
-    expect(await page.evaluate(tableWordsSplit), `${at}: table words split that fit their line`).toEqual([]);
+    expect(await page.evaluate(tableWordsSplit), `${at}: table words split that fit a line`).toEqual([]);
     await expectReflow(page, at, width);
   }
   await textSpacing(page, false);

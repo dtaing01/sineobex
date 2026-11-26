@@ -1,7 +1,13 @@
-/* Six columns: with text spacing they need about 600 px to keep their words whole, and the stacked
-   table pattern (STACKED_TABLE) lays them out as a table again from 640 px, where the page gives
-   them less, so nearly every word was broken across lines (WCAG 1.4.12). The phones table stays
+/* Six columns. The stacked table pattern (STACKED_TABLE) wraps its cells anywhere, so that no value
+   pushes the page sideways; in columns, that let the longest values take the width and split the
+   short ones mid-word ("Act|ive"), at any width, as the Flags history's reason did (review R3).
+   Here they wrap at spaces only, and so need about 600 px with text spacing: the pattern lays them
+   out in columns again from 640 px, where the page gives them less, so the phones table stays
    stacked up to 800 px, as the pattern stacks it below 640 px. */
+table.phones th,
+table.phones td {
+  overflow-wrap: break-word;
+}
 @media (min-width: 640px) and (max-width: 799.98px) {
   .phones,
   .phones tbody,
