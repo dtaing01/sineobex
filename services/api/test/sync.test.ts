@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { TeamScope } from '../src/auth/context.ts';
+import { PERMISSION_KEYS } from '../src/auth/permissions.ts';
+import { createDatabase, createSql } from '../src/db/database.ts';
+import { ApiError } from '../src/lib/errors.ts';
+import { silentLogger } from '../src/lib/log.ts';
 import { valueHash } from '../src/sync/canonical.ts';
-import { MAX_PENDING_PER_PERSON } from '../src/sync/devices.ts';
+import { listDevices, MAX_PENDING_PER_PERSON } from '../src/sync/devices.ts';
 import { MAX_NOTE_FIELDS } from '../src/sync/records.ts';
-import { QUARANTINE_PAGE_SIZE } from '../src/sync/review.ts';
-import { createHarness, type Harness } from './harness.ts';
+import { decideQuarantine, listQuarantine, QUARANTINE_PAGE_SIZE } from '../src/sync/review.ts';
+import type { Deps } from '../src/types.ts';
+import { createHarness, TEST_ISSUER, type Harness } from './harness.ts';
 import { createPatient } from './patient-fixtures.ts';
 import {
   addMember,
@@ -2244,6 +2250,179 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
         status: string;
       }[];
       expect(list.find((d) => d.id === phoneA.deviceId)?.status).toBe('wiped');
+    });
+  });
+
+  // Verification finding VS2 (D5): row-level security is the second line, not the first. The review
+  // queue and the devices page name their team in their own SQL, so a handler run on a connection
+  // that bypasses row-level security still answers for its own team alone.
+  describe('the review queue and the devices page, on a connection that bypasses row-level security', () => {
+    let ours: Awaited<ReturnType<typeof secondTeam>>;
+    let theirs: Awaited<ReturnType<typeof secondTeam>>;
+    let oursStaff: string;
+    let theirsStaff: string;
+    let bypass: ReturnType<typeof createSql>;
+    let scope: TeamScope;
+    /** Our team's held items, oldest first, and theirs, received between them. */
+    let first: string;
+    let last: string;
+    let theirItem: string;
+
+    const idOf = async (email: string) =>
+      (await h.scratch.owner<{ id: string }[]>`select id from sineobex.users where email = ${email}`)[0]!.id;
+
+    /** A held encounter create in [team]'s queue, from its member's phone, received at [at]. */
+    async function held(team: { teamId: string; phone: FakePhone }, at: Date): Promise<string> {
+      const [row] = await h.scratch.owner<{ id: string }[]>`
+        insert into sineobex.quarantine_items
+          (team_id, device_id, user_id, change_id, entity, record_id, op, value, value_hash, details,
+           device_time, reason, received_at)
+        select ${team.teamId}, d.id, d.user_id, gen_random_uuid(), 'encounter', gen_random_uuid(), 'create',
+               '{"kind": "outreach"}'::jsonb, 'Demo: no hash', '{}'::jsonb, ${at}, 'permission', ${at}
+        from sineobex.devices d where d.id = ${team.phone.deviceId}
+        returning id`;
+      return row!.id;
+    }
+
+    beforeAll(async () => {
+      ours = await secondTeam(h, 'Riverside (demo)', 'riverside');
+      theirs = await secondTeam(h, 'Hillcrest (demo)', 'hillcrest');
+      oursStaff = await idOf('riverside-staff@example.com');
+      theirsStaff = await idOf('hillcrest-staff@example.com');
+      const at = new Date('2026-11-02T09:00:00.000Z');
+      first = await held(ours, at);
+      theirItem = await held(theirs, new Date(at.getTime() + 1));
+      last = await held(ours, new Date(at.getTime() + 2));
+      // The scratch database's owner, a superuser: no policy applies to it.
+      bypass = createSql(h.scratch.ownerUrl, { max: 2 });
+      const deps: Deps = {
+        config: h.config,
+        db: createDatabase(bypass),
+        verifier: { verify: () => Promise.reject(new Error('no token is verified here')) },
+        identityAdmin: h.identityAdmin,
+        log: silentLogger,
+        now: () => h.clock.now,
+      };
+      const admin = await idOf('riverside-admin@example.com');
+      scope = new TeamScope(
+        deps,
+        {
+          userId: admin,
+          email: 'riverside-admin@example.com',
+          displayName: 'Morgan (demo)',
+          isOwner: false,
+          token: {
+            issuer: TEST_ISSUER,
+            subject: 'bypass|riverside-admin@example.com',
+            email: 'riverside-admin@example.com',
+            emailVerified: true,
+            aal: 'aal2',
+            sessionId: null,
+            authTime: h.clock.now,
+            expiresAt: new Date(h.clock.now.getTime() + 3_600_000),
+          },
+        },
+        {
+          teamId: ours.teamId,
+          teamName: 'Riverside (demo)',
+          teamSettings: {},
+          membershipId: randomUUID(),
+          roleId: randomUUID(),
+          roleKey: 'program_admin',
+          roleName: 'Program Admin',
+          permissions: new Set(PERMISSION_KEYS),
+          credential: 'none',
+          credentialFields: {},
+        },
+        { requestId: 'bypass-test', ip: null, deviceId: null },
+      );
+    });
+    afterAll(() => bypass.end({ timeout: 5 }));
+
+    /** The team's audit events of [action] since [since], their details. */
+    const events = async (action: string, since: string) =>
+      (
+        await h.scratch.owner<{ details: Record<string, unknown> }[]>`
+          select details from sineobex.audit_events
+          where team_id = ${ours.teamId} and action = ${action} and id > ${since}::bigint order by id`
+      ).map((r) => r.details);
+    const lastEvent = async () =>
+      (
+        await h.scratch.owner<
+          { last: string }[]
+        >`select coalesce(max(id), 0)::text as last from sineobex.audit_events`
+      )[0]!.last;
+
+    it('lists, counts and names in its people filter only the team’s own held work', async () => {
+      const since = await lastEvent();
+      const page = await listQuarantine(scope, { status: 'pending' });
+      expect(page.items.map((i) => i.id)).toEqual([first, last]);
+      expect(page.nextAfterId).toBeNull();
+      expect(page.people).toEqual([{ userId: oursStaff, displayName: 'Taylor (demo)' }]);
+      expect((await events('quarantine.viewed', since)).map((d) => d.count)).toEqual([2]);
+      expect((await events('quarantine.item_viewed', since)).map((d) => d.itemId)).toEqual([first, last]);
+      // Filtered to the other team's sender: nothing listed, and they are not named.
+      const filtered = await listQuarantine(scope, { status: 'pending', userId: theirsStaff });
+      expect(filtered.items).toEqual([]);
+      expect(filtered.people.map((p) => p.userId)).toEqual([oursStaff]);
+    });
+
+    it('reads a cursor naming another team’s item as one the team never had: an empty page', async () => {
+      const page = await listQuarantine(scope, { status: 'pending', afterId: theirItem });
+      expect([page.items, page.nextAfterId]).toEqual([[], null]);
+      // The team's own cursor reads on as before.
+      const next = await listQuarantine(scope, { status: 'pending', afterId: first });
+      expect(next.items.map((i) => i.id)).toEqual([last]);
+    });
+
+    it('decides nothing of another team’s held work: 404, its row as it was, nothing on the team’s chain', async () => {
+      const since = await lastEvent();
+      const outcome = await decideQuarantine(scope, theirItem, 'reject', 'Demo: not ours to decide').then(
+        () => 'decided',
+        (e: unknown) => e,
+      );
+      const [row] = await h.scratch.owner<{ status: string; decidedBy: string | null }[]>`
+        select status, decided_by as "decidedBy" from sineobex.quarantine_items where id = ${theirItem}`;
+      expect(row).toEqual({ status: 'pending', decidedBy: null });
+      expect(await events('quarantine.rejected', since)).toEqual([]);
+      expect(outcome).toBeInstanceOf(ApiError);
+      expect([(outcome as ApiError).status, (outcome as ApiError).code]).toEqual([404, 'not_found']);
+    });
+
+    it('takes no write lock of the team to decide another team’s item', async () => {
+      // Another session holds the team's write lock (a push, a merge) while the decision runs: an
+      // encounter's item would wait on it, so another team's item must never get that far.
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      let locked!: () => void;
+      const isLocked = new Promise<void>((resolve) => (locked = resolve));
+      const holder = h.scratch.owner.begin(async (sql) => {
+        await sql`select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || ${ours.teamId}::uuid::text, 0))`;
+        locked();
+        await released;
+      });
+      await isLocked;
+      const decision = decideQuarantine(scope, theirItem, 'accept', 'Demo: not ours to decide').then(
+        () => 'decided',
+        (e: unknown) => (e instanceof ApiError ? e.status : e),
+      );
+      try {
+        const settled = await Promise.race([
+          decision,
+          new Promise<string>((resolve) => setTimeout(() => resolve('waiting on the lock'), 1500)),
+        ]);
+        expect(settled).toBe(404);
+      } finally {
+        release();
+        await holder;
+        await decision;
+      }
+    });
+
+    it('the devices page lists only the team’s own phones', async () => {
+      const listed = await listDevices(scope);
+      expect(listed.map((d) => d.id)).toEqual([ours.phone.deviceId]);
+      expect(listed.map((d) => d.user.userId)).toEqual([oursStaff]);
     });
   });
 });
