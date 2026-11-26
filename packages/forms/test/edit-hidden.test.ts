@@ -39,6 +39,7 @@ const v1: ResolvedNoteType = {
           id: 'shelter',
           kind: 'group',
           label: 'Demo: Shelter',
+          layout: 'stack',
           fields: [
             { id: 'bed', kind: 'flag', label: 'Demo: Needs a bed' },
             { id: 'where', kind: 'text', label: 'Demo: Where they sleep', lines: 'one', maxLength: 200 },
