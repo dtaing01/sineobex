@@ -646,6 +646,7 @@ describe('phase 5 sync: flag changes', () => {
     expect(new Date(receipt.receivedAt).getTime()).toBeLessThan(page.generatedAt.getTime());
     expect(page.primaryOf(patient)).toBe(presetId('flag.low'));
     // The counter does: the index's, read before its entries, is below the receipt's.
+    expect(receipt.indexVersion).toBeTypeOf('number');
     expect(page.counter).toBeLessThan(receipt.indexVersion);
     // The next index holds the change, at or above the receipt's counter.
     const next = await indexPage();
