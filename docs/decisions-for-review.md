@@ -4,7 +4,7 @@ Every choice the build has left to a person, in one place. The project lead's ru
 that nothing is asked of a person mid-build: wherever a choice needs one, the default is built,
 marked `PLAN-OPEN` in the code where the PRD leaves it open, and listed here with who decides, the
 default built, a recommendation, what a later change would cost and where it lives. This version
-describes the code at commit `54ef3d0`, with phases 0 to 5 built and closed; phases 6 to 10 and 12
+describes the code at commit `221c39a`, with phases 0 to 5 built and closed; phases 6 to 10 and 12
 are designed (phase 11 is people's work, on devices). Each design's own defaults join this document
 as its phase closes. Phase 5's were listed from its reviewed design ahead of its build, so that
 each marker the build wrote could name its row; since the phase closed they say what it built, and
@@ -308,4 +308,5 @@ Settled elsewhere, so not listed: phase 3 design 14.1 #10 (D28), #12 (D26), #17 
 project lead's decisions of Nov 21 for phase 5, its build method and its units' backup branches
 (phase 5 design, "How this phase is built", D127), the method's use for phases 6 to 10 being PL-9.
 Lifecycle 12.3, forms 10.3 and the four points phase 5's section 11 lists as settled by the PRD are
-readings already made, not questions, and plan risks 2, 3, 7 and 8 ask no one to decide.
+readings already made, not questions, and plan risks 2, 3, 7, 8 and 11 to 16 ask no one to
+decide: the last six are work for phase 6's first unit or a unit of their own.
