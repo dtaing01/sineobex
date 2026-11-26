@@ -30,7 +30,10 @@ function nth(n: number): string {
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 }
 
-/** A box for an answer's words, opened in place of its acts: Keep or Cancel gives focus back. */
+/**
+ * A box for an answer's words, opened in place of its acts: Keep or Cancel gives focus back. The words
+ * are held without the spaces around them, which the API refuses (item 14).
+ */
 function WordsForm({
   id,
   label,
@@ -54,7 +57,7 @@ function WordsForm({
   }, []);
   const keep = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onKeep(input.current?.value ?? '');
+    onKeep((input.current?.value ?? '').trim());
     if (!onCancel && input.current) {
       // A box that stays open for the next answer starts empty, with focus kept in it.
       input.current.value = '';

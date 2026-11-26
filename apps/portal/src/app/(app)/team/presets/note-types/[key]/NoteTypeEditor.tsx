@@ -65,7 +65,11 @@ export interface EditorProps {
   sources: readonly CopySource[];
 }
 
-/** The words a person types for a label or a title, sent as typed: the API refuses empty words. */
+/**
+ * The words a person types for a label or a title, held without the spaces around them, which the
+ * API refuses (item 14), as the Add a field and Add a section forms hold theirs; empty words are
+ * held as typed, for the API to refuse.
+ */
 function RenameForm({
   id,
   label,
@@ -84,7 +88,7 @@ function RenameForm({
   useEffect(() => input.current?.focus(), []);
   const keep = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onKeep(input.current?.value ?? '');
+    onKeep((input.current?.value ?? '').trim());
   };
   return (
     <form className={editor.inline} onSubmit={keep}>
