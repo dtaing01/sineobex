@@ -797,6 +797,9 @@ class ChosenFilterChip extends StatelessWidget {
             focusNode: clearFocusNode,
             tooltip: clearTooltip,
             onPressed: onCleared,
+            // Its focus drawn as the words' is, and as InputChip's delete drew it: an IconButton's own
+            // is its icon's colour at a tenth, the faintest on the row (review finding VX4).
+            focusColor: Theme.of(context).focusColor,
             icon: Icon(LucideIcons.x, size: 18, color: c.inkMuted),
           ),
         ],

@@ -721,6 +721,43 @@ void main() {
       }
     }
 
+    // Review finding VX4: the chip's clear button drew its focus as an IconButton does, its icon's
+    // colour at a tenth: fainter than the chip's words beside it, and than InputChip's delete was.
+    for (final theme in FieldTheme.values) {
+      testWidgets('a chosen filter’s clear button draws its focus in the theme’s focus colour, as its words do, '
+          'offline (${theme.name})', (tester) async {
+        await listWithFlags(tester, run: (theme: theme, scale: 1.0, narrow: false));
+        await chooseInDialog(tester, 'Risk level', ['Red · Demo: High']);
+        final chip = find.byType(ChosenFilterChip);
+        final focusColor = Theme.of(tester.element(chip)).focusColor;
+
+        /// [control] focused by keyboard: what the ink of the Material under [on] paints then.
+        Future<void> expectFocusPaint(Finder control, Finder on) async {
+          await reveal(tester, control);
+          Focus.of(tester.element(control)).requestFocus();
+          // A key pressed: focus is drawn as it is for a keyboard, not as for touch, where it isn't.
+          await tester.sendKeyEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pumpAndSettle();
+          final ink = find.descendant(
+            of: on,
+            matching: find.byWidgetPredicate((w) => '${w.runtimeType}' == '_InkFeatures'),
+          );
+          expect(tester.renderObject(ink.first), paints..rect(color: focusColor));
+        }
+
+        await expectFocusPaint(wordsOf(ChosenFilterChip, 'Risk level: Red · Demo: High'), chip);
+        // The button's own Material, which its ink paints on.
+        final clear = find.byTooltip('Clear risk level');
+        await expectFocusPaint(
+          clearOf('Clear risk level'),
+          find.ancestor(of: clear, matching: find.byType(IconButton)),
+        );
+        final ink = tester.widget<InkWell>(find.descendant(of: clear, matching: find.byType(InkWell)));
+        expect(ink.overlayColor?.resolve({WidgetState.focused}), focusColor);
+        await expectScreenOk(tester);
+      });
+    }
+
     testWidgets('a sensitive flag is absent for a reader the flag rule hides it from', (tester) async {
       await listWithFlags(tester, permissions: FakeSyncServer.chw.toList());
       await tapOn(tester, find.widgetWithText(ActionChip, 'Conditions'));
