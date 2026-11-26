@@ -68,6 +68,13 @@ class SyncFailed extends SyncOutcome {
   final String code;
 }
 
+/// The team's database closed while the push was under way (a lock, a sign-out, a team switch), so
+/// nothing more was done here. What it sent stays pending: the server's stored receipts confirm it
+/// at the next push.
+class SyncClosed extends SyncOutcome {
+  const SyncClosed();
+}
+
 /// Why the refreshers run now.
 enum RefreshReason {
   /// The team's database was just opened (an unlock, a team switch).
@@ -181,7 +188,20 @@ class SyncEngine {
   /// No refresher starts while its batches are under way ([_pushes]); its own refreshers run after
   /// them. When they end with a wipe order, lost access or a spent device ID, a run asked for before
   /// then, one that waited for them included, starts no more refreshers ([_stops]).
+  ///
+  /// A push whose database closed under it ends quietly with [SyncClosed] (review finding VR2): its
+  /// answer can't be written down, and an error here would go unhandled wherever nothing awaits it
+  /// (the controller's open and timer).
   Future<SyncOutcome> syncAll({bool force = false, int maxBatches = 50}) async {
+    try {
+      return await _syncAll(force: force, maxBatches: maxBatches);
+    } on StateError {
+      if (!store.closed) rethrow;
+      return const SyncClosed();
+    }
+  }
+
+  Future<SyncOutcome> _syncAll({required bool force, required int maxBatches}) async {
     final ended = Completer<void>();
     _pushes.add(ended.future);
     final SyncOutcome outcome;
@@ -274,7 +294,8 @@ class SyncEngine {
       for (var push = _pushes.firstOrNull; push != null; push = _pushes.firstOrNull) {
         await push;
       }
-      if (store.frozen || _stops != stops) return;
+      // Nor on a closed database: the run belongs to the team a lock or a sign-out just closed.
+      if (store.frozen || store.closed || _stops != stops) return;
       try {
         await r.refresh(reason);
       } on Object {
