@@ -5,6 +5,7 @@ import {
   expectAccessible,
   expectNothingStored,
   expectReflow,
+  expectReflowWithSpacing,
   IDP,
   MFA_CODE,
   portalNav,
@@ -967,16 +968,22 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
       await offer.locator('summary').click();
       await expect(offer.getByRole('table')).toBeVisible();
       await expectAccessible(page, 'A note type’s page, an update on offer', { inPlace: true });
-      await expectReflow(page, 'A note type’s page, an update on offer');
+      // The review's lists keep their words whole, as its cells do ("Approximate", "Contraception",
+      // "complications" in the sections' fields): where the table is wider than a phone held upright,
+      // it scrolls in its own group, and no word that fits a line of it is split (VR5).
+      await expectReflowWithSpacing(page, 'A note type’s page, an update on offer');
 
-      // In the list: under the note type's h2, at level 3.
+      // In the list: under the note type's h2, at level 3, its review the same table.
       await page.goto(LIST);
       const row = page.getByRole('region', { name: 'Demo: Our reproductive health', exact: true });
       await expect(
         row.getByRole('heading', { level: 3, name: 'Update available for Demo: Our reproductive health' }),
       ).toBeVisible();
       await expectAccessible(page, 'Note types, an update on offer');
-      await expectReflow(page, 'Note types, an update on offer');
+      const listed = row.getByRole('region', { name: 'Update available for Demo: Our reproductive health' });
+      await listed.locator('summary').click();
+      await expect(listed.getByRole('table')).toBeVisible();
+      await expectReflowWithSpacing(page, 'Note types, an update on offer, its review open');
 
       // Taken in place from its own page: the platform's version again, and nothing left on offer.
       await page.goto(`${LIST}/${key}`);

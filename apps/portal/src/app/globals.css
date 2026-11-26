@@ -389,7 +389,9 @@ p {
   font-weight: 700;
 }
 /* A list item breaks a word longer than its line, as an email address can be with text spacing at
-   320 px, rather than widen the page; a word that fits its line stays whole. */
+   320 px, rather than widen the page; a word that fits its line stays whole. In a table's cell it
+   needn't: the column narrows to the narrowest its content can be, so a table that keeps its words
+   whole says so of its lists too (the presets' review, presets.module.css). */
 .px-list {
   margin: 0;
   padding-left: var(--space-5);
