@@ -1233,7 +1233,7 @@ void main() {
       expect(link.events, ['sent /v1/sync/push', 'sent /v1/patients/index', 'answered /v1/patients/index']);
       expect(unlocked.index.flagsOf(patient)?.primary, low, reason: 'worked out while the push waited');
       held.complete();
-      await first;
+      expect(await first, isA<SyncClosed>(), reason: 'its answer found the database closed: it ends quietly');
       expect(
         [for (final e in p.store.outbox()) e.entity],
         contains(entityFlagChange),

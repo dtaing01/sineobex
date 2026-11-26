@@ -569,6 +569,9 @@ class LocalStore {
   /// The file this store writes to.
   String get path => _local.path;
 
+  /// Its database was closed (see [LocalDatabase.closed]).
+  bool get closed => _local.closed;
+
   /// The phone's date for the rules a value breaks on its own, by its corrected clock when it has
   /// one. The server checks again against its own date.
   String get _today {

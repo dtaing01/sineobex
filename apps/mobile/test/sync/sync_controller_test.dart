@@ -538,6 +538,36 @@ void main() {
     },
   );
 
+  // Verification finding VR2's error: a lock closed the database while a push was on its way, and its
+  // answer then threw out of syncNow ("This database has already been closed"), an unhandled error
+  // where nothing awaits it (the open's push, the timer's).
+  test('a push whose database a lock closed under it ends quietly, and its change confirms after the unlock', () async {
+    final reasons = <RefreshReason>[];
+    refreshers = (_) => [_Refresher(reasons.add)];
+    sync.dispose();
+    await launch();
+    await signIn();
+    final encounter = sync.store!.createEncounter(kind: 'medical');
+    final push = holds['/v1/sync/push'] = Completer<void>();
+    final syncing = sync.syncNow().then<Object?>((o) => o, onError: (Object e) => e);
+    for (var i = 0; i < 50; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(sync.snapshot.syncing, isTrue, reason: 'the push is held');
+    // The timer's run waits for the push.
+    reasons.clear();
+    final run = sync.refreshNow(reason: RefreshReason.timer);
+    await lock();
+    push.complete();
+    expect(await syncing, isA<SyncClosed>(), reason: 'it ends without an error');
+    await run;
+    expect(reasons, isEmpty, reason: 'nothing runs for a database the lock closed');
+    expect(server.records[encounter], isNotNull, reason: 'the server stored it');
+    await session.unlockWithPin(pin);
+    await idle();
+    expect(sync.store!.outbox(), isEmpty, reason: 'its stored receipt confirmed it at the unlock’s push');
+  });
+
   test('a status this app version doesn’t know never deletes anything', () async {
     await signIn();
     sync.store!.createEncounter(kind: 'medical');

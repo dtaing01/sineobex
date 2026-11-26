@@ -50,7 +50,14 @@ class LocalDatabase {
     return LocalDatabase._(db, path);
   }
 
-  void close() => db.close();
+  void close() {
+    _closed = true;
+    db.close();
+  }
+
+  /// [close] ran (a lock, a sign-out, a team switch): every read and write now throws a StateError.
+  bool get closed => _closed;
+  bool _closed = false;
 
   String? kvGet(String key) => db.select('SELECT value FROM kv WHERE key = ?', [key]).firstOrNull?['value'] as String?;
 
