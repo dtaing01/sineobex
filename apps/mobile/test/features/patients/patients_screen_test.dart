@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
-import 'package:flutter/services.dart' show FontLoader, rootBundle;
+import 'package:flutter/services.dart' show FontLoader, LogicalKeyboardKey, rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sineobex_field/design/tokens.dart' show FieldFonts, FieldTheme;
@@ -479,6 +479,121 @@ void main() {
         expect({for (final ids in logged) ...ids}, ids.toSet());
       },
     );
+
+    /// What has keyboard focus now, as a finder of its element.
+    Finder focused() {
+      final context = FocusManager.instance.primaryFocus?.context;
+      return find.byElementPredicate((e) => identical(e, context));
+    }
+
+    /// Focus on [control] by keyboard, then Enter.
+    Future<void> enterOn(WidgetTester tester, Finder control) async {
+      await reveal(tester, control);
+      Focus.of(tester.element(control)).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+    }
+
+    /// Focus straight from the search box to [control], as a switch can jump to it, then Enter: where
+    /// focus goes once [control] is gone is the screen's doing, not the focus history's.
+    Future<void> enterFromSearch(WidgetTester tester, Finder control) async {
+      tester.widget<TextField>(find.byKey(const ValueKey('phi.search'))).focusNode!.requestFocus();
+      await tester.pump();
+      await enterOn(tester, control);
+    }
+
+    /// A chip's own words, or its clear button's icon, which sit under the control's focus.
+    Finder wordsOf(Type chip, String words) => find.descendant(of: find.byType(chip), matching: find.text(words));
+    Finder clearOf(String tooltip) => find.descendant(of: find.byTooltip(tooltip), matching: find.byType(Icon));
+
+    /// Focus is in the chip or chooser with [words], and not on a clear button.
+    void expectFocusOn(Type chip, String words) {
+      expect(
+        find.ancestor(
+          of: focused(),
+          matching: find.ancestor(of: wordsOf(chip, words), matching: find.byType(chip)),
+        ),
+        findsOneWidget,
+        reason: 'focus on "$words"',
+      );
+      expect(find.ancestor(of: focused(), matching: find.byType(IconButton)), findsNothing);
+    }
+
+    // Review finding X2: Show more on the last page took its button away, and focus with it, to the
+    // top of the screen. As the timeline's Show earlier does, focus goes to the first row it added.
+    testWidgets('Show more by keyboard puts focus on the first row it added, offline', (tester) async {
+      final h = await signIn(tester);
+      final frost = h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      for (var i = 0; i < 55; i++) {
+        final id = h.server.seedPatient(preferredName: 'Demo Round $i');
+        h.server.seed(entityFlagChange, {
+          'patientId': id,
+          'flagId': frost,
+          'action': 'set',
+          'reason': 'Demo: a reason',
+        });
+      }
+      await syncAndRefresh(tester, h);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await chooseInDialog(tester, 'Conditions', ['Blue · Demo: Frost risk'], done: true);
+      final list = find.byType(Scrollable).first;
+      for (var i = 0; i < 40; i++) {
+        await tester.drag(list, const Offset(0, -1000));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      await enterOn(tester, find.text('Show more'));
+      expect(find.text('Show more'), findsNothing, reason: 'the last page');
+      final added = searchedEntries(h.sync.store!).last['patientIds']! as List<Object?>;
+      expect(added, hasLength(5));
+      final row = find.ancestor(of: focused(), matching: find.byType(PatientRow));
+      expect(row, findsOneWidget, reason: 'focus on a row');
+      expect(tester.widget<PatientRow>(row).patient.patientId, added.first);
+      final shown = tester.getRect(row);
+      expect(shown.top, greaterThanOrEqualTo(0));
+      expect(shown.top, lessThan(tester.view.physicalSize.height / tester.view.devicePixelRatio));
+    });
+
+    // Review finding X2: a filter chosen swapped its chooser for a chip, and focus went with the
+    // chooser. One node is kept across the swap, so focus stays on the control there; a chip cleared
+    // by its button gives focus to the chooser that takes its place, or stands beside it.
+    testWidgets('a filter chosen or cleared by keyboard keeps focus on the control in its place, offline', (
+      tester,
+    ) async {
+      await listWithFlags(tester);
+      await enterOn(tester, find.descendant(of: find.byType(ActionChip), matching: find.text('Risk level')));
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Red · Demo: High')));
+      await settle(tester);
+      expectFocusOn(ChosenFilterChip, 'Risk level: Red · Demo: High');
+      await enterFromSearch(tester, clearOf('Clear risk level'));
+      expect(find.text('Risk level: Red · Demo: High'), findsNothing);
+      expectFocusOn(ActionChip, 'Risk level');
+
+      await enterOn(tester, find.descendant(of: find.byType(ActionChip), matching: find.text('Conditions')));
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Blue · Demo: Frost risk')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(conditionsDoneAction)));
+      await settle(tester);
+      expectFocusOn(ActionChip, 'Conditions');
+      await enterFromSearch(tester, clearOf('Clear Demo: Frost risk'));
+      expect(find.text('Condition: Blue · Demo: Frost risk'), findsNothing);
+      expectFocusOn(ActionChip, 'Conditions');
+
+      // Phase 3's Born, the same way.
+      await enterOn(tester, find.descendant(of: find.byType(ActionChip), matching: find.text('Born')));
+      await tester.enterText(find.byKey(const ValueKey('phi.born')), '1946');
+      await tester.pump(const Duration(milliseconds: 900));
+      await settle(tester);
+      await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Use this')));
+      await settle(tester);
+      expectFocusOn(ChosenFilterChip, 'Born 1946');
+      await enterFromSearch(tester, clearOf('Clear born'));
+      expect(find.text('Born 1946'), findsNothing);
+      expectFocusOn(ActionChip, 'Born');
+    });
+
     testWidgets('a sensitive flag is absent for a reader the flag rule hides it from', (tester) async {
       await listWithFlags(tester, permissions: FakeSyncServer.chw.toList());
       await tapOn(tester, find.widgetWithText(ActionChip, 'Conditions'));
