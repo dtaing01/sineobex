@@ -557,6 +557,21 @@ describe('phase 5 sync: flag changes', () => {
     ]);
   });
 
+  // The test server's twin (review finding VR4): every change is a transaction of its own, dated when
+  // it began, so a later push's change capped at its receipt is dated after an earlier push's.
+  it('a second push at the same clock reading is dated after the first push’s changes, and its capped change is the current flag', async () => {
+    const patient = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Rowan' })).id;
+    const ahead = { deviceTime: fromNow(10), correctedTime: fromNow(10) };
+    const low = await flagChange(kim, patient, presetId('flag.low'), ahead);
+    const high = await flagChange(kim, patient, presetId('flag.high'), ahead);
+    expect(await kim.send(low, high)).toEqual([taken(low), taken(high)]);
+    const medium = await flagChange(ivy, patient, presetId('flag.medium'), ahead);
+    expect(await ivy.send(medium)).toEqual([taken(medium)]);
+    const at = async (c: Change) => (await row(c.recordId))!.effectiveAt.getTime();
+    expect([(await at(low)) < (await at(high)), (await at(high)) < (await at(medium))]).toEqual([true, true]);
+    expect((await indexPage()).primaryOf(patient)).toBe(presetId('flag.medium'));
+  });
+
   // Review finding VR1: only the server knows which team index holds which change. A taken create and
   // a taken mark answer the index's counter after them, which an index reaches only once the change
   // has committed.
