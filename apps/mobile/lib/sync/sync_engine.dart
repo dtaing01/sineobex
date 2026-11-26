@@ -237,10 +237,12 @@ class SyncEngine {
   /// a call never waits on a future made in another zone (a widget test's fake clock).
   ///
   /// This phone's own pushes go first: each refresher waits to start until no push's batches are
-  /// under way. The server dates a change by when its push began, which can be before an index it
-  /// leaves out was worked out (the push waiting on the team's write lock), and the phone would
-  /// then take that index as holding the change (phase 5 design 6.1). A push that begins while a
-  /// refresher runs is dated after it, so the refresher needn't stop.
+  /// under way, so what it downloads holds what the push stored. How the phone weighs its own flag
+  /// changes against the team index doesn't rest on that order (phase 5 design 6.1, review finding
+  /// VR1): a refresher already running when a push begins is not stopped, its index request can be
+  /// timed out and asked again or reach the server late, and a new engine after a lock doesn't see
+  /// the old one's push, so an index can still be worked out during a push and leave its change out.
+  /// The team index counter a receipt names tells the phone whether an index holds the change.
   Future<void> runRefreshers(RefreshReason reason) async {
     for (var running = _refreshing; running != null; running = _refreshing) {
       await running;
