@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -82,6 +83,16 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   /// How many more on this phone carry the filters' flags than [_flagged] shows.
   int _flaggedMore = 0;
 
+  /// The row Show more puts focus on ([_rowFocus]), for someone who was on the button.
+  String? _focusRow;
+  final _rowFocus = FocusNode();
+  final _moreFocus = FocusNode();
+
+  /// The filter row's focus nodes, by control: a chooser and the chip that takes its place share
+  /// one ('born', 'risk'), so focus stays on the control there after the swap (review finding X2).
+  final _nodes = <String, FocusNode>{};
+  FocusNode _node(String key) => _nodes[key] ??= FocusNode();
+
   static const _quiet = Duration(milliseconds: 600);
 
   PatientServices get _s => widget.services;
@@ -112,7 +123,22 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     _debounce?.cancel();
     _query.dispose();
     _focus.dispose();
+    _rowFocus.dispose();
+    _moreFocus.dispose();
+    for (final node in _nodes.values) {
+      node.dispose();
+    }
     super.dispose();
+  }
+
+  /// After the frame, for someone who was on a control that went or changed ([follow]), focus goes to
+  /// the first of [nodes] the frame put on screen, as the timeline's Show earlier does (review X2).
+  void _focusAfterFrame(bool follow, List<FocusNode> nodes) {
+    if (!follow) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (nodes.where((n) => n.context?.mounted ?? false).firstOrNull case final to?) focusInView(to);
+    });
   }
 
   bool get _emptyQuery => _query.text.trim().isEmpty && _born is! BirthDate;
@@ -180,6 +206,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   Future<void> _chooseBorn() async {
     final today = todayOf(ref);
+    final follow = focusFollows(context, _node('born'));
     final birth = await showModalBottomSheet<Birth>(
       context: context,
       isScrollControlled: true,
@@ -191,11 +218,14 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     );
     if (birth == null || !mounted) return;
     setState(() => _born = birth);
+    _focusAfterFrame(follow, [_node('born')]);
     unawaited(_search());
   }
 
   void _clearBorn() {
+    final follow = focusFollows(context, _node('born.clear'));
     setState(() => _born = null);
+    _focusAfterFrame(follow, [_node('born')]);
     _typed(_query.text);
     if (!_emptyQuery) unawaited(_search());
   }
@@ -247,12 +277,24 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     }
     _flagged = const [];
     _flaggedMore = 0;
+    _focusRow = null;
     _nextFlagged();
   }
 
   /// Show more under the flag list: the next page of who carries the flags, one list of its own,
-  /// audited as what it adds (TeamIndex.withFlags).
-  void _moreFlagged() => setState(_nextFlagged);
+  /// audited as what it adds (TeamIndex.withFlags). For someone on the button, which goes at the last
+  /// page, focus goes to the first row the page added, or with none added to the last row, where the
+  /// button was.
+  void _moreFlagged() {
+    final follow = focusFollows(context, _moreFocus);
+    final before = _flagged?.length ?? 0;
+    setState(() {
+      _nextFlagged();
+      final shown = _flagged ?? const <FoundPatient>[];
+      _focusRow = follow && shown.isNotEmpty ? shown[math.min(before, shown.length - 1)].patientId : null;
+    });
+    _focusAfterFrame(follow, [_rowFocus]);
+  }
 
   void _nextFlagged() {
     final shown = _flagged ?? const <FoundPatient>[];
@@ -275,6 +317,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   }
 
   Future<void> _chooseRiskLevel() async {
+    final follow = focusFollows(context, _node('risk'));
     final chosen = await showRiskLevelChooser(
       context,
       _s,
@@ -287,9 +330,14 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       _riskFilter = chosen.flagId;
       _filtersChanged();
     });
+    _focusAfterFrame(follow, [_node('risk')]);
   }
 
-  Future<void> _chooseConditions() async {
+  /// Conditions chosen, from their chooser or from the chip of [from]: focus goes back to that chip
+  /// while it is still chosen, else to the chooser, which stays.
+  Future<void> _chooseConditions({String? from}) async {
+    final opener = from == null ? _node('conditions') : _node('condition.$from');
+    final follow = focusFollows(context, opener);
     final chosen = await showConditionsChooser(
       context,
       _s,
@@ -301,18 +349,34 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       _conditionFilter = Set.unmodifiable(chosen);
       _filtersChanged();
     });
+    _focusAfterFrame(follow, [opener, _node('conditions')]);
   }
 
-  void _clearRiskLevel() => setState(() {
-    _riskFilter = null;
-    _filtersChanged();
-  });
+  /// The risk level taken off: for someone on its clear button, focus goes to Risk level, the
+  /// chooser that takes the chip's place.
+  void _clearRiskLevel() {
+    final follow = focusFollows(context, _node('risk.clear'));
+    setState(() {
+      _riskFilter = null;
+      _filtersChanged();
+    });
+    _focusAfterFrame(follow, [_node('risk')]);
+  }
 
-  /// One chosen condition taken off, the others kept.
-  void _clearCondition(String id) => setState(() {
-    _conditionFilter = Set.unmodifiable({..._conditionFilter}..remove(id));
-    _filtersChanged();
-  });
+  /// One chosen condition taken off, the others kept: for someone on its clear button, focus goes to
+  /// Conditions, the chooser that stands beside them.
+  void _clearCondition(String id) {
+    final follow = focusFollows(context, _node('condition.$id.clear'));
+    setState(() {
+      _conditionFilter = Set.unmodifiable({..._conditionFilter}..remove(id));
+      _filtersChanged();
+    });
+    _focusAfterFrame(follow, [
+      _node('conditions'),
+      for (final other in _conditionFilter) _node('condition.$other'),
+      _node('born'),
+    ]);
+  }
 
   /// [p]'s risk level as its row shows it; none once the store froze under the read.
   FlagView? _riskLevelOf(FoundPatient p) {
@@ -350,11 +414,14 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     Widget conditionChip(String id) {
       final f = flagOf(id, conditions);
       return ChosenFilterChip(
+        key: ValueKey('condition.$id'),
         label: '$_conditionLabel: ${named(f, spoken: false)}',
         spoken: '$_conditionLabel: ${named(f, spoken: true)}',
         clearTooltip: f == null ? 'Clear this condition' : 'Clear ${f.name}',
-        onPressed: () => unawaited(_chooseConditions()),
+        onPressed: () => unawaited(_chooseConditions(from: id)),
         onCleared: () => _clearCondition(id),
+        focusNode: _node('condition.$id'),
+        clearFocusNode: _node('condition.$id.clear'),
       );
     }
 
@@ -367,9 +434,12 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
             clearTooltip: 'Clear risk level',
             onPressed: () => unawaited(_chooseRiskLevel()),
             onCleared: _clearRiskLevel,
+            focusNode: _node('risk'),
+            clearFocusNode: _node('risk.clear'),
           )
         else
           ActionChip(
+            focusNode: _node('risk'),
             avatar: const Icon(LucideIcons.flag, size: 18),
             label: const Text(riskLevelLabel),
             tooltip: 'Find patients by risk level',
@@ -377,6 +447,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
           ),
       if (conditions.isNotEmpty)
         ActionChip(
+          focusNode: _node('conditions'),
           avatar: const Icon(LucideIcons.flag, size: 18),
           label: const Text(conditionsLabel),
           tooltip: 'Find patients by condition',
@@ -472,6 +543,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                         children: [
                           if (_born == null)
                             ActionChip(
+                              focusNode: _node('born'),
                               avatar: const Icon(LucideIcons.calendar, size: 18),
                               label: const Text('Born'),
                               tooltip: 'Search by year or date of birth',
@@ -484,6 +556,8 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                               clearTooltip: 'Clear born',
                               onPressed: () => unawaited(_chooseBorn()),
                               onCleared: _clearBorn,
+                              focusNode: _node('born'),
+                              clearFocusNode: _node('born.clear'),
                             ),
                           ..._filterChips(),
                         ],
@@ -524,7 +598,13 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                         _found(_flagged!.length, onPhone: true),
                         const SizedBox(height: FieldSpace.s2),
                         for (final p in _flagged!) ...[
-                          PatientRow(patient: p, today: today, riskLevel: _riskLevelOf(p), onTap: () => _open(p)),
+                          PatientRow(
+                            patient: p,
+                            today: today,
+                            riskLevel: _riskLevelOf(p),
+                            onTap: () => _open(p),
+                            focusNode: p.patientId == _focusRow ? _rowFocus : null,
+                          ),
                           const SizedBox(height: FieldSpace.s2),
                         ],
                         // Everyone who carries the flags can be listed, a page at a time.
@@ -536,7 +616,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                             style: text.bodyLarge,
                           ),
                           const SizedBox(height: FieldSpace.s2),
-                          WideButton(label: 'Show more', onPressed: _moreFlagged),
+                          WideButton(label: 'Show more', onPressed: _moreFlagged, focusNode: _moreFocus),
                         ],
                       ] else if (_emptyQuery) ...[
                         if (_s.mayEdit && _s.patients.draft() != null) ...[
@@ -602,6 +682,8 @@ class ChosenFilterChip extends StatelessWidget {
     required this.clearTooltip,
     required this.onPressed,
     required this.onCleared,
+    this.focusNode,
+    this.clearFocusNode,
   });
 
   final String label;
@@ -609,6 +691,10 @@ class ChosenFilterChip extends StatelessWidget {
   final String clearTooltip;
   final VoidCallback onPressed;
   final VoidCallback onCleared;
+
+  /// The words' button's: the chooser this chip took the place of hands its node on (review X2).
+  final FocusNode? focusNode;
+  final FocusNode? clearFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -631,6 +717,7 @@ class ChosenFilterChip extends StatelessWidget {
               button: true,
               label: spoken,
               child: InkWell(
+                focusNode: focusNode,
                 onTap: onPressed,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: FieldTap.min),
@@ -652,6 +739,7 @@ class ChosenFilterChip extends StatelessWidget {
             ),
           ),
           IconButton(
+            focusNode: clearFocusNode,
             tooltip: clearTooltip,
             onPressed: onCleared,
             icon: Icon(LucideIcons.x, size: 18, color: c.inkMuted),

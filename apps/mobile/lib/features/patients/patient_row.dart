@@ -60,12 +60,16 @@ class PatientRow extends StatelessWidget {
     required this.onTap,
     this.trailing,
     this.riskLevel,
+    this.focusNode,
   });
   final FoundPatient patient;
   final DateTime today;
   final VoidCallback onTap;
   final Widget? trailing;
   final FlagView? riskLevel;
+
+  /// Where a list puts focus on this row, as Show more does on the first it added.
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -95,6 +99,7 @@ class PatientRow extends StatelessWidget {
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(FieldRadius.md),
+          focusNode: focusNode,
           onTap: onTap,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: FieldTap.large),
