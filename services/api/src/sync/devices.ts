@@ -417,6 +417,7 @@ export async function listDevices(scope: TeamScope) {
               where s.device_id = d.id and s.status = 'rejected' and s.resolved_by_change is null
                 and coalesce(s.details ->> 'quarantined', 'false') <> 'true') as open_rejections
       from sineobex.devices d join sineobex.users u on u.id = d.user_id
+      where d.team_id = ${scope.team.teamId}
       order by d.last_seen_at desc nulls last, d.registered_at desc`,
   );
   return rows.map((r) => ({

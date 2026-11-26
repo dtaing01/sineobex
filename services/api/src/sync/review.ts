@@ -114,7 +114,9 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
       // on the chart or its create held here, whatever was decided on it. A sign-off and a
       // correction answer through the note their value names, an addendum through its visit, and a
       // referral or an allergy through its row, or its held create when the row does not exist.
-      // Values were never schema-checked, so text is read only when it is a UUID.
+      // Values were never schema-checked, so text is read only when it is a UUID. Every read of the
+      // queue names the team itself, row-level security the second line (D5); a cursor naming
+      // another team's item reads as one the team never had, so the page is empty.
       const rows = await tx<QuarantineRow[]>`
         select q.*, u.display_name as user_name, du.display_name as decided_by_name,
                sineobex.patient_of_change(q.entity, q.record_id, q.value) as patient_id,
@@ -123,12 +125,13 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
         join sineobex.users u on u.id = q.user_id
         left join sineobex.users du on du.id = q.decided_by
         ${heldFlagOf(tx, scope.team.teamId)}
-        where q.status = ${status}
+        where q.team_id = ${scope.team.teamId} and q.status = ${status}
           ${userId ? tx`and q.user_id = ${userId}` : tx``}
           ${
             after
               ? tx`and (q.received_at, q.id) > (
-                  select a.received_at, a.id from sineobex.quarantine_items a where a.id = ${after})`
+                  select a.received_at, a.id from sineobex.quarantine_items a
+                  where a.id = ${after} and a.team_id = ${scope.team.teamId})`
               : tx``
           }
         order by q.received_at, q.id
@@ -154,7 +157,8 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
       from sineobex.quarantine_items q
       join sineobex.users u on u.id = q.user_id
       ${heldFlagOf(tx, scope.team.teamId)}
-      where q.status = ${status} ${userId ? tx`or q.user_id = ${userId}` : tx``}
+      where q.team_id = ${scope.team.teamId}
+        and (q.status = ${status} ${userId ? tx`or q.user_id = ${userId}` : tx``})
       order by u.display_name, u.id`;
     const people = new Map<string, { userId: string; displayName: string }>();
     for (const c of candidates) {
@@ -494,7 +498,7 @@ async function flagChangeNotApplied(
   item: Pick<QuarantineRow, 'id' | 'entity' | 'userId' | 'recordId'>,
 ): Promise<string | null> {
   if (item.entity !== 'patient_flag_change') return null;
-  const named = await patientOfItem(tx, item.id);
+  const named = await patientOfItem(tx, teamId, item.id);
   if (!named) return null;
   const [patient] = await tx<{ id: string }[]>`
     select id from sineobex.patients where id = ${named} and team_id = ${teamId}`;
@@ -510,10 +514,10 @@ async function flagChangeNotApplied(
 }
 
 /** The patient a queue item is about, as the queue names it (migration 0020, patient_of_change). */
-async function patientOfItem(tx: Tx, itemId: string): Promise<string | null> {
+async function patientOfItem(tx: Tx, teamId: string, itemId: string): Promise<string | null> {
   const [row] = await tx<{ patientId: string | null }[]>`
     select sineobex.patient_of_change(q.entity, q.record_id, q.value) as patient_id
-    from sineobex.quarantine_items q where q.id = ${itemId}`;
+    from sineobex.quarantine_items q where q.id = ${itemId} and q.team_id = ${teamId}`;
   return row?.patientId ?? null;
 }
 
@@ -547,15 +551,18 @@ export async function decideQuarantine(
   const outcome = await scope.tx(async (tx, audit) => {
     // An item takes the team's write lock before its row when a push of the same change would (D32,
     // takesTeamLock: every patient-side change, and every change of a visit and what belongs to it).
-    // What it is never changes, so a look first is enough to know.
+    // What it is never changes, so a look first is enough to know. Each read and the update name
+    // the team themselves, row-level security the second line (D5): another team's item is one this
+    // team never had.
     const [peek] = await tx<Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value'>[]>`
-      select entity, op, field, value from sineobex.quarantine_items where id = ${itemId}`;
+      select entity, op, field, value from sineobex.quarantine_items
+      where id = ${itemId} and team_id = ${scope.team.teamId}`;
     if (peek && takesTeamLock(peek as SyncChangeInput)) await lockTeamWrites(tx, scope.team.teamId);
     const flags = await teamFlags(tx, scope.team.teamId);
     const rows = await tx<QuarantineRow[]>`
       select q.*, null as user_name, null as decided_by_name, null as patient_id, nf.flag_id, nf.flag_author_id
       from sineobex.quarantine_items q ${heldFlagOf(tx, scope.team.teamId)}
-      where q.id = ${itemId} for update of q`;
+      where q.id = ${itemId} and q.team_id = ${scope.team.teamId} for update of q`;
     const item = rows[0];
     if (!item) throw notFound('quarantined record');
     // What the queue leaves out for this reviewer, they decide nothing of, and learn nothing of: not
@@ -670,7 +677,7 @@ export async function decideQuarantine(
             action: 'quarantine.accept_refused',
             entity: 'encounter_note',
             entityId: noteId,
-            patientId: await patientOfItem(tx, itemId),
+            patientId: await patientOfItem(tx, scope.team.teamId, itemId),
             details: { itemId, changeId: item.changeId, problem },
           });
           return refused;
@@ -700,7 +707,7 @@ export async function decideQuarantine(
           action: 'quarantine.accept_refused',
           entity: 'encounter_note',
           entityId: noteId ?? item.recordId,
-          patientId: await patientOfItem(tx, itemId),
+          patientId: await patientOfItem(tx, scope.team.teamId, itemId),
           details: { itemId, changeId: item.changeId, problem },
         });
         return refused;
@@ -718,7 +725,7 @@ export async function decideQuarantine(
     await tx`
       update sineobex.quarantine_items set status = ${decision === 'accept' ? 'accepted' : 'rejected'},
         decided_by = ${scope.principal.userId}, decided_at = ${scope.deps.now()}, decision_reason = ${reason}
-      where id = ${itemId}`;
+      where id = ${itemId} and team_id = ${scope.team.teamId}`;
     await audit({
       action: decision === 'accept' ? 'quarantine.accepted' : 'quarantine.rejected',
       entity: item.entity,
