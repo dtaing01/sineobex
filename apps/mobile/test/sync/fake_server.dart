@@ -3942,7 +3942,8 @@ class FakeSyncServer {
       // Looked up as the database compares a UUID, whatever case it was asked in; missing as asked.
       final r = records[(ref['id'] as String?)?.toLowerCase()];
       // A record of another team is none of this one's, as row-level security keeps it (review
-      // finding MR-4). Only a flag change keeps its team here; a seed names none.
+      // finding MR-4). Only a flag change and a patient made by a push keep their team here; a seed's
+      // records name none.
       final ours = r != null && (r.teamId == null || r.teamId == teamId.toLowerCase());
       final shown = !ours || r.entity != ref['entity'] ? null : _asRead(userId, teamId, perms, r);
       if (shown == null) {
