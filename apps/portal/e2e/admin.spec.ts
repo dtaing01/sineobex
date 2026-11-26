@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectAccessible, MFA_CODE, PASSWORD, signIn, watchCsp } from './helpers';
+import { expectAccessible, expectReflowWithSpacing, MFA_CODE, PASSWORD, signIn, watchCsp } from './helpers';
 
 const VALID_NPI = '1234567893';
 
@@ -8,8 +8,8 @@ test.describe.configure({ mode: 'serial' });
 test('done when: a Program Admin invites a user, upgrades a student to resident with fields and a reason, and both are in the audit log', async ({
   page,
 }) => {
-  // A sign-in with its code, five pages and six axe checks: about 17 s on an idle machine, and past
-  // the default 30 s once on one busy with other suites.
+  // A sign-in with its code, five pages and nine axe checks, three of them at 320 px after the reflow
+  // checks: about 26 s on a machine shared with another suite, past the default 30 s on a busier one.
   test.slow();
   const csp = watchCsp(page);
 
@@ -37,6 +37,9 @@ test('done when: a Program Admin invites a user, upgrades a student to resident 
   await page.getByRole('navigation', { name: 'Portal' }).getByRole('link', { name: 'Team members' }).click();
   await expect(page).toHaveURL(/\/team\/members$/);
   await expectAccessible(page, '/team/members');
+  // A table, a select of every role and credential: nothing scrolls sideways on a narrow screen
+  // (finding outside phase 5).
+  await expectReflowWithSpacing(page, '/team/members', { axe: true });
   const invite = page.getByRole('form', { name: 'Invite someone' });
   await invite.getByLabel('Name').fill('Taylor Brooks (demo)');
   await invite.getByLabel('Email').fill('student@example.com');
@@ -51,6 +54,7 @@ test('done when: a Program Admin invites a user, upgrades a student to resident 
   await expect(page).toHaveURL(/\/team\/members\/[0-9a-f-]{36}$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Taylor Brooks (demo)');
   await expectAccessible(page, '/team/members/[id]');
+  await expectReflowWithSpacing(page, '/team/members/[id]', { axe: true });
   const cred = page.getByRole('form', { name: 'Change credential' });
   await cred.getByLabel('Credential').selectOption('resident');
   await cred.getByLabel('Reason').fill('Started residency');
@@ -59,6 +63,8 @@ test('done when: a Program Admin invites a user, upgrades a student to resident 
   await expect(alert).toContainText('Fill in the fields this credential needs');
   await expect(alert.getByRole('link', { name: 'NPI is required for this credential.' })).toBeVisible();
   await expectAccessible(page, '/team/members/[id] with errors', { inPlace: true });
+  // A resident's fields in the credential's fieldset, each a text box within the panel.
+  await expectReflowWithSpacing(page, '/team/members/[id] with errors', { axe: true });
 
   await cred.getByLabel('NPI').fill(VALID_NPI);
   await cred.getByLabel('Residency program').fill('Demo Internal Medicine');
@@ -114,6 +120,8 @@ test('owners use the owner console without belonging to a team', async ({ page }
   await signIn(page, 'owner@example.com');
   await expect(page).toHaveURL(/\/owner$/);
   await expectAccessible(page, '/owner');
+  // Each team's Program Admins listed with their email.
+  await expectReflowWithSpacing(page, '/owner', { axe: true });
   const form = page.getByRole('form', { name: 'Create a team' });
   await form.getByLabel('Team name').fill('Second Demo Team (made-up)');
   await form.getByRole('button', { name: 'Create team' }).click();

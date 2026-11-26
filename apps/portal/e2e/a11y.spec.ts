@@ -5,6 +5,7 @@ import {
   expectAccessible,
   expectNothingStored,
   expectReflow,
+  expectReflowWithSpacing,
   PASSWORD,
   portalNav,
   registerPhone,
@@ -352,6 +353,7 @@ test('a phone holding patient and problem work says so in words on the Phones pa
     const row = page.getByRole('row').filter({ hasText: 'Robin Patel (demo)' }).first();
     await expect(row).toContainText('4 patient details, 1 problem list entry');
     await expectAccessible(page, '/team/devices (patient work)');
+    await expectReflowWithSpacing(page, '/team/devices (patient work)');
   } finally {
     // Other specs count the phones still holding work.
     await phone.push([], {});

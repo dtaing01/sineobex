@@ -1,0 +1,35 @@
+/* Six columns: with text spacing they need about 600 px to keep their words whole, and the stacked
+   table pattern (STACKED_TABLE) lays them out as a table again from 640 px, where the page gives
+   them less, so nearly every word was broken across lines (WCAG 1.4.12). The phones table stays
+   stacked up to 800 px, as the pattern stacks it below 640 px. */
+@media (min-width: 640px) and (max-width: 799.98px) {
+  .phones,
+  .phones tbody,
+  .phones tr,
+  .phones th,
+  .phones td {
+    display: block;
+  }
+  .phones thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .phones tbody tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+  }
+  .phones tbody td {
+    border-bottom: 0;
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+  .phones td[data-label]::before {
+    content: attr(data-label) ': ';
+    font-weight: 700;
+  }
+}

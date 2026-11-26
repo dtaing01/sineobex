@@ -13,6 +13,7 @@ import {
   signIn,
   staffToken,
   TEAM,
+  textSpacing,
   watchCsp,
   watchTraffic,
 } from './helpers';
@@ -4521,24 +4522,6 @@ test.describe('a preset’s history and the review of its update, at 320 px', ()
     await expectNothingStored(page, 'Tables at 320 px');
   });
 });
-
-/** WCAG 1.4.12's text spacing on every element, as a reader's own style sheet sets it, or taken off. */
-async function textSpacing(page: Page, on: boolean) {
-  await page.evaluate((on) => {
-    const spacing: [string, string][] = [
-      ['line-height', '1.5'],
-      ['letter-spacing', '0.12em'],
-      ['word-spacing', '0.16em'],
-    ];
-    for (const el of document.querySelectorAll<HTMLElement>('body *')) {
-      const set: [string, string][] = el.tagName === 'P' ? [...spacing, ['margin-bottom', '2em']] : spacing;
-      for (const [property, value] of set) {
-        if (on) el.style.setProperty(property, value, 'important');
-        else el.style.removeProperty(property);
-      }
-    }
-  }, on);
-}
 
 /**
  * The words a heading in main draws across two lines although they fit on one of its lines: only a

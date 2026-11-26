@@ -1,0 +1,9 @@
+/* The access forms: a select of every role or credential, and a credential's fields in a fieldset
+   within the panel. At their own widths, the longest option and a text box's default 20 characters
+   are wider than the column at 320 px, and widened the page (WCAG 1.4.10). Each takes the width of
+   its column instead, as it is drawn already at any width: the select stretched to the field, the
+   input filling its box. */
+.access :global(.px-select),
+.access :global(.sx-input) input {
+  width: 100%;
+}
