@@ -246,6 +246,46 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets(
+    'says Marked entered in error where it is heard, however far down the history the mark was made (item 21)',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      // A long history of the person's own changes, so the oldest sits well below the top of the sheet.
+      final (:h, :f) = await openDel(
+        tester,
+        before: (h, f) {
+          for (var i = 0; i < 12; i++) {
+            change(
+              h,
+              f.frost,
+              i.isEven ? 'set' : 'clear',
+              by: 'user-1',
+              ago: Duration(days: 12 - i),
+            );
+          }
+        },
+      );
+      await openSheet(tester);
+      // To the end of the list: the oldest change's Entered in error, the notice's old place far above.
+      await tester.drag(sheetList(), const Offset(0, -4000));
+      await tester.pumpAndSettle();
+      final marks = inSheet(find.text(flagEnteredInErrorAction)).hitTestable();
+      expect(marks, findsWidgets);
+      await tester.tap(marks.last);
+      await settle(tester);
+      await tester.enterText(inDialog(find.byKey(const ValueKey('phi.reason'))), 'Demo: set on the wrong patient');
+      await tester.tap(inDialog(find.widgetWithText(FilledButton, markFlagChangeAction)));
+      await settle(tester);
+      expect(find.byType(Dialog), findsNothing);
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityFlagChange && e.op == 'set'), hasLength(1));
+      // Said where the sheet's other messages are, beside Save, whatever part of the list is in view.
+      final said = find.text(flagChangeMarkedText);
+      expect(said, findsOneWidget);
+      expect(tester.getSemantics(said), isSemantics(isLiveRegion: true));
+      handle.dispose();
+    },
+  );
+
   testWidgets('without patients.edit the pills show and no sheet is offered', (tester) async {
     await openDel(
       tester,

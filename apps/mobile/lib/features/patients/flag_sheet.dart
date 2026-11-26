@@ -362,13 +362,6 @@ class _FlagSheetState extends ConsumerState<FlagSheet> {
                 children: [
                   Semantics(header: true, child: Text(changeFlagsTitle, style: text.titleLarge)),
                   const SizedBox(height: FieldSpace.s3),
-                  if (_said case final said?) ...[
-                    KeyedSubtree(
-                      key: ValueKey('flags.said.$_tries'),
-                      child: Semantics(liveRegion: true, container: true, child: NoticeMessage(said)),
-                    ),
-                    const SizedBox(height: FieldSpace.s3),
-                  ],
                   if (!held) ...[const NoticeMessage(setupNotDownloaded), const SizedBox(height: FieldSpace.s3)],
 
                   // ---- risk level: one, or None ----
@@ -428,22 +421,33 @@ class _FlagSheetState extends ConsumerState<FlagSheet> {
                 ],
               ),
             ),
-            if (held)
+            // Under the list, in view however far it is scrolled: a mark is made from the history, which
+            // can sit a screen or more below the top, so what it says is said here, with Save's.
+            if (held || _said != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(FieldSpace.s4, FieldSpace.s2, FieldSpace.s4, FieldSpace.s4),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (paused) ...[
-                      Text(flagsClockPaused, style: text.bodyLarge),
+                    if (_said case final said?) ...[
+                      KeyedSubtree(
+                        key: ValueKey('flags.said.$_tries'),
+                        child: Semantics(liveRegion: true, container: true, child: NoticeMessage(said)),
+                      ),
                       const SizedBox(height: FieldSpace.s2),
                     ],
-                    if (_problem case final problem?) ...[
-                      ErrorMessage(problem, key: ValueKey('flags.problem.$_tries')),
-                      const SizedBox(height: FieldSpace.s2),
+                    if (held) ...[
+                      if (paused) ...[
+                        Text(flagsClockPaused, style: text.bodyLarge),
+                        const SizedBox(height: FieldSpace.s2),
+                      ],
+                      if (_problem case final problem?) ...[
+                        ErrorMessage(problem, key: ValueKey('flags.problem.$_tries')),
+                        const SizedBox(height: FieldSpace.s2),
+                      ],
+                      FilledButton(onPressed: canSave ? _save : null, child: const Text('Save')),
                     ],
-                    FilledButton(onPressed: canSave ? _save : null, child: const Text('Save')),
                   ],
                 ),
               ),
