@@ -401,12 +401,23 @@ void main() {
     expect([queued.recordId, queued.op], [changeId, 'create']);
     expect([for (final f in services.flags.flagsOf(patientId).conditions) f.flagId], [frost]);
     final mark8 = await auditMark();
+    // The team index the phone holds was downloaded before the change was made.
+    final heldIndex = phone.store.kv('index.version');
+    expect(heldIndex, isNotNull);
     network.offline = false;
     expect(await phone.engine.syncAll(force: true), isA<SyncDone>());
     // Accepted, its receipt naming the hash the phone sent.
     expect(expected8['receipts'], {'status': 'accepted', 'hashConfirmed': true});
     final receipt = network.receipts[queued.changeId];
     expect([receipt?['status'], receipt?['hash']], ['accepted', queued.valueHash]);
+    // It names the team index's counter just after the change too, which the phone keeps beside the
+    // times (6.1, review finding VR1): above the counter of the index the phone held, which the change
+    // wasn't in.
+    final counter = (receipt?['details'] as Map<String, Object?>?)?['indexVersion'];
+    expect(counter, isA<int>());
+    expect(counter! as int, greaterThan(int.parse(heldIndex!.split('.').first)));
+    final kept = jsonDecode(phone.store.receiptKept(changeId, 'flagChange')!) as Map<String, Object?>;
+    expect(kept['serverIndexVersion'], counter);
     expect([phone.store.outbox(), phone.store.needsAttention()], [isEmpty, isEmpty]);
     // One audit event of the change, on its patient, by the staff member: its action and tier, never
     // its flag or its reason.
