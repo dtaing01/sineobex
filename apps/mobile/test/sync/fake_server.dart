@@ -878,9 +878,12 @@ class FakeSyncServer {
       return actor.holdForReview ? _hold(actor, c, 'permission') : _rejected('permission');
     }
     if (op != 'create' && op != 'set') return _invalid('append_only_for_audit');
+    // Applied as the database writes it, its IDs in lowercase (_asStored); what is held keeps the
+    // change as it came.
+    final stored = _asStored(c);
     final Map<String, Object?> outcome;
     try {
-      outcome = op == 'create' ? _create(actor, c, rules) : _set(actor, c, rules);
+      outcome = op == 'create' ? _create(actor, stored, rules) : _set(actor, stored, rules);
     } on _DefinitionError {
       // apply.ts applyInSavepoint: a lasting fault, stored, and the queue goes on. Every rule here
       // reads its definitions before it writes, so there is nothing to roll back.
@@ -890,7 +893,7 @@ class FakeSyncServer {
     // decide, review finding VS-1). A conflict writes nothing.
     if (actor.holdForReview && outcome['status'] == 'conflict' && c['field'] != null) {
       final redirected = (outcome['details'] as Map<String, Object?>?)?['redirectedTo'] as String?;
-      final on = records[redirected ?? c['recordId']];
+      final on = records[redirected ?? stored['recordId']];
       if (on == null || _showsNothing(_fieldForAnswer(actor.userId, on, c['field']! as String))) {
         return _hold(actor, c, 'permission');
       }
@@ -904,6 +907,45 @@ class FakeSyncServer {
       }
     }
     return outcome;
+  }
+
+  /// The value fields that name a record by its UUID, which the database holds in a uuid column
+  /// (values.ts's Uuid fields, a status check's lists and an intake's consent IDs aside, which it
+  /// keeps as sent in jsonb).
+  static const _recordIds = {
+    'patientId',
+    'encounterId',
+    'problemId',
+    'noteId',
+    'signoffId',
+    'flagId',
+    'recurrenceOf',
+    'resolvedInErrorOf',
+    'replacesLinkId',
+  };
+
+  /// [c] as the database writes it: a UUID in lowercase, whatever case it was sent in, so an ID in
+  /// capitals names the same record and is stored and read in lowercase (review finding MR-3, for
+  /// every entity): the record's own ID, the IDs a create's value names, and a set's, an encounter's
+  /// patient or a problem status's visit.
+  static Map<String, Object?> _asStored(Map<String, Object?> c) {
+    Object? lower(Object? id) => id is String ? id.toLowerCase() : id;
+    final value = c['value'];
+    return {
+      ...c,
+      'recordId': lower(c['recordId']),
+      'value': switch (value) {
+        final Map<String, Object?> v when c['op'] == 'create' => {
+          for (final MapEntry(:key, value: x) in v.entries) key: _recordIds.contains(key) ? lower(x) : x,
+        },
+        final String id when c['op'] == 'set' && _recordIds.contains(c['field']) => id.toLowerCase(),
+        final Map<String, Object?> v when c['op'] == 'set' && v.containsKey('encounterId') => {
+          ...v,
+          'encounterId': lower(v['encounterId']),
+        },
+        _ => value,
+      },
+    };
   }
 
   /// apply.ts hold: what it waits on goes to the audit event, not to the phone, whose answer carries
@@ -1025,16 +1067,9 @@ class FakeSyncServer {
     final value = c['value'];
     final issues = rules.createIssues(value);
     if (issues.isNotEmpty) return _rejected('validation', _problems(issues));
+    // Its IDs in lowercase already, as the database writes a UUID (_asStored; patient-flag-change.ts
+    // applyCreate passes a flag change's patient and flag so too).
     var v = value! as Map<String, Object?>;
-    // A flag change's patient and flag as the database writes a UUID, so an ID in capitals names the
-    // same ones, and is stored and read in lowercase (patient-flag-change.ts applyCreate; MR-3).
-    if (rules.entity == entityFlagChange) {
-      v = {
-        ...v,
-        'patientId': (v['patientId']! as String).toLowerCase(),
-        'flagId': (v['flagId']! as String).toLowerCase(),
-      };
-    }
     // An addendum or a correction naming a sign-off a reviewer rejected names none (records.ts
     // withoutRejectedSignoff, review finding PS-2).
     if ((rules.entity == entityAddendum || rules.entity == entityCorrection) &&
@@ -3897,7 +3932,8 @@ class FakeSyncServer {
     final out = <Object?>[];
     final missing = <Object?>[];
     for (final ref in refs) {
-      final r = records[ref['id']];
+      // Looked up as the database compares a UUID, whatever case it was asked in; missing as asked.
+      final r = records[(ref['id'] as String?)?.toLowerCase()];
       // A record of another team is none of this one's, as row-level security keeps it (review
       // finding MR-4). Only a flag change keeps its team here; a seed names none.
       final ours = r != null && (r.teamId == null || r.teamId == teamId.toLowerCase());

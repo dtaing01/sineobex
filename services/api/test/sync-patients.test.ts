@@ -664,6 +664,52 @@ describe('phase 3 sync: patient-side records', () => {
       );
     });
 
+    it('reads a record’s ID and its parents’ in capitals as the database writes them: stored, found and read in lowercase', async () => {
+      // No phone sends capitals (its IDs are its own, in lowercase), but a UUID names one record
+      // however it is written, as the database reads one: an encounter made and named in capitals,
+      // then an allergy naming its patient and that visit in capitals.
+      const p = await patient();
+      const visit = randomUUID();
+      const made = await phoneA.change({
+        entity: 'encounter',
+        op: 'create',
+        recordId: visit.toUpperCase(),
+        value: { kind: 'medical', patientId: p.id.toUpperCase() },
+      });
+      const allergy = await phoneA.change({
+        entity: 'patient_allergy',
+        op: 'create',
+        value: { patientId: p.id.toUpperCase(), substance: 'Demo: Latex', encounterId: visit.toUpperCase() },
+      });
+      expect(await asA(made, allergy)).toEqual([accepted(made), accepted(allergy)]);
+      const [stored] = await h.scratch.owner<{ id: string; patientId: string }[]>`
+        select id::text, patient_id::text as "patientId" from sineobex.encounters where id = ${visit}`;
+      expect(stored).toEqual({ id: visit, patientId: p.id });
+      // Read by its ID in capitals, each comes back as stored.
+      const read = await call(h, '/v1/sync/records', {
+        method: 'POST',
+        token: t.aToken,
+        teamId: t.teamId,
+        json: {
+          records: [
+            { entity: 'encounter', id: visit.toUpperCase() },
+            { entity: 'patient_allergy', id: allergy.recordId.toUpperCase() },
+          ],
+        },
+      });
+      expect(read.status).toBe(200);
+      type Read = {
+        id: string;
+        attributes: Record<string, unknown>;
+        fields: Record<string, { value: unknown }>;
+      };
+      const [visitRead, allergyRead] = read.body.records as Read[];
+      expect(read.body.missing).toEqual([]);
+      expect([visitRead!.id, allergyRead!.id]).toEqual([visit, allergy.recordId]);
+      expect(visitRead!.fields.patientId!.value).toBe(p.id);
+      expect(allergyRead!.attributes).toMatchObject({ patientId: p.id, encounterId: visit });
+    });
+
     it('holds a whole intake behind its held create, each item listed with its patient', async () => {
       const m = await addMember(h, t, 'rae@example.com', 'Rae (demo)');
       const phone = await FakePhone.create();

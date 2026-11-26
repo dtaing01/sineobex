@@ -104,6 +104,47 @@ void main() {
     'privacyNotice': {'id': uuid(), 'decision': 'acknowledged'},
   };
 
+  // services/api/test/sync-patients.test.ts holds the same case (review finding MR-3, for every
+  // entity's IDs, as the flag change's are).
+  test(
+    'reads a record’s ID and its parents’ in capitals as the database writes them: stored, found and read in lowercase',
+    () async {
+      await register(alex, 'dev-capitals');
+      final p = server.seedPatient(preferredName: 'Demo Cedar');
+      final visit = uuid();
+      final made = change(entityEncounter, 'create', {
+        'kind': 'medical',
+        'patientId': p.toUpperCase(),
+      }, recordId: visit.toUpperCase());
+      final allergy = change(entityAllergy, 'create', {
+        'patientId': p.toUpperCase(),
+        'substance': 'Demo: Latex',
+        'encounterId': visit.toUpperCase(),
+      });
+      expect(
+        [
+          for (final r in results(await push(alex, 'dev-capitals', [made, allergy]))) r['status'],
+        ],
+        ['accepted', 'accepted'],
+      );
+      expect(server.records[visit]?.patientId, p);
+      // Read by its ID in capitals, each comes back as stored.
+      final read =
+          (await server.handle(alex, team, 'POST', '/v1/sync/records', {
+                'records': [
+                  {'entity': entityEncounter, 'id': visit.toUpperCase()},
+                  {'entity': entityAllergy, 'id': (allergy['recordId']! as String).toUpperCase()},
+                ],
+              }))!
+              as Map<String, Object?>;
+      expect(read['missing'], isEmpty);
+      final [visitRead, allergyRead] = (read['records']! as List<Object?>).cast<Map<String, Object?>>();
+      expect([visitRead['id'], allergyRead['id']], [visit, allergy['recordId']]);
+      expect(((visitRead['fields']! as Map<String, Object?>)['patientId']! as Map<String, Object?>)['value'], p);
+      expect(allergyRead['attributes'], allOf(containsPair('patientId', p), containsPair('encounterId', visit)));
+    },
+  );
+
   test('a card conflict tells every member who manages the team’s people, naming the valid card', () async {
     server.permissions[admin] = {...FakeSyncServer.healthcareStaff, 'team.manage_users'};
     const gone = 'ad000000-0000-4000-8000-0000000000ae';
