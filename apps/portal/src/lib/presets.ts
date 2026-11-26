@@ -725,12 +725,12 @@ export async function restoreNoteType(key: string, reason: string): Promise<{ re
 
 /**
  * Takes the platform update on offer, in place or as a new note type, as a preset's is taken (5.1):
- * `platformVersion` is the list row's `update.platformVersion` and `baseVersion` the version shown
- * beside it, so only what the person reviewed is taken.
+ * `platformVersion` is the list row's `update.platformVersion`, `baseVersion` the version shown
+ * beside it and `baseState` the row's state, so only what the person reviewed is taken.
  */
 export async function takeNoteTypeUpdate(
   key: string,
-  take: { baseVersion: number; platformVersion: number; asNew: boolean; reason: string },
+  take: Schemas['TakeNoteTypeUpdate'],
 ): Promise<{ key: string; version: number; revision: number }> {
   return unwrap(
     (await api()).POST('/v1/admin/note-types/{key}/take-update', { params: { path: { key } }, body: take }),

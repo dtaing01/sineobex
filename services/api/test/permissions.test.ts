@@ -1044,7 +1044,7 @@ const NOTE_TYPE_ROUTES: RouteCase[] = [
   {
     method: 'POST',
     path: '/v1/admin/note-types/psychological/take-update',
-    body: { baseVersion: 1, platformVersion: 2, reason: REASON, asNew: false },
+    body: { baseVersion: 1, platformVersion: 2, baseState: 'active', reason: REASON, asNew: false },
     allowed: [MANAGE_PRESETS],
     refused: ALL_BUT_PRESETS,
     logged: { permission: MANAGE_PRESETS },
@@ -1123,7 +1123,12 @@ describe('phase 5 note type writes, with a stale sign-in', () => {
     });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     return (
-      r.body as unknown as { key: string; version: number; update: { platformVersion: number } | null }[]
+      r.body as unknown as {
+        key: string;
+        state: 'active' | 'archived';
+        version: number;
+        update: { platformVersion: number } | null;
+      }[]
     ).find((row) => row.key === key)!;
   }
 
@@ -1162,7 +1167,7 @@ describe('phase 5 note type writes, with a stale sign-in', () => {
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
     const row = await rowOf(key);
     expect(row.update?.platformVersion).toBe(next.version);
-    return { baseVersion: row.version, platformVersion: next.version };
+    return { baseVersion: row.version, platformVersion: next.version, baseState: row.state };
   }
 
   /** Everything a note type write could leave behind in the team: what a refusal must leave as it was. */

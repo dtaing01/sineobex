@@ -127,6 +127,28 @@ describe('the note types page', () => {
       expect(sectionOf(html, key)).toContain('Remove');
   });
 
+  it('sends back with a take the state the note type was drawn in, active or removed (item 5)', () => {
+    // Another admin's Remove or Restore keeps the version: only the state tells the one reviewed.
+    const sent = (html: string) =>
+      html.match(/<input type="hidden" name="baseState" value="([a-z]+)"\/>/)?.[1];
+    expect(sent(sectionOf(draw(), 'psychological'))).toBe('active');
+    const removed = noteType('t_00000000000c', 'Demo: Removed night list', {
+      state: 'archived',
+      customized: true,
+      updateOnOffer: true,
+      update: {
+        platformVersion: 2,
+        definition: definition('t_00000000000c', 'Demo: Removed night list, newer'),
+        changesFixed: [],
+      },
+    });
+    const html = draw([...ROWS, removed]);
+    const entry = html.slice(
+      html.indexOf('Update available<span class="sr-only"> for Demo: Removed night list'),
+    );
+    expect(sent(entry)).toBe('archived');
+  });
+
   it('draws Sineobex’s update in its own note type’s section, and an update that changes what is fixed as Add as new', () => {
     const html = draw();
     expect(sectionOf(html, 'psychological')).toContain(

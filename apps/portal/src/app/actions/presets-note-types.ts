@@ -7,6 +7,7 @@ import type { ActionState } from '@/lib/forms';
 import {
   archiveNoteType,
   createNoteType,
+  meanwhileNotice,
   restoreNoteType,
   sentValues,
   takeNoteTypeUpdate,
@@ -32,9 +33,6 @@ const LOST = 'This can’t be found. Reload the page.';
 /** A note type's key, as 0017 allows it: a platform key or a team's own `t_` one. Never a title. */
 const KEY = /^[a-z][a-z0-9_]{1,60}$/;
 
-/** The refusals another admin's Remove or Restore made meanwhile answer, as for presets. */
-const MEANWHILE: ReadonlySet<string> = new Set(['archived', 'not_archived']);
-
 /** The list again, saying what was done to which note type: an act's name and a key, nothing else. */
 const listWith = (said: 'done' | 'refused', what: string, key: string) =>
   `${PAGE}?${new URLSearchParams({ [said]: what, noteType: key })}`;
@@ -46,16 +44,18 @@ function versionOf(typed: string | undefined): number | null {
 }
 
 /**
- * What a note type form shows when the API refused it. A refusal another admin's act caused
- * meanwhile goes back to the list, which says so; anything that is no refusal, Next's redirects
- * among them (reauth_required to /reauth and back), goes on up.
+ * What a note type form shows when the API refused it. A refusal another admin's Remove or Restore
+ * caused meanwhile, a take's stale one among them (meanwhileNotice, as for presets), goes back to
+ * the list, which says so; anything that is no refusal, Next's redirects among them
+ * (reauth_required to /reauth and back), goes on up.
  */
 function failure(err: unknown, values: Record<string, string>, act: NoteTypeAct): ActionState {
   if (!(err instanceof PortalApiError)) throw err;
   const key = values.key ?? '';
-  if (MEANWHILE.has(err.code) && KEY.test(key)) {
+  const notice = meanwhileNotice(err.code, err.details, values.baseState);
+  if (notice !== null && KEY.test(key)) {
     revalidatePath(PAGE);
-    redirect(listWith('refused', err.code, key));
+    redirect(listWith('refused', notice, key));
   }
   return noteTypeRefusalState(err, values, act);
 }
@@ -115,10 +115,11 @@ export async function restoreNoteTypeAction(_: ActionState, form: FormData): Pro
 }
 
 /**
- * Takes the update on offer, sending back the version shown and the platform version reviewed, as a
- * preset's take does (actions/presets.ts): refused stale, the list is read again so the review shows
- * what is on offer now, and only then does the form drop the versions it sent, so its next take sends
- * the ones the review now shows; any other refusal keeps them, so a change meanwhile is still stale.
+ * Takes the update on offer, sending back the version shown, the platform version reviewed and the
+ * state shown, as a preset's take does (actions/presets.ts): refused stale, the list is read again so
+ * the review shows what is on offer now, and only then does the form drop what it sent, so its next
+ * take sends what the review now shows; any other refusal keeps it, so a change meanwhile is still
+ * stale.
  */
 export async function takeNoteTypeUpdateAction(_: ActionState, form: FormData): Promise<ActionState> {
   const values = sentValues(form);
@@ -129,6 +130,7 @@ export async function takeNoteTypeUpdateAction(_: ActionState, form: FormData): 
     !KEY.test(key) ||
     baseVersion === null ||
     platformVersion === null ||
+    (values.baseState !== 'active' && values.baseState !== 'archived') ||
     (values.asNew !== 'true' && values.asNew !== 'false')
   )
     return { error: LOST, values };
@@ -138,6 +140,7 @@ export async function takeNoteTypeUpdateAction(_: ActionState, form: FormData): 
     taken = await takeNoteTypeUpdate(key, {
       baseVersion,
       platformVersion,
+      baseState: values.baseState,
       asNew,
       reason: values.reason ?? '',
     });
@@ -145,7 +148,7 @@ export async function takeNoteTypeUpdateAction(_: ActionState, form: FormData): 
     const refused = failure(err, values, 'take');
     if (!(err instanceof PortalApiError && err.code === 'stale')) return refused;
     revalidatePath(PAGE);
-    const { baseVersion: _shown, platformVersion: _offered, ...kept } = values;
+    const { baseVersion: _shown, platformVersion: _offered, baseState: _state, ...kept } = values;
     return { ...refused, values: kept };
   }
   revalidatePath(PAGE);

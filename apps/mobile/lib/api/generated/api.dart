@@ -1471,6 +1471,23 @@ enum SyncResultStatus {
   String toJson() => wire;
 }
 
+/// The state you reviewed the note type in, as the list gave it: another by then (restored or removed meanwhile) is refused as stale
+enum TakeNoteTypeUpdateBaseState {
+  active('active'),
+  archived('archived'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const TakeNoteTypeUpdateBaseState(this.wire);
+  final String wire;
+
+  static TakeNoteTypeUpdateBaseState fromJson(String value) =>
+      TakeNoteTypeUpdateBaseState.values.firstWhere((e) => e.wire == value, orElse: () => TakeNoteTypeUpdateBaseState.unknown);
+
+  String toJson() => wire;
+}
+
 /// The state you reviewed the preset in, as the list gave it: another by then (restored or archived meanwhile) is refused as stale
 enum TakePresetUpdateBaseState {
   active('active'),
@@ -7408,6 +7425,7 @@ class SyncResult {
 class TakeNoteTypeUpdate {
   const TakeNoteTypeUpdate({
     required this.asNew,
+    required this.baseState,
     required this.baseVersion,
     required this.platformVersion,
     required this.reason,
@@ -7415,6 +7433,8 @@ class TakeNoteTypeUpdate {
 
   /// Take it as a new note type: this one is removed and kept in the history. The only way to take an update that changes what is fixed at creation
   final bool asNew;
+  /// The state you reviewed the note type in, as the list gave it: another by then (restored or removed meanwhile) is refused as stale
+  final TakeNoteTypeUpdateBaseState baseState;
   /// The version you opened: any other is refused as stale, with the current one
   final int baseVersion;
   /// The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale
@@ -7424,6 +7444,7 @@ class TakeNoteTypeUpdate {
 
   factory TakeNoteTypeUpdate.fromJson(Map<String, dynamic> json) => TakeNoteTypeUpdate(
         asNew: json['asNew'] as bool,
+        baseState: TakeNoteTypeUpdateBaseState.fromJson(json['baseState'] as String),
         baseVersion: (json['baseVersion'] as num).toInt(),
         platformVersion: (json['platformVersion'] as num).toInt(),
         reason: json['reason'] as String,
@@ -7431,6 +7452,7 @@ class TakeNoteTypeUpdate {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'asNew': asNew,
+        'baseState': baseState.toJson(),
         'baseVersion': baseVersion,
         'platformVersion': platformVersion,
         'reason': reason,

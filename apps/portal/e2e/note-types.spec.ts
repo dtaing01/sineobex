@@ -1006,6 +1006,7 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
         await apiCall(await admin(), 'POST', `/v1/admin/note-types/${key}/take-update`, {
           baseVersion: now.version,
           platformVersion: 1,
+          baseState: 'active',
           asNew: false,
           reason: 'Demo: left on offer by a test',
         });

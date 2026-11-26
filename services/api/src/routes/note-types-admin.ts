@@ -378,6 +378,10 @@ const TakeNoteTypeUpdate = z
       description:
         'The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale',
     }),
+    baseState: z.enum(['active', 'archived']).openapi({
+      description:
+        'The state you reviewed the note type in, as the list gave it: another by then (restored or removed meanwhile) is refused as stale',
+    }),
     reason: PresetReason,
     asNew: z.boolean().openapi({
       description:
@@ -653,8 +657,11 @@ export function registerNoteTypeAdminRoutes(app: App, deps: Deps): void {
   // that changes kinds, group, sensitivity, quick or auto is refused fixed_field.
   app.openapi(takeUpdateRoute, async (c) => {
     const { key } = c.req.valid('param');
-    const { baseVersion, platformVersion, asNew, reason } = c.req.valid('json');
+    const { baseVersion, platformVersion, baseState, asNew, reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
-    return c.json(await takeNoteTypeUpdate(scope, { key, baseVersion, platformVersion, asNew, reason }), 200);
+    return c.json(
+      await takeNoteTypeUpdate(scope, { key, baseVersion, platformVersion, baseState, asNew, reason }),
+      200,
+    );
   });
 }

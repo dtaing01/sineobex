@@ -280,6 +280,12 @@ describe('openapi.json, patient data in requests and refusals', () => {
     expect(required('PublishNoteType')).toEqual(['baseVersion', 'ops', 'reason']);
     expect(required('ArchiveNoteType')).toEqual(['baseVersion', 'reason']);
     expect(required('RestoreNoteType')).toEqual(['reason']);
-    expect(required('TakeNoteTypeUpdate')).toEqual(['asNew', 'baseVersion', 'platformVersion', 'reason']);
+    expect(required('TakeNoteTypeUpdate')).toEqual([
+      'asNew',
+      'baseState',
+      'baseVersion',
+      'platformVersion',
+      'reason',
+    ]);
   });
 });

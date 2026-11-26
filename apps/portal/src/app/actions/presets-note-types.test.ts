@@ -300,11 +300,12 @@ describe('taking Sineobex’s update to a note type', () => {
     key: 'psychological',
     baseVersion: '2',
     platformVersion: '2',
+    baseState: 'active',
     asNew: 'false',
     reason: 'Demo: take it',
   };
 
-  it('takes it in place, sending back the version shown and the platform version reviewed', async () => {
+  it('takes it in place, sending back the version shown, the platform version reviewed and the state shown', async () => {
     answer = { status: 200, body: { key: 'psychological', version: 3, revision: 14 } };
     const r = await run(takeNoteTypeUpdateAction, take);
     expect(writes()).toEqual([
@@ -313,7 +314,13 @@ describe('taking Sineobex’s update to a note type', () => {
         path: '/v1/admin/note-types/{key}/take-update',
         init: {
           params: { path: { key: 'psychological' } },
-          body: { baseVersion: 2, platformVersion: 2, asNew: false, reason: 'Demo: take it' },
+          body: {
+            baseVersion: 2,
+            platformVersion: 2,
+            baseState: 'active',
+            asNew: false,
+            reason: 'Demo: take it',
+          },
         },
       },
     ]);
@@ -335,7 +342,7 @@ describe('taking Sineobex’s update to a note type', () => {
   });
 
   it('says a newer version came on offer since the review, and reads the page again so the review shows it', async () => {
-    answer = refusal(409, 'stale', { currentVersion: 2, platformVersion: 3 });
+    answer = refusal(409, 'stale', { currentVersion: 2, platformVersion: 3, state: 'active' });
     const r = await run(takeNoteTypeUpdateAction, take);
     expect(r.state?.error).toBe(
       'Sineobex offered a newer version while you were reviewing this one. Review it below before you take it.',
@@ -343,6 +350,18 @@ describe('taking Sineobex’s update to a note type', () => {
     expect(revalidated).toEqual([PAGE]);
     // Its next take sends the versions the review now shows, not the ones it sent.
     expect(r.state?.values).toEqual({ key: 'psychological', asNew: 'false', reason: 'Demo: take it' });
+  });
+
+  it('comes back to the page, saying so, when another admin restored or removed it after its review (item 5)', async () => {
+    // Stale, naming the note type's state now: the list draws it in its new place, so the form that
+    // was refused has gone with its old one, and the list's notice says what happened.
+    answer = refusal(409, 'stale', { currentVersion: 2, platformVersion: 2, state: 'active' });
+    const restored = await run(takeNoteTypeUpdateAction, { ...take, baseState: 'archived', asNew: 'true' });
+    expect(restored.to).toBe(`${PAGE}?refused=not_archived&noteType=psychological`);
+    answer = refusal(409, 'stale', { currentVersion: 2, platformVersion: 2, state: 'archived' });
+    const removed = await run(takeNoteTypeUpdateAction, { ...take, asNew: 'true' });
+    expect(removed.to).toBe(`${PAGE}?refused=archived&noteType=psychological`);
+    expect(revalidated).toEqual([PAGE, PAGE]);
   });
 
   it('says why a take as new, a held title or nothing on offer refused it', async () => {
@@ -373,6 +392,8 @@ describe('taking Sineobex’s update to a note type', () => {
       { ...take, asNew: 'maybe' },
       { ...take, platformVersion: 'x' },
       { ...take, key: 'Bad Key' },
+      { ...take, baseState: 'removed' },
+      { ...take, baseState: '' },
     ])
       expect((await run(takeNoteTypeUpdateAction, bad)).state?.error).toBe(
         'This can’t be found. Reload the page.',

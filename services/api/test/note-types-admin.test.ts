@@ -149,6 +149,13 @@ let api: ReturnType<typeof noteTypesApi>;
 let phone: Clinician;
 let patientId: string;
 
+/** The state a note type's head is in: what the list showed a person who takes its update. */
+async function noteTypeStateOf(teamId: string, key: string): Promise<'active' | 'archived'> {
+  const [row] = await h.scratch.owner<{ state: 'active' | 'archived' }[]>`
+    select state from sineobex.note_types where team_id = ${teamId} and key = ${key}`;
+  return row?.state ?? 'active';
+}
+
 /** The note type routes in a team, called as `who` with a token minted for each call, or `token`. */
 function noteTypesApi(teamId: string, who: Person, options: { token?: string } = {}) {
   const send = async (method: 'GET' | 'POST' | 'PUT', path: string, json?: unknown): Promise<Answer> =>
@@ -169,11 +176,22 @@ function noteTypesApi(teamId: string, who: Person, options: { token?: string } =
     archive: (key: string, baseVersion: number, reason: unknown = REASON) =>
       send('POST', at(key, 'archive'), { baseVersion, reason }),
     restore: (key: string, reason: unknown = REASON) => send('POST', at(key, 'restore'), { reason }),
-    takeUpdate: (
+    takeUpdate: async (
       key: string,
-      take: { baseVersion: number; platformVersion: number; asNew: boolean },
+      take: {
+        baseVersion: number;
+        platformVersion: number;
+        asNew: boolean;
+        baseState?: 'active' | 'archived';
+      },
       reason: unknown = REASON,
-    ) => send('POST', at(key, 'take-update'), { ...take, reason }),
+    ) =>
+      send('POST', at(key, 'take-update'), {
+        // Unless a case names another, the person reviewed the note type in the state it is in.
+        baseState: take.baseState ?? (await noteTypeStateOf(teamId, key)),
+        ...take,
+        reason,
+      }),
   };
 }
 
@@ -1387,7 +1405,11 @@ describe('POST /v1/admin/note-types/{key}/take-update', () => {
         409,
         'stale',
       );
-      expect(details).toEqual({ currentVersion: row.version, platformVersion: next.version });
+      expect(details).toEqual({
+        currentVersion: row.version,
+        platformVersion: next.version,
+        state: 'active',
+      });
       expect(
         refused(
           await api.takeUpdate('sexual_reproductive', {
@@ -1398,7 +1420,7 @@ describe('POST /v1/admin/note-types/{key}/take-update', () => {
           409,
           'stale',
         ),
-      ).toEqual({ currentVersion: row.version, platformVersion: next.version });
+      ).toEqual({ currentVersion: row.version, platformVersion: next.version, state: 'active' });
     } finally {
       unrelease();
     }
@@ -1408,6 +1430,132 @@ describe('POST /v1/admin/note-types/{key}/take-update', () => {
       409,
       'no_update',
     );
+  });
+
+  it('takes an update only from the state it was reviewed in: another admin’s Restore or Remove since is stale, nothing written (item 5)', async () => {
+    // A Remove and a Restore keep the version, and a take as new removes an active note type: so a
+    // take sent from a removed one's offer after another admin restored it would remove it again,
+    // and one reviewed on an active one removed since would add what they removed. A team of its
+    // own, so the removes and restores here leave the others' note types as they were.
+    const own = await presetsTeam(h, 'Note Types Reviewed State');
+    const ours = noteTypesApi(own.teamId, own.admin);
+    const edited = async (key: string) => {
+      const row = await rowOf(key, ours);
+      const r = await ours.publish(key, row.version, [
+        { op: 'rename_type', title: `Demo: ${row.title}, ours` },
+      ]);
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+    };
+    await edited('psychological');
+    await edited('social_needs');
+    const [psych, social] = [
+      await platformNext('psychological', (d) => ({ ...d, title: `${d.title}, again` })),
+      await platformNext('social_needs', (d) => ({ ...d, title: `${d.title}, again` })),
+    ];
+    const unrelease = release(psych, social);
+    try {
+      // A list of the phones' runs the installer, which offers each platform version over the team's.
+      const listed = await call(h, '/v1/forms/note-types', {
+        token: await tokenOf(h, own.admin),
+        teamId: own.teamId,
+      });
+      expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+      // Reviewed in the Removed list, then restored by another admin before the take.
+      const removed = await rowOf('psychological', ours);
+      expect((await ours.archive('psychological', removed.version)).status).toBe(200);
+      expect(await rowOf('psychological', ours)).toMatchObject({ state: 'archived', updateOnOffer: true });
+      expect((await ours.restore('psychological')).status).toBe(200);
+      for (const asNew of [true, false]) {
+        const details = await refusedUnwritten(
+          () =>
+            ours.takeUpdate('psychological', {
+              baseVersion: removed.version,
+              platformVersion: psych.version,
+              asNew,
+              baseState: 'archived',
+            }),
+          409,
+          'stale',
+          own.teamId,
+        );
+        expect(details, `as new: ${asNew}`).toEqual({
+          currentVersion: removed.version,
+          platformVersion: psych.version,
+          state: 'active',
+        });
+      }
+      // Reviewed while active, then removed by another admin: as new it is stale, in place archived.
+      const active = await rowOf('social_needs', ours);
+      expect(active).toMatchObject({ state: 'active', updateOnOffer: true });
+      expect((await ours.archive('social_needs', active.version)).status).toBe(200);
+      const details = await refusedUnwritten(
+        () =>
+          ours.takeUpdate('social_needs', {
+            baseVersion: active.version,
+            platformVersion: social.version,
+            asNew: true,
+            baseState: 'active',
+          }),
+        409,
+        'stale',
+        own.teamId,
+      );
+      expect(details).toEqual({
+        currentVersion: active.version,
+        platformVersion: social.version,
+        state: 'archived',
+      });
+      await refusedUnwritten(
+        () =>
+          ours.takeUpdate('social_needs', {
+            baseVersion: active.version,
+            platformVersion: social.version,
+            asNew: false,
+            baseState: 'active',
+          }),
+        409,
+        'archived',
+        own.teamId,
+      );
+      // Reviewed again in the state each is in now, each is taken as new.
+      const restored = await ours.takeUpdate('psychological', {
+        baseVersion: removed.version,
+        platformVersion: psych.version,
+        asNew: true,
+        baseState: 'active',
+      });
+      expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+      expect((await rowOf('psychological', ours)).state).toBe('archived');
+      const added = await ours.takeUpdate('social_needs', {
+        baseVersion: active.version,
+        platformVersion: social.version,
+        asNew: true,
+        baseState: 'archived',
+      });
+      expect(added.status, JSON.stringify(added.body)).toBe(200);
+      expect((await rowOf('social_needs', ours)).state).toBe('archived');
+    } finally {
+      unrelease();
+    }
+  });
+
+  it('refuses a state reviewed that is not active or archived, or left out, as malformed, naming it (item 5)', async () => {
+    const take = { baseVersion: 1, platformVersion: 2, asNew: false, reason: REASON };
+    for (const [label, sent] of [
+      ['another word', { baseState: 'removed' }],
+      ['null', { baseState: null }],
+      ['left out', {}],
+    ] as const) {
+      const details = await refusedUnwritten(
+        () => api.send('POST', '/v1/admin/note-types/outreach/take-update', { ...take, ...sent }),
+        422,
+        'validation_failed',
+      );
+      expect(
+        (details.fields as { path: string }[]).map((f) => f.path),
+        label,
+      ).toEqual(['baseState']);
+    }
   });
 
   it('only takes as a new note type an update that changes what is fixed: the old one removed, kept in the history', async () => {
@@ -1681,7 +1829,7 @@ describe('adding, removing, restoring and taking an update: what each checks', (
       'stale',
       t.teamId,
     );
-    expect(details).toEqual({ currentVersion: row.version, platformVersion: null });
+    expect(details).toEqual({ currentVersion: row.version, platformVersion: null, state: 'active' });
   });
 
   it('refuses to take an update whose title another active note type holds, in place and as new', async () => {
@@ -1985,7 +2133,7 @@ describe('adding, removing, restoring and taking an update: what each checks', (
 
   it('asks a take for a reason and a recent sign-in, and team.manage_presets, before it reads anything', async () => {
     const t = await presetsTeam(h, 'Note Types Take Asks');
-    const take = { baseVersion: 1, platformVersion: 2, asNew: false };
+    const take = { baseVersion: 1, platformVersion: 2, asNew: false, baseState: 'active' as const };
     const path = '/v1/admin/note-types/outreach/take-update';
     const theirs = noteTypesApi(t.teamId, t.admin);
     for (const reason of [undefined, '  ', 'ab', 'x'.repeat(301)]) {

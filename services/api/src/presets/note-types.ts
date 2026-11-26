@@ -391,8 +391,9 @@ const MESSAGES: Record<NoteTypeRefusal, string> = {
 
 /**
  * A refusal with what the person needs to fix it: the current version when stale (and, for a take,
- * the platform version on offer now), the fields when a fixed one changed, the counts when
- * referenced. Every one is 409 but an edit that changes nothing, which is 422, as for presets.
+ * the platform version on offer now and the state the note type is in), the fields when a fixed one
+ * changed, the counts when referenced. Every one is 409 but an edit that changes nothing, which is
+ * 422, as for presets.
  */
 function refusal(
   code: NoteTypeRefusal,
@@ -401,6 +402,7 @@ function refusal(
     fields?: string[];
     referencedBy?: Record<string, number>;
     platformVersion?: number | null;
+    state?: 'active' | 'archived';
   } = {},
 ): ApiError {
   const details: Record<string, unknown> | undefined =
@@ -408,6 +410,7 @@ function refusal(
       ? {
           currentVersion: context.held?.currentVersion,
           ...(context.platformVersion === undefined ? {} : { platformVersion: context.platformVersion }),
+          ...(context.state === undefined ? {} : { state: context.state }),
         }
       : code === 'fixed_field'
         ? { fields: context.fields ?? [] }
@@ -780,23 +783,36 @@ function stateChange(held: HeldNoteType, state: 'active' | 'archived'): Changes 
  * group, sensitivity, quick, auto) may change only that way, since the old one keeps its meaning.
  * Either version is the platform's (`origin = 'preset'`, its platform version), while the event
  * names the person and the reason. Only the platform version the person reviewed is taken: any
- * phone's list runs the installer, which may offer a newer one meanwhile.
+ * phone's list runs the installer, which may offer a newer one meanwhile. So is it only from the
+ * state they reviewed the note type in, as a preset's take (presetWriteEffect): another admin's
+ * Remove or Restore meanwhile keeps the version, and a take as new would add what the one removed,
+ * or remove again what the other restored.
  */
 export function takeNoteTypeUpdate(
   scope: PresetWriteScope,
-  input: { key: string; baseVersion: number; platformVersion: number; asNew: boolean; reason: string },
+  input: {
+    key: string;
+    baseVersion: number;
+    platformVersion: number;
+    baseState: 'active' | 'archived';
+    asNew: boolean;
+    reason: string;
+  },
 ): Promise<{ key: string; version: number; revision: number }> {
   return noteTypeWrite(scope, input.reason, async (w) => {
     const held = noteTypeOf(w.team, input.key);
     const update = noteTypeUpdateOf(held);
     const offered = update?.preset.version ?? null;
-    // The person's page was loaded at this version and offered this platform version: a newer one
-    // on offer since is a change they have not seen, so the take is stale, as a newer copy makes it.
+    // The person's page was loaded at this version and state and offered this platform version: a
+    // newer one on offer since, or another state, is a change they have not seen, so the take is
+    // stale, as a newer copy makes it.
     const stale =
-      input.baseVersion !== held.currentVersion || (offered !== null && offered !== input.platformVersion);
+      input.baseVersion !== held.currentVersion ||
+      input.baseState !== held.state ||
+      (offered !== null && offered !== input.platformVersion);
     if (!input.asNew && held.state === 'archived') throw refusal('archived');
     if (input.asNew && held.definition.auto !== undefined) throw refusal('not_removable');
-    if (stale) throw refusal('stale', { held, platformVersion: offered });
+    if (stale) throw refusal('stale', { held, platformVersion: offered, state: held.state });
     if (update === null) throw refusal('no_update');
     if (!input.asNew && update.changesFixed.length > 0)
       throw refusal('fixed_field', { fields: update.changesFixed });

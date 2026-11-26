@@ -47,10 +47,13 @@ function Review({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** A version the take sends back: the one a refused take sent, else the list's (OfferForm's reason). */
-function SentVersion({ name, version }: { name: 'baseVersion' | 'platformVersion'; version: number }) {
+/**
+ * What the take sends back of what was reviewed, a version or the note type's state: what a refused
+ * take sent, else the list's (OfferForm's reason).
+ */
+function Sent({ name, value }: { name: 'baseVersion' | 'platformVersion' | 'baseState'; value: string }) {
   const sent = useFormState().values?.[name];
-  return <input type="hidden" name={name} value={sent ?? String(version)} />;
+  return <input type="hidden" name={name} value={sent ?? value} />;
 }
 
 /**
@@ -58,8 +61,9 @@ function SentVersion({ name, version }: { name: 'baseVersion' | 'platformVersion
  * Your edited copy hasn’t changed." (the second sentence only of a note type the team edited), with
  * Review and Replace with the new version; or, for an update that changes what is fixed at creation
  * (kinds, group, sensitivity, quick or auto), Add as new with its sentence. A removed note type is
- * offered its update as a new one only, as a removed preset is. A take sends back the version shown
- * and the platform version reviewed, so only what was reviewed is taken (5.1).
+ * offered its update as a new one only, as a removed preset is. A take sends back the version shown,
+ * the platform version reviewed and the state it was shown in, so only what was reviewed is taken
+ * (5.1): a Remove or a Restore meanwhile keeps the version.
  *
  * Placed for every note type the page shows: it draws nothing while nothing is on offer, and a take
  * refused stays to say why, though the offer has gone by the time the list is read again.
@@ -99,8 +103,9 @@ export function NoteTypeOffer({ noteType, offer, review, headingLevel = 3 }: Not
             )}
             <Review title={title}>{review}</Review>
             <input type="hidden" name="key" value={key} />
-            <SentVersion name="baseVersion" version={noteType.version} />
-            <SentVersion name="platformVersion" version={offer.platformVersion} />
+            <Sent name="baseVersion" value={String(noteType.version)} />
+            <Sent name="platformVersion" value={String(offer.platformVersion)} />
+            <Sent name="baseState" value={noteType.removed ? 'archived' : 'active'} />
             <input type="hidden" name="asNew" value={asNew ? 'true' : 'false'} />
             <ReasonBox />
             <div className="px-actions">
