@@ -10,9 +10,12 @@ import 'package:sineobex_field/design/tokens.dart' show FieldFonts, FieldTheme;
 import 'package:sineobex_field/features/patients/flag_sheet.dart' show conditionsDoneAction;
 import 'package:sineobex_field/features/patients/patient_row.dart' show PatientRow;
 import 'package:sineobex_field/features/patients/patients_screen.dart';
+import 'package:sineobex_field/patients/consent_script.dart' show ConsentAnswer;
+import 'package:sineobex_field/patients/patient_repository.dart' show Intake;
 import 'package:sineobex_field/patients/team_index.dart' show IndexRemoval;
 import 'package:sineobex_field/sync/entities.dart' show entityAudit, entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
+import 'package:sineobex_field/sync/sync_engine.dart' show RefreshReason;
 
 import '../../sync/fake_server.dart';
 import 'patient_kit.dart';
@@ -990,6 +993,101 @@ void main() {
       expect(find.textContaining('found on this phone', skipOffstage: false), findsNothing);
       await expectScreenOk(tester);
     });
+
+    // Review finding VX6: X1's case held neither half of what the index's going does to the filters.
+    // A filter kept, where the list went, comes back chosen when the index does.
+    testWidgets('after a 403 took the index, the index downloaded again finds the choosers unchosen', (tester) async {
+      final h = await listWithFlags(tester);
+      h.server.offline = false;
+      h.patients.patients.saveDraft({'preferredName': 'Demo Wren'});
+      await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+      await expectShown(tester, find.text('1 patient found on this phone'));
+      // The role loses the index at the desk: the next download is refused, 403.
+      final kept = h.server.permissionsOf(h.patients.userId);
+      h.server.permissions[h.patients.userId] = {'patients.view'};
+      await tester.runAsync(() => h.sync.refreshNow(reason: RefreshReason.manual));
+      await settle(tester);
+      expect(h.patients.index.state.removed, IndexRemoval.notPermitted);
+      expect(find.widgetWithText(ActionChip, 'Risk level'), findsNothing);
+      // It may again: the next download brings the index back with the tab open.
+      h.server.permissions[h.patients.userId] = kept;
+      await syncAndRefresh(tester, h);
+      await settle(tester);
+      expect(h.patients.index.state.present, isTrue);
+      await expectShown(tester, find.text('Patient list updated just now · 3 patients'));
+      expect(find.byType(ChosenFilterChip, skipOffstage: false), findsNothing);
+      for (final chooser in ['Risk level', 'Conditions']) {
+        expect(find.widgetWithText(ActionChip, chooser), findsOneWidget, reason: '$chooser unchosen');
+      }
+      expect(find.textContaining('found on this phone', skipOffstage: false), findsNothing);
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+      await expectScreenOk(tester);
+    });
+
+    // A search typed under a filter is run again as the index goes, no longer narrowed, and logged as
+    // it is then shown: left as it was, its narrowed list would stay under the notice with no filter.
+    for (final online in [true, false]) {
+      testWidgets('a search typed under a filter when the index goes runs again unnarrowed, logged as shown '
+          '(${online ? 'online, by a 403' : 'offline, by the 7-day expiry'})', (tester) async {
+        final h = await listWithFlags(tester);
+        h.server.offline = !online;
+        // Offline, someone added on this phone and not yet sent: the phone's own work, which stays when
+        // the index goes, and which the filter leaves out, as the index doesn't hold them.
+        final quilt = online
+            ? null
+            : h.patients.patients
+                  .createPatient(const Intake(consent: ConsentAnswer.given(), preferredName: 'Demo Quilt'))
+                  .patientId;
+        await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+        await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quil');
+        await tester.pump(const Duration(milliseconds: 700));
+        await settle(tester);
+        List<String> shown() => [
+          for (final r in tester.widgetList<PatientRow>(find.byType(PatientRow, skipOffstage: false)))
+            r.patient.patientId,
+        ];
+        expect(shown(), [quillonOf(h)], reason: 'narrowed by the filter');
+        final mine = searchedEntries(h.sync.store!).length;
+        List<Map<String, Object?>> theirs() => [
+          for (final e in h.server.serverAudit)
+            if (e['action'] == 'patient.searched') e['details']! as Map<String, Object?>,
+        ];
+        final before = theirs().length;
+        if (online) {
+          h.server.permissions[h.patients.userId] = {'patients.view'};
+          await tester.runAsync(() => h.sync.refreshNow(reason: RefreshReason.manual));
+        } else {
+          h.wall = h.wall.add(const Duration(days: 8));
+          h.boot.advance(const Duration(days: 8));
+          expect(h.patients.index.expireIfStale(), isTrue);
+        }
+        await settle(tester);
+        expect(h.patients.index.state.present, isFalse);
+        expect(find.byType(ChosenFilterChip, skipOffstage: false), findsNothing);
+        if (online) {
+          // The server's search, no longer narrowed: Quill and Quillan, whom the filter left out, too.
+          expect(find.text('3 patients found', skipOffstage: false), findsOneWidget);
+          expect(shown(), hasLength(3));
+          final logged = theirs().sublist(before);
+          expect(logged, hasLength(1));
+          expect({...logged.single['patientIds']! as List<Object?>}, {...shown()});
+          expect(searchedEntries(h.sync.store!), hasLength(mine), reason: 'the server logs its own search');
+        } else {
+          expect(find.text('1 patient found on this phone', skipOffstage: false), findsOneWidget);
+          expect(shown(), [quilt]);
+          final logged = searchedEntries(h.sync.store!).sublist(mine);
+          expect([for (final e in logged) e['source']], ['cache']);
+          expect(
+            [for (final e in logged) e['patientIds']],
+            [
+              [quilt],
+            ],
+          );
+          expect(theirs(), hasLength(before));
+        }
+        await expectScreenOk(tester);
+      });
+    }
 
     // Review finding VX1: the list's own read was the first to find the index more than 7 days old,
     // and the index's going, which cleared the filters and their list inside that read, was undone
