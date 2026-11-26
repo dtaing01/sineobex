@@ -148,7 +148,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     final seq = ++_seq;
     setState(() => _searching = true);
     try {
-      final run = await _s.search.search(_query.text, birth: _born, more: more);
+      final run = await _s.search.search(_query.text, birth: _born, more: more, flagIds: _filterIds);
       if (!mounted || seq != _seq) return;
       setState(() {
         _run = run;
@@ -218,10 +218,21 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   bool get _filtering => _indexHeld && (_riskFilter != null || _conditionFilter.isNotEmpty);
 
+  /// The flags a search is narrowed by: the filters', while they count ([_filtering]).
+  Set<String> get _filterIds => _filtering ? {?_riskFilter, ..._conditionFilter} : const {};
+
+  /// A filter chosen or cleared: with nothing typed, the list of who carries the flags; with a search
+  /// typed, the search again, narrowed by them as it runs, so it logs only the patients it shows (a
+  /// narrowing of its last list would have logged everyone that list found).
+  void _filtersChanged() {
+    _listFlagged();
+    if (!_emptyQuery) unawaited(_search());
+  }
+
   /// The patients on this phone carrying the filters' flags, as the index gives them: one list, one
   /// audit entry naming who it shows and never a flag. Only with nothing typed, where it shows: a
-  /// search's results are narrowed instead ([_narrowed]), and logged as the search ran. With no
-  /// filter, the empty state again.
+  /// search is narrowed by them as it runs instead ([_filterIds]). With no filter, the empty state
+  /// again.
   void _listFlagged() {
     if (!_filtering || !_emptyQuery) {
       _flagged = null;
@@ -249,7 +260,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     if (chosen == null || !mounted) return;
     setState(() {
       _riskFilter = chosen.flagId;
-      _listFlagged();
+      _filtersChanged();
     });
   }
 
@@ -263,26 +274,15 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
     if (chosen == null || !mounted) return;
     setState(() {
       _conditionFilter = Set.unmodifiable(chosen);
-      _listFlagged();
+      _filtersChanged();
     });
   }
 
   void _clearFilter({bool risk = false, bool conditions = false}) => setState(() {
     if (risk) _riskFilter = null;
     if (conditions) _conditionFilter = const {};
-    _listFlagged();
+    _filtersChanged();
   });
-
-  /// [hits] narrowed by the filters, as the index gives each patient's flags.
-  List<FoundPatient> _narrowed(List<FoundPatient> hits) {
-    if (!_filtering) return hits;
-    return [
-      for (final p in hits)
-        if (_s.index.flagsOf(p.patientId) case final f?
-            when (_riskFilter == null || f.primary == _riskFilter) && _conditionFilter.every(f.secondary.contains))
-          p,
-    ];
-  }
 
   /// [p]'s risk level as its row shows it; none once the store froze under the read.
   FlagView? _riskLevelOf(FoundPatient p) {
@@ -386,7 +386,8 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
         builder: (context, _) {
           if (unreadable(sync, _s) case final instead?) return instead;
           final run = _run;
-          final hits = _narrowed(run?.hits ?? const <FoundPatient>[]);
+          // Narrowed by the filters as the search ran, and logged as shown.
+          final hits = run?.hits ?? const <FoundPatient>[];
           final onPhone = run?.source == ListSource.phone;
           return RefreshIndicator(
             onRefresh: () => sync.refreshNow(reason: RefreshReason.manual),
@@ -475,8 +476,9 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                             'More people match. Add letters or a birth year to narrow it down.',
                             style: text.bodyLarge,
                           ),
-                        // Only where the search found no one at all: someone the filters leave out is still there.
-                        if (run.hits.isEmpty && _s.mayEdit && _query.text.trim().isNotEmpty) ...[
+                        // Only where the search found no one at all: under a filter, someone it leaves out may
+                        // still be there.
+                        if (run.hits.isEmpty && !_filtering && _s.mayEdit && _query.text.trim().isNotEmpty) ...[
                           const SizedBox(height: FieldSpace.s2),
                           WideButton(
                             label: 'New patient with this name',

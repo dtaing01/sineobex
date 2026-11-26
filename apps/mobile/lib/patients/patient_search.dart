@@ -377,8 +377,11 @@ class PatientSearcher {
   /// One search run (5.6): the server's search when it answers within [wait], merged with patients
   /// made here and not synced yet; otherwise the phone's own list, audited here. [more] is Show more
   /// (up to [searchMax], a run of its own). An empty query, or a year without a name, searches
-  /// nothing (no browsing).
-  Future<SearchRun> search(String? text, {Birth? birth, bool more = false}) async {
+  /// nothing (no browsing). [flagIds], the Patients tab's filters (phase 5 design 8.2), keeps only
+  /// the patients carrying every one: the server's search narrows by them (`flagIds`), and the
+  /// phone's by the team index ([TeamIndex.carriesAll]), each before its cut and its audit, so the
+  /// run logs only the patients it shows.
+  Future<SearchRun> search(String? text, {Birth? birth, bool more = false, Set<String> flagIds = const {}}) async {
     _refuseIfFrozen();
     final query = SearchQuery(text: text, birth: birth);
     if (query.isEmpty) return SearchRun.empty;
@@ -397,17 +400,18 @@ class PatientSearcher {
                   : api.BirthQuery(year: birth.year),
               limit: limit,
               surface: Surface.phone,
+              flagIds: flagIds.isEmpty ? null : flagIds.toList(),
             ),
           )
           .timeout(wait);
     } on Object catch (e) {
       if (!_offline(e)) rethrow;
-      return searchOnPhone(text, birth: birth, more: more);
+      return searchOnPhone(text, birth: birth, more: more, flagIds: flagIds);
     }
     final hits = [for (final h in result.hits) _fromServer(h)];
     final shown = {for (final h in hits) h.patientId};
     // Patients made here and not synced yet: the person's own work, which the server can't know.
-    final local = _rank(query, _localOnly().difference(shown), limit: limit);
+    final local = _rank(query, _carrying(_localOnly().difference(shown), flagIds), limit: limit);
     final merged = [...hits, ...local.hits]..sort((a, b) => b.score.compareTo(a.score));
     return SearchRun(
       hits: merged.take(limit).toList(),
@@ -421,14 +425,14 @@ class PatientSearcher {
   /// The phone's own search (5.5): candidates from the search table, the index's births and the
   /// cached charts' legal names, scored, then audited in the same transaction as the read, before
   /// anything is shown. Throws [ChartingPaused] when the store is frozen: nothing is shown.
-  SearchRun searchOnPhone(String? text, {Birth? birth, bool more = false}) {
+  SearchRun searchOnPhone(String? text, {Birth? birth, bool more = false, Set<String> flagIds = const {}}) {
     _refuseIfFrozen();
     final query = SearchQuery(text: text, birth: birth);
     if (query.isEmpty) return SearchRun.empty;
     index.expireIfStale();
     final limit = more ? searchMax : searchLimit;
     return store.transaction(() {
-      final ranked = _rank(query, _candidates(query), limit: limit);
+      final ranked = _rank(query, _carrying(_candidates(query), flagIds), limit: limit);
       store.appendAudit(
         'patient.searched',
         patientIds: [for (final h in ranked.hits) h.patientId],
@@ -638,6 +642,15 @@ class PatientSearcher {
     ))
       r['id'] as String,
   };
+
+  /// The patients of [raw] who carry every flag of [flagIds], as the team index gives their flags;
+  /// all of [raw] with none. A patient the index doesn't hold carries none.
+  Set<String> _carrying(Set<String> raw, Set<String> flagIds) => flagIds.isEmpty
+      ? raw
+      : {
+          for (final id in raw)
+            if (index.carriesAll(id, flagIds)) id,
+        };
 
   /// Patients made here whose create hasn't been confirmed: unknown to the server.
   Set<String> _localOnly() => {

@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:sineobex_field/features/patients/flag_sheet.dart' show conditionsDoneAction;
 import 'package:sineobex_field/features/patients/patient_row.dart' show PatientRow;
 import 'package:sineobex_field/features/patients/patients_screen.dart';
-import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
+import 'package:sineobex_field/sync/entities.dart' show entityAudit, entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 
 import '../../sync/fake_server.dart';
@@ -364,6 +364,16 @@ void main() {
 
     Finder rowOf(String name) => find.bySemanticsLabel(RegExp('^$name[,.]'));
 
+    /// The phone's own `patient.searched` entries, in the order they were made.
+    List<Map<String, Object?>> searchedEntries(LocalStore store) => [
+      for (final e in store.outbox())
+        if (e.entity == entityAudit && (e.value! as Map<String, Object?>)['action'] == 'patient.searched')
+          e.value! as Map<String, Object?>,
+    ];
+
+    String quillonOf(AppHarness h) =>
+        h.server.records.values.singleWhere((r) => r.fields['preferredName']?.value == 'Demo Quillon').id;
+
     Future<void> chooseInDialog(WidgetTester tester, String chip, List<String> pills, {bool done = false}) async {
       await tapOn(tester, find.widgetWithText(ActionChip, chip));
       for (final pill in pills) {
@@ -433,17 +443,55 @@ void main() {
       await settle(tester);
       await reveal(tester, rowOf('Demo Quill'));
       final store = h.sync.store!;
-      final before = auditEvents(store).length;
+      final before = searchedEntries(store).length;
       await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+      await reveal(tester, rowOf('Demo Quillon'));
       expect(rowOf('Demo Quill'), findsNothing);
-      // Narrowed from what the search logged as it ran: no list of the filter's own, and no entry.
-      expect(auditEvents(store).sublist(before), isEmpty);
-      // The search found people: the filter leaving them out is no reason to register someone new.
+      expect(rowOf('Demo Quillan'), findsNothing);
+      // The search runs again narrowed, and logs only who it shows (item 19): never the patients the
+      // filter leaves out, and never the flag.
+      expect(
+        [for (final e in searchedEntries(store).sublist(before)) e['patientIds']],
+        [
+          [quillonOf(h)],
+        ],
+      );
+      // A filter leaving people out is no reason to register someone new.
       expect(find.text('New patient with this name'), findsNothing);
-      // Cleared, the search's own list again.
+      // Cleared, the search's own list again, logged as it is shown.
       await tapOn(tester, find.byTooltip('Clear risk level'));
       await reveal(tester, rowOf('Demo Quill'));
       expect(rowOf('Demo Quill'), findsOneWidget);
+      expect((searchedEntries(store).last['patientIds']! as List<Object?>).length, 3);
+    });
+
+    testWidgets('a filter narrows a name search online too: the server logs only who the list shows (item 19)', (
+      tester,
+    ) async {
+      final h = await listWithFlags(tester);
+      h.server.offline = false;
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo Quill');
+      await tester.pump(const Duration(milliseconds: 700));
+      await settle(tester);
+      await reveal(tester, rowOf('Demo Quill'));
+      final mine = searchedEntries(h.sync.store!).length;
+      final before = h.server.serverAudit.length;
+      await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+      await reveal(tester, rowOf('Demo Quillon'));
+      expect(rowOf('Demo Quill'), findsNothing);
+      final searched = [
+        for (final e in h.server.serverAudit.sublist(before))
+          if (e['action'] == 'patient.searched') e['details']! as Map<String, Object?>,
+      ];
+      expect(
+        [for (final d in searched) d['patientIds']],
+        [
+          [quillonOf(h)],
+        ],
+      );
+      // It counts the flags it narrowed by, and never names one.
+      expect(searched.single['flagCount'], 1);
+      expect(searchedEntries(h.sync.store!).length, mine, reason: 'the server logs its own search');
     });
 
     // Review finding F3: the filters narrow from the team index, which some roles never hold (D38).

@@ -138,6 +138,14 @@ class TeamIndex {
     return e == null ? null : _shown(e.flags?.toJson(), _flagBodies());
   }
 
+  /// Whether [patientId] carries every flag of [flagIds] among its current flags, either tier, as
+  /// [flagsOf] gives them: what the server's search keeps of its hits for `flagIds` (search.ts), so a
+  /// search narrowed by the Patients tab's filters lists, and logs, the same patients offline.
+  bool carriesAll(String patientId, Iterable<String> flagIds) {
+    final held = flagsOf(patientId);
+    return held != null && flagIds.every((id) => held.primary == id || held.secondary.contains(id));
+  }
+
   /// The team's flags the phone's copy of the presets holds, archived ones included, by ID: what the
   /// flag rule reads of each.
   Map<String, FlagBody> _flagBodies() => {
