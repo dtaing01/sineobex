@@ -787,13 +787,24 @@ void main() {
       expect(flagChanges(h), isEmpty);
     });
 
-    testWidgets('where the presets aren’t held the row says to connect; the patient saves without one', (tester) async {
+    // Review finding W5: intake said Team setup's "Connect to finish." of a patient it can finish.
+    testWidgets('where the presets aren’t held the row says the patient can still be created, and the level set later; '
+        'the patient saves without one', (tester) async {
       final h = await intakeWithFlags(tester);
       PresetStore(h.sync.store!).clear();
       h.patients.changed();
       await settle(tester);
-      await expectShown(tester, find.text('Your team’s setup hasn’t downloaded yet. Connect to finish.'));
+      await expectShown(tester, find.text('Risk level'));
+      expect(
+        find.text(
+          'Your team’s setup hasn’t downloaded yet, so a risk level can’t be set here. You can still create the '
+          'patient, and set a risk level from their profile once the phone has connected.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Connect to finish'), findsNothing);
       expect(find.text(chooseRiskLevelAction), findsNothing);
+      await expectScreenOk(tester);
       await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
       expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), hasLength(1));
       expect(flagChanges(h), isEmpty);
