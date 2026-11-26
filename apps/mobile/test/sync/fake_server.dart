@@ -112,6 +112,12 @@ class FakeSyncServer {
   /// The server's own clock.
   DateTime Function() now;
 
+  /// When the server received the change it is storing now: the API stores each change of a push in
+  /// a transaction of its own, dated when it began, so here the push's clock reading plus 1 ms for
+  /// each change before it (review finding VS6); outside a push (a seed, an admin's accept), [now].
+  DateTime _receiptNow() => (_pushReceipt ?? now()).toUtc();
+  DateTime? _pushReceipt;
+
   /// The test's own team: the first a request named. A patient seeded without a team of its own
   /// belongs to it ([seedPatient]), as every patient the API holds belongs to one, so another team's
   /// member reads none of it (review finding S3).
@@ -777,11 +783,17 @@ class FakeSyncServer {
     _validatePush(changes);
     changes.sort((x, y) => (x['seq']! as int).compareTo(y['seq']! as int));
     final results = <Map<String, Object?>>[];
-    for (final c in changes) {
+    final pushedAt = now().toUtc();
+    for (final (i, c) in changes.indexed) {
       if (stopAfter != null && results.length >= stopAfter!) break;
-      // A time the server just measured as more than 5 minutes off is never stored as verified,
-      // whatever the phone claims (push.ts, review finding P8).
-      results.add(_one(userId, b['deviceId']! as String, teamId, flagged ? {...c, 'clockVerified': false} : c));
+      _pushReceipt = pushedAt.add(Duration(milliseconds: i));
+      try {
+        // A time the server just measured as more than 5 minutes off is never stored as verified,
+        // whatever the phone claims (push.ts, review finding P8).
+        results.add(_one(userId, b['deviceId']! as String, teamId, flagged ? {...c, 'clockVerified': false} : c));
+      } finally {
+        _pushReceipt = null;
+      }
     }
     return {...base, 'results': results};
   }
@@ -972,7 +984,7 @@ class FakeSyncServer {
     quarantine[id] = c;
     held[id] = (userId: actor.userId, deviceId: actor.deviceId, reason: reason, waitsOn: waitsOn);
     heldInTeam[id] = actor.teamId;
-    final at = heldAt[id] ??= now().toUtc();
+    final at = heldAt[id] ??= _receiptNow();
     return {
       'status': 'rejected',
       'reason': reason,
@@ -1226,8 +1238,8 @@ class FakeSyncServer {
     // When the server received the create (records.ts createReceivedAt): when its push held it, if an
     // admin's accept made it later. Its row is written now all the same (created_at).
     record
-      ..storedAt = heldAt[c['changeId']] ?? now().toUtc()
-      ..madeAt = now().toUtc();
+      ..storedAt = heldAt[c['changeId']] ?? _receiptNow()
+      ..madeAt = _receiptNow();
     // A patient is its team's (patients.team_id), whose chart no other team reads; a seed's, unless it
     // names one, the test's own ([_inTeam]).
     if (rules.entity == entityPatient) record.teamId = actor.teamId?.toLowerCase();
@@ -2298,7 +2310,7 @@ class FakeSyncServer {
         _ => 'none',
       },
       fields: {},
-    )..storedAt = now().toUtc();
+    )..storedAt = _receiptNow();
     switch (effect) {
       case SignoffRefused():
         throw StateError('refused above');
@@ -2472,7 +2484,7 @@ class FakeSyncServer {
             (changedAt: _iso(change.changedAt), oldCredential: change.oldCredential),
       ],
       signedAt: _when(c),
-      receivedAt: _iso(heldAt[c['changeId']] ?? now()),
+      receivedAt: _iso(heldAt[c['changeId']] ?? _receiptNow()),
       clockVerified: c['clockVerified'] == true,
       notBefore: _iso(notBefore),
       claimed: claimed,
@@ -2566,7 +2578,7 @@ class FakeSyncServer {
         },
         status: outcome,
         fields: {},
-      )..storedAt = now().toUtc();
+      )..storedAt = _receiptNow();
       correctionHistory[recordId] = ids;
       return _accepted(1, details: {'outcome': outcome, 'status': shown.status, 'attestation': shown.attestation});
     }
