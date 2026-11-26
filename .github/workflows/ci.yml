@@ -304,7 +304,10 @@ jobs:
   portal:
     name: Portal end-to-end and accessibility
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # The suite runs one test at a time on fixed ports and one database (playwright.config.ts), and
+    # by phase 5's close the job takes more than 25 minutes here; it is split across runners before
+    # it nears this again.
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17
