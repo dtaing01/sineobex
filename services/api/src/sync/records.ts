@@ -855,4 +855,9 @@ export interface EntityRules<C = unknown> {
   writeDetails?(s: SetContext): Record<string, unknown>;
   /** After a value reached the chart (matching re-runs on a name). */
   afterWrite?(s: SetContext): Promise<void>;
+  /**
+   * What a write's answer carries (SyncResult.details), kept in its receipt and so answered the same
+   * to a retry: a flag change's mark, the team index's counter after it (phase 5 design 6.1).
+   */
+  writeAnswer?(s: SetContext): Promise<Record<string, unknown>>;
 }

@@ -162,7 +162,7 @@ export const SyncResult = z
     message: z.string().optional(),
     details: z.record(z.string(), z.unknown()).optional().openapi({
       description:
-        'What the server did beyond storing the value. A sign-off’s (lifecycle 4.6): effect, status, attestation, hashMatches, and for effect none its reason: already_finished, not_author or empty (an empty draft, which does not count). A patient flag change’s create (phase 5 design 6.1): receivedAt, when the server received it (a held one’s hold time), and once on the chart effectiveAt, the time it is ordered by, both as stored, so a retry answers the same times',
+        'What the server did beyond storing the value. A sign-off’s (lifecycle 4.6): effect, status, attestation, hashMatches, and for effect none its reason: already_finished, not_author or empty (an empty draft, which does not count). A patient flag change’s create (phase 5 design 6.1): receivedAt, when the server received it (a held one’s hold time), and once on the chart effectiveAt, the time it is ordered by. A flag change’s create taken onto the chart, and its Entered in error mark taken, also carry indexVersion: the team index’s counter just after the change (the number before the dot of the index’s version), so an index whose counter is below it was worked out without the change. All as stored, so a retry answers the same',
     }),
     server: FieldState.optional().openapi({
       description: 'On conflict, or when the value was kept but not applied: the value the server holds',
