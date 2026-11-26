@@ -708,6 +708,53 @@ void main() {
       expect(rowOf('Demo Quill'), findsOneWidget);
     });
 
+    // Review finding W3: under a filter, a typed search the filter emptied said only "No one found.",
+    // and took New patient with this name away without a word.
+    for (final online in [false, true]) {
+      testWidgets('under a filter, a search that finds no one says the flags are why and how to search everyone '
+          '(${online ? 'online' : 'offline'})', (tester) async {
+        final handle = tester.ensureSemantics();
+        final h = await signIn(tester);
+        final high = h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: High', 'primary', 'red', 10));
+        final round = h.server.seedPatient(preferredName: 'Demo Round');
+        h.server.seed(entityFlagChange, {
+          'patientId': round,
+          'flagId': high,
+          'action': 'set',
+          'reason': 'Demo: a reason',
+        });
+        // Someone the filter leaves out: no flag at all.
+        h.server.seedPatient(preferredName: 'Demo Thistlewood');
+        await syncAndRefresh(tester, h);
+        h.server.offline = !online;
+        await openPatientsTab(tester);
+        await chooseInDialog(tester, 'Risk level', ['Red · Demo: High']);
+        await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Thistlewood');
+        await tester.pump(const Duration(milliseconds: 700));
+        await settle(tester);
+        final said = online
+            ? 'No one found with every flag chosen.'
+            : 'No one found on this phone with every flag chosen.';
+        const next = 'Clear the flags to search everyone, or to add someone new.';
+        expect(find.text(said), findsOneWidget);
+        expect(find.text(next), findsOneWidget);
+        await reveal(tester, find.text(said));
+        // Both, in the one live region the count is said in.
+        expect(tester.getSemantics(find.text(said)), isSemantics(isLiveRegion: true, label: '$said $next'));
+        expect(tester.getSemantics(find.text(next)), isSemantics(isLiveRegion: true, label: '$said $next'));
+        expect(find.text('New patient with this name'), findsNothing);
+        await expectScreenOk(tester);
+
+        // The flag cleared, the search runs again: whom the filter left out, in the search's own words.
+        await tapOn(tester, find.byTooltip('Clear risk level'));
+        await expectShown(tester, find.text(online ? '1 patient found' : '1 patient found on this phone'));
+        expect(find.text(said), findsNothing);
+        expect(find.text(next), findsNothing);
+        await reveal(tester, rowOf('Demo Thistlewood'));
+        handle.dispose();
+      });
+    }
+
     // Review finding X1: once the index went, the list a filter gave from it stayed on the tab, under
     // "The patient list was removed from this phone", with no filter left to clear it.
     testWidgets('the flag list goes with the index, its filter with it, and the tab shows its empty state again', (
