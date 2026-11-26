@@ -719,7 +719,9 @@ function splitWords(): string[] {
     const el = node.parentElement;
     if (!el || el.closest('.sr-only') || (!headShown && el.closest('thead'))) continue;
     const text = node.textContent ?? '';
-    for (const m of text.matchAll(/\S{2,}/g)) {
+    // A word's pieces between hyphens: a line may break after a hyphen (made-up), as a browser
+    // breaks it, and where it falls moves with the When column's width, so with the hour.
+    for (const m of text.matchAll(/[^\s-]{2,}/g)) {
       range.setStart(node, m.index);
       range.setEnd(node, m.index + m[0].length);
       const lines = new Set(
