@@ -246,6 +246,109 @@ void main() {
     handle.dispose();
   });
 
+  // Review finding W2: the dialog said "It leaves the patient’s flags" of a clear's mark, whose flag
+  // comes back, and "Only you and Program Admins see the reason" to a Program Admin marking a
+  // teammate's change. It says what the portal's says (FlagsPanel.tsx), by the change's action.
+  const markKept =
+      'It stays in the history, marked. Only the person who made the change and Program Admins see the reasons.';
+  const markSet = 'This set no longer counts among the patient’s flags. $markKept';
+  const markClear = 'This clear no longer counts, so the flag it cleared can come back on the patient. $markKept';
+
+  /// Opens Entered in error on the history's change heard as [spoken], and reads what its dialog says.
+  Future<void> expectMarkDialog(
+    WidgetTester tester,
+    String spoken, {
+    required String words,
+    required String quick,
+  }) async {
+    await tapInSheet(tester, find.bySemanticsLabel(spoken));
+    expect(inDialog(find.text(words)), findsOneWidget);
+    expect(inDialog(find.textContaining('Only you')), findsNothing);
+    // The quick reasons: the wrong patient, or the change's own action by mistake.
+    final quicks = [
+      for (final c in tester.widgetList<ActionChip>(inDialog(find.byType(ActionChip)))) (c.label as Text).data,
+    ];
+    expect(quicks, ['Wrong patient', quick]);
+    final chip = inDialog(find.widgetWithText(ActionChip, quick));
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pump();
+    expect(tester.widget<TextField>(inDialog(find.byKey(const ValueKey('phi.reason')))).controller!.text, quick);
+  }
+
+  for (final run in runs) {
+    testWidgets('Entered in error says what marking a set and a clear does, as the portal does, to their author '
+        '(${runName(run)})', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openDel(
+        tester,
+        run: run,
+        before: (h, f) {
+          change(h, f.high, 'set', by: 'user-1', ago: const Duration(days: 2));
+          change(h, f.high, 'clear', by: 'user-1', ago: const Duration(days: 1));
+        },
+      );
+      await openSheet(tester);
+      await expectMarkDialog(
+        tester,
+        'Mark cleared Red, Demo: High entered in error',
+        words: markClear,
+        quick: 'Cleared by mistake',
+      );
+      await expectGuidelines(tester);
+      await tester.tap(inDialog(find.text('Cancel')));
+      await settle(tester);
+      await expectMarkDialog(
+        tester,
+        'Mark set Red, Demo: High entered in error',
+        words: markSet,
+        quick: 'Set by mistake',
+      );
+      await expectGuidelines(tester);
+      handle.dispose();
+    });
+  }
+
+  testWidgets('to a Program Admin marking a teammate’s change it says the same, and the mark is made', (tester) async {
+    final handle = tester.ensureSemantics();
+    final (:h, :f) = await openDel(
+      tester,
+      permissions: [...FakeSyncServer.healthcareStaff, 'team.manage_users'],
+      before: (h, f) {
+        change(h, f.frost, 'set', ago: const Duration(days: 2));
+        change(h, f.frost, 'clear', ago: const Duration(days: 1));
+      },
+    );
+    await openSheet(tester);
+    await expectMarkDialog(
+      tester,
+      'Mark cleared Blue, Demo: Frost risk entered in error',
+      words: markClear,
+      quick: 'Cleared by mistake',
+    );
+    await tester.tap(inDialog(find.text('Cancel')));
+    await settle(tester);
+    await expectMarkDialog(
+      tester,
+      'Mark set Blue, Demo: Frost risk entered in error',
+      words: markSet,
+      quick: 'Set by mistake',
+    );
+    await tester.tap(inDialog(find.widgetWithText(FilledButton, markFlagChangeAction)));
+    await settle(tester);
+    expect(find.byType(Dialog), findsNothing);
+    final mark = h.sync.store!.outbox().singleWhere((e) => e.entity == entityFlagChange && e.op == 'set');
+    expect(
+      [mark.field, mark.value],
+      [
+        'enteredInError',
+        {'reason': 'Set by mistake'},
+      ],
+    );
+    handle.dispose();
+  });
+
   testWidgets(
     'says Marked entered in error where it is heard, however far down the history the mark was made (item 21)',
     (tester) async {

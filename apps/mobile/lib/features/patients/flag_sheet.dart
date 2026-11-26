@@ -291,6 +291,7 @@ class _FlagSheetState extends ConsumerState<FlagSheet> {
         services: _s,
         cancel: false,
         child: _MarkDialog(
+          action: change.action,
           mark: (reason) {
             try {
               _flags.enterInError(change.changeId, reason);
@@ -624,7 +625,10 @@ class _HistoryRow extends StatelessWidget {
 /// characters. [mark] marks the change and gives the refusal's words, which show here while the
 /// dialog stays (`PatientFlags` checks the reason).
 class _MarkDialog extends StatefulWidget {
-  const _MarkDialog({required this.mark});
+  const _MarkDialog({required this.action, required this.mark});
+
+  /// The change's `set` or `clear`: what the mark does to the patient's flags, and its quick reason.
+  final String action;
   final String? Function(String reason) mark;
 
   @override
@@ -648,48 +652,58 @@ class _MarkDialogState extends State<_MarkDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AskDialog(
-    title: 'Mark this change entered in error?',
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'It leaves the patient’s flags and stays in the history. Only you and Program Admins see the reason.',
-        ),
-        const SizedBox(height: FieldSpace.s3),
-        Wrap(
-          spacing: FieldSpace.s2,
-          runSpacing: FieldSpace.s2,
-          children: [
-            for (final q in const ['Wrong patient', 'Set by mistake'])
-              ActionChip(
-                label: Text(q),
-                onPressed: () => setState(() {
-                  _reason.text = q;
-                  _error = null;
-                }),
-              ),
-          ],
-        ),
-        const SizedBox(height: FieldSpace.s3),
-        PhiField(
-          name: 'reason',
-          label: 'Reason',
-          controller: _reason,
-          error: _error,
-          maxLength: 300,
-          capitalization: TextCapitalization.sentences,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _submit(),
-        ),
+  Widget build(BuildContext context) {
+    final clear = widget.action == 'clear';
+    final does = clear
+        ? 'This clear no longer counts, so the flag it cleared can come back on the patient.'
+        : 'This set no longer counts among the patient’s flags.';
+    return AskDialog(
+      title: 'Mark this change entered in error?',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // The portal's words (FlagsPanel.tsx), by the change's action: a clear's mark brings back the
+          // flag it cleared, and the reasons are read by the change's author and Program Admins, so a
+          // Program Admin marking a teammate's change is told the same (review finding W2).
+          Text(
+            '$does It stays in the history, marked. Only the person who made the change and Program Admins '
+            'see the reasons.',
+          ),
+          const SizedBox(height: FieldSpace.s3),
+          Wrap(
+            spacing: FieldSpace.s2,
+            runSpacing: FieldSpace.s2,
+            children: [
+              for (final q in ['Wrong patient', if (clear) 'Cleared by mistake' else 'Set by mistake'])
+                ActionChip(
+                  label: Text(q),
+                  onPressed: () => setState(() {
+                    _reason.text = q;
+                    _error = null;
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: FieldSpace.s3),
+          PhiField(
+            name: 'reason',
+            label: 'Reason',
+            controller: _reason,
+            error: _error,
+            maxLength: 300,
+            capitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+        FilledButton(onPressed: _submit, child: const Text(markFlagChangeAction)),
       ],
-    ),
-    actions: [
-      TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-      FilledButton(onPressed: _submit, child: const Text(markFlagChangeAction)),
-    ],
-  );
+    );
+  }
 }
 
 /// The risk level chooser: None (where offered) and each level by its pill, one chosen; a choice
