@@ -2,7 +2,7 @@ import type { PresetKind, PresetRow } from '@/lib/presets';
 import { OfferForm } from './OfferForm';
 import styles from './presets.module.css';
 import { ScrollTable } from './ScrollTable';
-import { reviewRows, type Described, type ReviewRow } from './review';
+import { reviewRows, type BodyWords, type Described, type ReviewRow } from './review';
 
 /** A field's value in words (review.ts): a text, or a list of lines, or None for a list of none. */
 export function DescribedValue({ value }: { value: Described }) {
@@ -81,12 +81,15 @@ export function UpdateOffer({
   names,
   back,
   headingLevel = 2,
+  words,
 }: {
   kind: PresetKind;
   preset: Pick<PresetRow, 'id' | 'name' | 'state' | 'version' | 'customized' | 'body' | 'update'>;
   names: Readonly<Record<string, string>>;
   back?: string;
   headingLevel?: 2 | 3;
+  /** The page's own words for some of the body's fields (review.ts's BodyWords). */
+  words?: BodyWords;
 }) {
   const { update } = preset;
   const removed = preset.state === 'archived';
@@ -109,7 +112,7 @@ export function UpdateOffer({
       review={
         update ? (
           <ReviewTable
-            rows={reviewRows(kind, preset.body, update.body, names)}
+            rows={reviewRows(kind, preset.body, update.body, names, words)}
             name={preset.name}
             id={preset.id}
           />

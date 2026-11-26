@@ -496,6 +496,51 @@ describe('a mapping named in the words of the version that last had its field or
     expect(sectionOf(html, 'Demo: Pneumococcal given')).toContain('The row this mapping is on was retired');
   });
 
+  it('reviews Sineobex’s update to a mapping in its note type’s words, as the page names a mapping (item 18)', () => {
+    const now = {
+      name: 'Demo: Film given',
+      noteTypeKey: 'wound_care',
+      path: 'wound.dressing',
+      when: { includes: 'film' },
+      lines: [{ itemId: GAUZE, qty: 1 }],
+    };
+    const update = {
+      ...now,
+      path: 'wound.pads',
+      when: { answered: true },
+      lines: [{ itemId: GAUZE, qty: { fromPath: 'wound.pads' } }],
+    };
+    const offered = {
+      ...map(FILM, 'Demo: Film given', now),
+      customized: true,
+      updateOnOffer: true,
+      update: { platformVersion: 2, body: update, changesFixed: [] },
+    } as PresetRow<'field_supply_map'>;
+    const page = renderToStaticMarkup(
+      createElement(FieldSuppliesView, {
+        rows: [offered],
+        noteTypes: [woundRow],
+        items: [item],
+        histories: {},
+      }),
+    );
+    const review = page.slice(page.indexOf('<table'), page.indexOf('</table>'));
+    expect(review).toContain('What taking the update changes in Demo: Film given');
+    for (const words of [
+      'Demo: Wound care',
+      'Demo: Wound: Demo: Dressing applied',
+      'Demo: Wound: Demo: Pads applied',
+      'Demo: Film',
+      'Ticked',
+      'Demo: Gauze pad × 1',
+      'Demo: Gauze pad × the number in “Demo: Pads applied”',
+    ])
+      expect(review, words).toContain(words);
+    // Never the key, a stored path or a code.
+    for (const stored of ['>wound_care<', 'wound.dressing', 'wound.pads', 'Includes film', 'Answered'])
+      expect(review, stored).not.toContain(stored);
+  });
+
   it('names a retired answer in those words, in its facts and in its Edit form, offering the current answers to choose', () => {
     expect(fact('Demo: Film given', 'Answer')).toBe('Demo: Film');
     const edit = renderToStaticMarkup(

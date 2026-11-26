@@ -11,7 +11,7 @@ import { noticeKey, PresetNotice } from '@/components/presets/PresetNotice';
 import { ReasonBox } from '@/components/presets/ReasonBox';
 import { RemovedList } from '@/components/presets/RemovedList';
 import { RemoveForm } from '@/components/presets/RemoveForm';
-import { FIELD_LABELS } from '@/components/presets/review';
+import { FIELD_LABELS, type BodyWords } from '@/components/presets/review';
 import { UpdateOffer } from '@/components/presets/UpdateOffer';
 import { HistoryTable } from '@/components/presets/VersionHistory';
 import type { FieldSupplyBody, NoteTypeRow, PresetEvent, PresetRow } from '@/lib/presets';
@@ -118,6 +118,31 @@ function readMapping(body: FieldSupplyBody, noteTypes: readonly NoteTypeRow[]): 
     fieldWords: body.path === undefined ? EVERY_NOTE : named ? `${named.section}: ${named.label}` : body.path,
     answerWords: body.when === undefined ? null : describeAnswer(body.when, namedHolds),
     warning,
+  };
+}
+
+/**
+ * A mapping's note type, field, answer and lines in its note type's words, as the page names a
+ * mapping (readMapping), for the review of Sineobex's update to it (item 18): never a key, a stored
+ * path or a code where the note type has words for them, the words of a version that hid them too.
+ */
+function mappingWords(noteTypes: readonly NoteTypeRow[], names: Readonly<Record<string, string>>): BodyWords {
+  return (field, value, body) => {
+    if (value === undefined) return undefined;
+    const mapping = body as unknown as FieldSupplyBody;
+    const read = readMapping(mapping, noteTypes);
+    switch (field) {
+      case 'noteTypeKey':
+        return read.noteTypeWords;
+      case 'path':
+        return read.fieldWords;
+      case 'when':
+        return read.answerWords ?? undefined;
+      case 'lines':
+        return mapping.lines.map((l) => lineWords(l, names, read.noteType));
+      default:
+        return undefined;
+    }
   };
 }
 
@@ -259,7 +284,13 @@ function MappingSection({
         <EditMapping row={row} noteTypes={noteTypes} items={items} names={names} />
       </Disclosure>
       <RemoveForm kind={KIND} preset={row} />
-      <UpdateOffer kind={KIND} preset={row} names={names} headingLevel={3} />
+      <UpdateOffer
+        kind={KIND}
+        preset={row}
+        names={names}
+        headingLevel={3}
+        words={mappingWords(noteTypes, names)}
+      />
       <HistoryTable events={history} id={row.id} heading={`History of ${row.name}`} headingLevel={3} flat />
     </section>
   );

@@ -128,6 +128,17 @@ export function describeField(
   }
 }
 
+/**
+ * A page's own words for some fields of a body, read with the whole body: a field supply map's note
+ * type, field, answer and lines, named in its note type's words from the note types the page read
+ * (item 18). Undefined leaves the field to describeField.
+ */
+export type BodyWords = (
+  field: string,
+  value: unknown,
+  body: Record<string, unknown>,
+) => Described | undefined;
+
 /** A row of the review: a field, as the copy holds it now and as the update would make it. */
 export interface ReviewRow {
   field: string;
@@ -151,13 +162,15 @@ function same(a: unknown, b: unknown): boolean {
  * The review of an update on offer (8.1): every field of the kind's body, the copy's value now
  * beside the update's, each that the update changes marked. A flag's rank is one of them, since
  * taking an update in place gives back the platform's (5.1). A field the page does not know comes
- * after the known ones, by its own name, so nothing the update changes goes unshown.
+ * after the known ones, by its own name, so nothing the update changes goes unshown. `words`, the
+ * page's own, name a field first where they can.
  */
 export function reviewRows(
   kind: PresetKind,
   now: object,
   update: object,
   names: Readonly<Record<string, string>>,
+  words?: BodyWords,
 ): ReviewRow[] {
   const a = now as Record<string, unknown>;
   const b = update as Record<string, unknown>;
@@ -169,8 +182,8 @@ export function reviewRows(
   return [...known, ...others].map((field) => ({
     field,
     label: labels[field] ?? field,
-    now: describeField(kind, field, a[field], names),
-    update: describeField(kind, field, b[field], names),
+    now: words?.(field, a[field], a) ?? describeField(kind, field, a[field], names),
+    update: words?.(field, b[field], b) ?? describeField(kind, field, b[field], names),
     changes: !same(a[field], b[field]),
   }));
 }
