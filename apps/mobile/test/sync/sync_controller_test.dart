@@ -429,6 +429,115 @@ void main() {
     expect(sync.store!.unsynced().total, 0);
   });
 
+  // Verification finding VR8: a run asked for while a push was under way waited for it, then started
+  // the moment it ended, before the controller acted on what it brought: a phone its Program Admin had
+  // ordered wiped asked for the team index first.
+  for (final brings in ['a wipe order', 'a spent device ID', 'lost access']) {
+    test('a run waiting on a push that brings $brings ends without asking the server for anything', () async {
+      refreshers = (t) => patientRefreshers(
+        OpenTeam(
+          userId: t.userId,
+          teamId: t.teamId,
+          store: t.store,
+          api: t.api,
+          clock: t.clock,
+          permissions: FakeSyncServer.healthcareStaff.toList(),
+        ),
+        idLinkBaseUrl: 'http://localhost:3100',
+      );
+      sync.dispose();
+      await launch();
+      await signIn();
+      await sync.refreshNow();
+      expect(PatientServices.of(sync.store!)!.index.state.present, isTrue);
+      sync.store!.createEncounter(kind: 'medical');
+      final device = deviceOf('team-0');
+      Future<void> settle() async {
+        for (var i = 0; i < 50; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+
+      final push = holds['/v1/sync/push'] = Completer<void>();
+      final syncing = sync.syncNow();
+      await settle();
+      final before = requests.length;
+      List<String> sent() => [for (final r in requests.skip(before)) r.path];
+      // The timer's run waits for the push, and pull to refresh for the timer's run.
+      final runs = [sync.refreshNow(reason: RefreshReason.timer), sync.refreshNow()];
+      await settle();
+      expect(sent(), isEmpty);
+      switch (brings) {
+        case 'a wipe order':
+          server.devices[device]!.status = 'wipe_requested';
+        case 'a spent device ID':
+          server.devices[device]!.status = 'wiped';
+        default:
+          server.refuseCode = 'team_suspended';
+      }
+      push.complete();
+      final outcome = await syncing;
+      await Future.wait(runs);
+      await settle();
+      expect(sent(), [
+        '/v1/sync/push',
+        if (brings == 'a wipe order') '/v1/devices/$device/wiped',
+        if (brings == 'lost access') '/v1/devices/$device/status',
+      ], reason: 'no refresher asks for anything once the push brought $brings');
+      switch (brings) {
+        case 'a wipe order':
+          expect(outcome, isA<SyncWipeRequested>());
+          expect(teamFile('team-0'), isFalse);
+          expect(session.state, isA<SignedOut>());
+        case 'a spent device ID':
+          expect(outcome, isA<SyncDeviceSpent>());
+        default:
+          expect(outcome, isA<SyncAccessLost>());
+          server.refuseCode = null;
+      }
+      if (brings == 'a wipe order') return;
+      // Only the runs asked for before it: the next one asks.
+      await sync.refreshNow(reason: RefreshReason.timer);
+      expect(sent(), contains('/v1/patients/index'));
+    });
+  }
+
+  test(
+    'a run whose first refresher was still under way when a push brought a spent device ID starts no other',
+    () async {
+      // The run didn't wait for the push, which began and ended while its note type list downloaded.
+      final first = _Gate();
+      refreshers = (t) => [
+        first,
+        ...patientRefreshers(
+          OpenTeam(
+            userId: t.userId,
+            teamId: t.teamId,
+            store: t.store,
+            api: t.api,
+            clock: t.clock,
+            permissions: FakeSyncServer.healthcareStaff.toList(),
+          ),
+          idLinkBaseUrl: 'http://localhost:3100',
+        ),
+      ];
+      sync.dispose();
+      await launch();
+      await signIn();
+      await sync.refreshNow();
+      sync.store!.createEncounter(kind: 'medical');
+      first.gate = Completer<void>();
+      final before = requests.length;
+      final run = sync.refreshNow(reason: RefreshReason.timer);
+      await Future<void>.delayed(Duration.zero);
+      server.devices[deviceOf('team-0')]!.status = 'wiped';
+      expect(await sync.syncNow(), isA<SyncDeviceSpent>());
+      first.gate!.complete();
+      await run;
+      expect([for (final r in requests.skip(before)) r.path], ['/v1/sync/push']);
+    },
+  );
+
   test('a status this app version doesn’t know never deletes anything', () async {
     await signIn();
     sync.store!.createEncounter(kind: 'medical');

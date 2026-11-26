@@ -179,13 +179,15 @@ class SyncEngine {
   /// lost access or a spent device ID must be acted on, and after a failure work is still waiting.
   ///
   /// No refresher starts while its batches are under way ([_pushes]); its own refreshers run after
-  /// them.
+  /// them. When they end with a wipe order, lost access or a spent device ID, a run asked for before
+  /// then, one that waited for them included, starts no more refreshers ([_stops]).
   Future<SyncOutcome> syncAll({bool force = false, int maxBatches = 50}) async {
     final ended = Completer<void>();
     _pushes.add(ended.future);
     final SyncOutcome outcome;
     try {
       outcome = await _pushAll(force: force, maxBatches: maxBatches);
+      if (outcome is SyncWipeRequested || outcome is SyncDeviceSpent || outcome is SyncAccessLost) _stops++;
     } finally {
       _pushes.remove(ended.future);
       ended.complete();
@@ -198,6 +200,11 @@ class SyncEngine {
 
   /// The pushes under way, each until its batches end.
   final _pushes = <Future<void>>{};
+
+  /// How many pushes ended with a wipe order, lost access or a spent device ID. The controller acts
+  /// on each next; a run that waited for the push would otherwise start in the gap, and a phone its
+  /// Program Admin ordered wiped download the team index first (review finding VR8).
+  int _stops = 0;
 
   /// [syncAll]'s batches, and the report after them.
   Future<SyncOutcome> _pushAll({required bool force, required int maxBatches}) async {
@@ -233,8 +240,10 @@ class SyncEngine {
   /// the sync's outcome. One run at a time: a call while one runs waits for it, then runs its own
   /// (a timer tick during a sync's refresh). Nothing runs while the store is frozen for a
   /// removal's hand-over (D21): the server's data isn't this person's to download any more, and a
-  /// search of it couldn't be logged. Nothing is awaited unless a run or a push is in progress, so
-  /// a call never waits on a future made in another zone (a widget test's fake clock).
+  /// search of it couldn't be logged. Nor once a push that ended after the call brought a wipe
+  /// order, lost access or a spent device ID ([_stops]). Nothing is awaited unless a run or a push
+  /// is in progress, so a call never waits on a future made in another zone (a widget test's fake
+  /// clock).
   ///
   /// This phone's own pushes go first: each refresher waits to start until no push's batches are
   /// under way, so what it downloads holds what the push stored. How the phone weighs its own flag
@@ -244,10 +253,11 @@ class SyncEngine {
   /// the old one's push, so an index can still be worked out during a push and leave its change out.
   /// The team index counter a receipt names tells the phone whether an index holds the change.
   Future<void> runRefreshers(RefreshReason reason) async {
+    final stops = _stops;
     for (var running = _refreshing; running != null; running = _refreshing) {
       await running;
     }
-    final run = _runRefreshers(reason);
+    final run = _runRefreshers(reason, stops);
     _refreshing = run;
     try {
       await run;
@@ -256,14 +266,15 @@ class SyncEngine {
     }
   }
 
-  Future<void> _runRefreshers(RefreshReason reason) async {
+  /// [stops] is [_stops] when the run was asked for.
+  Future<void> _runRefreshers(RefreshReason reason, int stops) async {
     for (final r in [...refreshers]) {
       // Before each refresher, not only the first: a run that began before the push (an unlock's,
       // whose note type list goes first) would otherwise start the index's download during it.
       for (var push = _pushes.firstOrNull; push != null; push = _pushes.firstOrNull) {
         await push;
       }
-      if (store.frozen) return;
+      if (store.frozen || _stops != stops) return;
       try {
         await r.refresh(reason);
       } on Object {
