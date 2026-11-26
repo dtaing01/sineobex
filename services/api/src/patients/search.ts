@@ -1,5 +1,5 @@
 import type { TeamScope } from '../auth/context.ts';
-import { forbidden, type ApiError } from '../lib/errors.ts';
+import { forbidden, invalid, type ApiError } from '../lib/errors.ts';
 import { flagHidden, teamFlags } from '../sync/read-rules.ts';
 import { findSearchHits } from './candidates.ts';
 import { searchBirth, type SearchQuery } from './matching.ts';
@@ -18,9 +18,10 @@ export type SearchCriterion = 'name' | 'birth_full' | 'birth_year';
  *
  * `flagIds` (phase 5 design 7) keeps the hits carrying every flag named among their current flags,
  * as the reader may see them (currentFlagsOf), before the cut, so a narrowed search still fills its
- * limit; the event counts the flags (`flagCount`) and never names one. A flag the flag rule hides
- * from the caller, one the team does not hold among them, is refused before anything is searched:
- * 403, logged as access.denied without the flag, and no search event.
+ * limit; the event counts the flags (`flagCount`) and never names one. Each flag named is checked
+ * before anything is searched, as a set of one is (insertFlagChange), with no search event: one that
+ * is no flag of the team is 422 unknown_flag, logged nowhere (D98), and one the flag rule hides from
+ * the caller 403, logged as a request naming a record they may not read (CO-14).
  */
 // PLAN-OPEN: search terms in the audit log (design 14.1, #9, for counsel). Never stored; if counsel
 // wants them, a separate restricted column with its own retention, never `details`.
@@ -42,10 +43,16 @@ export async function searchPatients(
 
   type Outcome = { answer: PatientSearchResultValue } | { refused: ApiError };
   const outcome = await scope.tx(async (tx, audit): Promise<Outcome> => {
-    // The flags named, as the team holds them: each one the caller may see, by the flag rule.
+    // The flags named, as the team holds them: first each one a flag of the team, then each one the
+    // caller may see, by the flag rule. A made-up ID, another team's flag or another kind of preset is
+    // no record the caller may not read, so nothing of it is logged (review finding A2); the hidden
+    // one's refusal names no flag and no sensitivity, as the flag routes' does.
     const named = flagIds === null ? null : { ids: flagIds, flags: await teamFlags(tx, scope.team.teamId) };
-    if (named?.ids.some((id) => flagHidden(scope.team.permissions, named.flags.get(id) ?? null))) {
-      await audit({ action: 'access.denied', details: { permission: 'patients.view_sensitive', route } });
+    if (named?.ids.some((id) => !named.flags.has(id))) {
+      return { refused: invalid('unknown_flag', 'One of these flags isn’t on your team’s list.') };
+    }
+    if (named?.ids.some((id) => flagHidden(scope.team.permissions, named.flags.get(id)!))) {
+      await audit({ action: 'access.denied', details: { reason: 'cannot_read', route } });
       return { refused: forbidden('Your role can’t search by one of these flags.', 'flag_hidden') };
     }
     const found = searchable

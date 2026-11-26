@@ -3443,8 +3443,9 @@ class FakeSyncServer {
   /// `flagIds` (phase 5 design 7), read in lowercase and each once, keeps the hits carrying every flag
   /// named among their current flags as the reader may see them ([_currentFlags]), either tier, before
   /// the cut, so a narrowed search still fills its limit and says when more matched; the event counts
-  /// the flags and names none. A flag the flag rule hides from the caller, one the team does not hold
-  /// among them, is refused before anything is searched, with no search event.
+  /// the flags and names none. Each flag named is checked before anything is searched, with no search
+  /// event: one that is no flag of the team is 422 `unknown_flag`, then one the flag rule hides from
+  /// the caller 403 `flag_hidden` (search.ts, review finding A2).
   Map<String, Object?> _search(String userId, String teamId, Map<String, Object?> b) {
     _require(userId, 'patients.view');
     final perms = permissionsOf(userId);
@@ -3453,6 +3454,9 @@ class FakeSyncServer {
       _ => null,
     };
     final flags = _teamFlags(teamId);
+    if (flagIds != null && flagIds.any((id) => !flags.containsKey(id))) {
+      throw const ApiException(422, 'unknown_flag', 'One of these flags isn’t on your team’s list.');
+    }
     if (flagIds != null && flagIds.any((id) => _flagHidden(perms, flags[id]?.head))) {
       throw const ApiException(403, 'flag_hidden', 'Your role can’t search by one of these flags.');
     }

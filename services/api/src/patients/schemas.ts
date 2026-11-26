@@ -311,8 +311,8 @@ export const PatientSearch = z
       .optional()
       .openapi({
         description:
-          'Only patients carrying every flag named among their current flags, either tier. A flag the role may ' +
-          'not see, or one that is not the team’s, is refused 403',
+          'Only patients carrying every flag named among their current flags, either tier. One that is not a ' +
+          'flag of the team is refused 422 unknown_flag; then one the role may not see, 403 flag_hidden',
       }),
   })
   .superRefine((v, ctx) => {

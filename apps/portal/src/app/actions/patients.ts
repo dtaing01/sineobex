@@ -54,6 +54,12 @@ const BAND: Record<Schemas['MatchBand'], string> = {
 // The API's default. Past it the screen asks for more letters or a birth year, never a next page.
 const SEARCH_LIMIT = 20;
 
+/**
+ * A flag the form offered that the API holds as no flag of the team (422 unknown_flag): a page drawn
+ * before another team was chosen in another tab, or for a team since left (review finding A2).
+ */
+const FLAG_GONE = 'One of these flags is no longer on your team’s list. Reload the page to choose again.';
+
 function searchRow(hit: Schemas['PatientHit'], today: string): SearchRow {
   const s = hit.summary;
   const name = displayName(s);
@@ -145,6 +151,7 @@ export async function searchPatients(form: FormData): Promise<SearchState> {
           (result.truncated ? '. More matched than these: add more letters or a birth year.' : '.');
     return { ok: true, message, values, rows: result.hits.map((h) => searchRow(h, today)) };
   } catch (err) {
+    if (err instanceof PortalApiError && err.code === 'unknown_flag') return { error: FLAG_GONE, values };
     return failure(err, values);
   }
 }

@@ -2815,7 +2815,7 @@ export interface components {
         };
         PatientSearch: {
             birth?: components["schemas"]["BirthQuery"];
-            /** @description Only patients carrying every flag named among their current flags, either tier. A flag the role may not see, or one that is not the team’s, is refused 403 */
+            /** @description Only patients carrying every flag named among their current flags, either tier. One that is not a flag of the team is refused 422 unknown_flag; then one the role may not see, 403 flag_hidden */
             flagIds?: string[];
             /** @default 20 */
             limit: number;

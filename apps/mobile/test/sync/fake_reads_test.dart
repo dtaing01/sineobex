@@ -1785,18 +1785,20 @@ void main() {
       expect(await hits([winter]), [survivor]);
     });
 
-    test('refuses a flag hidden from the caller, or one the team does not hold, with 403 logged without it', () async {
-      for (final flagId in [flags['flag.pregnancy']!, 'f1a90000-0000-4000-8000-0000000000ff']) {
+    // One the team does not hold is 422 now, below (review finding A2).
+    test(
+      'refuses a flag hidden from the caller with 403, logged as a record they may not read, naming no flag',
+      () async {
         await expectLater(
           server.handle(casey, team, 'POST', '/v1/patients/search', {
             'name': 'Demo Wren',
             'surface': 'portal',
-            'flagIds': [flagId],
+            'flagIds': [flags['flag.pregnancy']!],
           }),
           throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)),
         );
-      }
-    });
+      },
+    );
 
     test('narrows before the cut, so a search by flags fills its limit and says when more matched', () async {
       // Two who carry the flag, and Demo Wren, who ranks above them and does not: a search cut before
@@ -1884,6 +1886,30 @@ void main() {
         }
       },
     );
+
+    // Review finding A2, as patients-search.test.ts holds it: unknown first, before the flag rule.
+    test('refuses an id that is no flag of the team with 422 unknown_flag, logging nothing, even to one who sees every flag', () async {
+      const otherTeam = '6b2a1d3f-9c8e-4f7b-8d4c-2e3f4a5b6c7d';
+      final theirs = server.addPreset(otherTeam, 'flag', flagBody('Frost risk', 'secondary', 'blue', 10));
+      for (final (user, flagIds) in [
+        (alex, ['f0f0f0f0-0000-4000-8000-000000000999']),
+        (alex, [flags['flag.high']!, theirs]),
+        (casey, [flags['flag.pregnancy']!, theirs]),
+      ]) {
+        final audited = server.serverAudit.length;
+        await expectLater(
+          server.handle(user, team, 'POST', '/v1/patients/search', {
+            'name': 'Demo Wren',
+            'surface': 'portal',
+            'flagIds': flagIds,
+          }),
+          throwsA(
+            isA<ApiException>().having((e) => e.status, 'status', 422).having((e) => e.code, 'code', 'unknown_flag'),
+          ),
+        );
+        expect(server.serverAudit, hasLength(audited), reason: 'nothing logged, no search event');
+      }
+    });
   });
 }
 

@@ -97,3 +97,26 @@ describe('what a search narrowed by flags gives back', () => {
     );
   });
 });
+
+describe('a search by a flag the team no longer holds', () => {
+  // Review finding A2: the API answers 422 unknown_flag for an ID that is no flag of the team, which
+  // a page drawn before another team was chosen can send.
+  it('says the flag is gone from the team’s list and to reload, keeping what was typed', async () => {
+    answer = {
+      status: 422,
+      body: { error: { code: 'unknown_flag', message: 'One of these flags isn’t on your team’s list.' } },
+    };
+    const state = await searchPatients(
+      form([
+        ['name', 'Demo Wren'],
+        ['riskLevel', HIGH],
+      ]),
+    );
+    expect(requests).toHaveLength(1);
+    expect(state.ok).toBeFalsy();
+    expect(state.error).toBe(
+      'One of these flags is no longer on your team’s list. Reload the page to choose again.',
+    );
+    expect(state.values).toMatchObject({ name: 'Demo Wren', riskLevel: HIGH });
+  });
+});

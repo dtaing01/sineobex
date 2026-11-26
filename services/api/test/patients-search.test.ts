@@ -226,10 +226,10 @@ describe('POST /v1/patients/search', () => {
 // patients' current flags, both tiers, in the request's body. Written ahead of P5-search: until it
 // lands the field is ignored and each case fails. What they expect of it: `flagIds`, optional, a list
 // of UUIDs; a hit carries every flag named among its current flags (currentFlags, with the reader's
-// flag rule); a flag alone is refused as a search that browses the list is; a flag id that flagHidden
-// hides from the caller, one the team does not hold among them, is 403 logged access.denied with
-// `permission: 'patients.view_sensitive'` and the route, never the id; the search's event gains
-// `flagCount`, the number of flag ids, and names none.
+// flag rule); a flag alone is refused as a search that browses the list is; a flag id that is no flag
+// of the team is 422 unknown_flag, logged nowhere, and then one flagHidden hides from the caller is 403
+// logged access.denied with `reason: 'cannot_read'` and the route, never the id (review finding A2);
+// the search's event gains `flagCount`, the number of flag ids, and names none.
 describe('POST /v1/patients/search by flags (phase 5)', () => {
   let team: PresetsTeam;
   let chw: Person;
@@ -398,23 +398,46 @@ describe('POST /v1/patients/search by flags (phase 5)', () => {
     expect(await auditMark(h)).toBe(mark);
   });
 
-  it('refuses a flag hidden from the caller, or one the team does not hold, with 403 logged without it', async () => {
-    for (const flagId of [flag('flag.pregnancy'), randomUUID()]) {
-      const mark = await auditMark(h);
-      const res = await searchAs(chw, { flagIds: [flagId] });
-      expect(res.status).toBe(403);
-      const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
-      expect(denied!.details).toMatchObject({
-        permission: 'patients.view_sensitive',
-        route: '/v1/patients/search',
-      });
-      expect(JSON.stringify(denied)).not.toContain(flagId);
-      await expectAudit(h, 'patient.searched', { after: mark, count: 0 });
-    }
+  it('refuses a flag hidden from the caller with 403, logged as a record they may not read, naming no flag', async () => {
+    const mark = await auditMark(h);
+    const res = await searchAs(chw, { flagIds: [flag('flag.pregnancy')] });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('flag_hidden');
+    // CO-14's words: no flag, no sensitivity, no permission.
+    const [denied] = await expectAudit(h, 'access.denied', { after: mark, count: 1 });
+    expect(denied!.details).toEqual({ reason: 'cannot_read', route: '/v1/patients/search' });
+    expect(JSON.stringify(denied)).not.toContain(flag('flag.pregnancy'));
+    await expectAudit(h, 'patient.searched', { after: mark, count: 0 });
     // A flag the CHW may see narrows their search.
     expect(await hitsOf(await searchAs(chw, { flagIds: [flag('flag.frost_risk')] }))).toEqual(
       [both, frostOnly].sort(),
     );
+  });
+
+  // Review finding A2: an ID that is no flag of the team is no record the caller may not read, so it
+  // is refused as the set route refuses it, before the flag rule, and logged nowhere (D98).
+  it('refuses an id that is no flag of the team with 422 unknown_flag, logging nothing, even to one who sees every flag', async () => {
+    const other = await presetsTeam(h, 'Search flags other');
+    const notFlags = {
+      'a made-up id': randomUUID(),
+      'another team’s flag': idOf(other, 'flag.frost_risk'),
+      'another kind of preset': idOf(team, 'order_category.labs'),
+    };
+    for (const [what, id] of Object.entries(notFlags)) {
+      for (const flagIds of [[id], [flag('flag.high'), id], [flag('flag.pregnancy'), id]]) {
+        const mark = await auditMark(h);
+        // The team's staff, who hold patients.view_sensitive and see every flag.
+        const res = await searchAs(team.staff, { flagIds });
+        expect(res.status, what).toBe(422);
+        expect(((await res.json()) as { error: { code: string } }).error.code, what).toBe('unknown_flag');
+        expect(await auditMark(h), `${what}: nothing logged, no search event`).toBe(mark);
+      }
+    }
+    // Unknown first: with a flag hidden from the caller among them, still 422, unlogged.
+    const mark = await auditMark(h);
+    const res = await searchAs(chw, { flagIds: [flag('flag.pregnancy'), randomUUID()] });
+    expect(res.status).toBe(422);
+    expect(await auditMark(h)).toBe(mark);
   });
 });
 

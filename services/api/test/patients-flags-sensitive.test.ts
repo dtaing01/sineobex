@@ -796,12 +796,11 @@ describe('the team index, search, the flag routes and the flag list', () => {
     const before = await auditMark(h);
     const refused = await search(lee.token, [ids['flag.pregnancy']!]);
     expect(refused.status).toBe(403);
+    // Logged as a record the caller may not read (CO-14), naming no flag and no sensitivity.
     const [denied] = await expectAudit(h, 'access.denied', { after: before, count: 1 });
-    expect(denied!.details).toMatchObject({
-      permission: 'patients.view_sensitive',
-      route: '/v1/patients/search',
-    });
+    expect(denied!.details).toEqual({ reason: 'cannot_read', route: '/v1/patients/search' });
     expect(JSON.stringify(denied)).not.toContain(ids['flag.pregnancy']);
+    expect(JSON.stringify(denied).toLowerCase()).not.toContain('sensitive');
     await expectAudit(h, 'patient.searched', { after: before, count: 0 });
     for (const [token, flagId] of [
       [lee.token, ids['flag.frost_risk']!],
