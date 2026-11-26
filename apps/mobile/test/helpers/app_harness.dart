@@ -182,7 +182,9 @@ Future<void> enter(WidgetTester tester, String label, String text) async {
   await tester.pump();
 }
 
-/// Scrolls [text] into view if needed, then taps it, the way a person would.
+/// Scrolls [text] into view if needed, then taps it, the way a person would. A lazy list, such as
+/// Home's, guesses the height of the rows it has not built, so scrolling a row into view can land
+/// short of it, below the screen: it scrolls on until the text is where a tap reaches it.
 Future<void> tapText(WidgetTester tester, String text) async {
   final finder = find.text(text);
   if (finder.evaluate().isEmpty) {
@@ -190,6 +192,11 @@ Future<void> tapText(WidgetTester tester, String text) async {
   }
   await tester.ensureVisible(finder.first);
   await tester.pumpAndSettle();
+  final shown = finder.first.hitTestable();
+  if (shown.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(shown, 120, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+  }
   await tester.tap(finder.first);
   await tester.pumpAndSettle();
 }
