@@ -5976,11 +5976,20 @@ void main() {
     Map<String, Object?> markOf(String changeId, [String why = markReason, Map<String, Object?> more = const {}]) =>
         change(entityFlagChange, 'set', {'reason': why}, recordId: changeId, field: 'enteredInError', more: more);
 
-    /// What a create's answer says of when the server stored it (6.1); a mark's says nothing of it.
+    /// What a create's answer says of when the server stored it (6.1): when it was received, and once
+    /// on the chart the time it is ordered by and the team index's counter after it. A mark taken says
+    /// the counter only; a held change names no counter, since a hold moves no index.
     Map<String, Object?> timesOf(Map<String, Object?> c, {required bool held}) =>
         c['entity'] == entityFlagChange && c['op'] == 'create'
         ? {
-            'details': {'receivedAt': isA<String>(), if (!held) 'effectiveAt': isA<String>()},
+            'details': {
+              'receivedAt': isA<String>(),
+              if (!held) ...{'effectiveAt': isA<String>(), 'indexVersion': isA<int>()},
+            },
+          }
+        : c['entity'] == entityFlagChange && !held
+        ? {
+            'details': {'indexVersion': isA<int>()},
           }
         : const {};
 
@@ -6098,7 +6107,7 @@ void main() {
       final [first] = await send(alex, [made]);
       expect(first, {
         ...taken(made),
-        'details': {'receivedAt': ms(clock), 'effectiveAt': ms(madeAt)},
+        'details': {'receivedAt': ms(clock), 'effectiveAt': ms(madeAt), 'indexVersion': isA<int>()},
       });
       expect(server.records[idOf(made)]!.attributes['effectiveAt'], ms(madeAt));
       // Later, its first answer lost: the stored receipt, with the stored times.
@@ -6121,7 +6130,7 @@ void main() {
       expect(await send(blair, [held]), [
         {
           ...taken(held),
-          'details': {'receivedAt': ms(heldAt), 'effectiveAt': ms(heldAt)},
+          'details': {'receivedAt': ms(heldAt), 'effectiveAt': ms(heldAt), 'indexVersion': isA<int>()},
         },
       ]);
     });
@@ -6146,6 +6155,67 @@ void main() {
       clock = clock.add(const Duration(seconds: 1));
       final after = await receivedAt(flagChange(patient, low));
       expect([before.isBefore(generated), generated.isBefore(after)], [true, true]);
+    });
+
+    /// The team index's counter its first page names (`<counter>.<projection>`), as [user] downloads it.
+    Future<int> indexCounter([String user = alex, String inTeam = team]) async {
+      final index =
+          (await server.handle(user, inTeam, 'POST', '/v1/patients/index', <String, Object?>{}))!
+              as Map<String, Object?>;
+      return int.parse((index['version']! as String).split('.').first);
+    }
+
+    int counterOf(Map<String, Object?> answer) => (answer['details']! as Map<String, Object?>)['indexVersion']! as int;
+
+    // Review finding VR1: only the server knows which index holds which change. A taken create and a
+    // taken mark answer the team index's counter after them.
+    test(
+      'answers a taken create and a taken mark with the team index’s counter after it, and a retry with the same',
+      () async {
+        final patient = server.seedPatient(preferredName: 'Demo Larch');
+        final before = await indexCounter();
+        final made = flagChange(patient, flags['flag.high']!);
+        final [first] = await send(alex, [made]);
+        expect(first, taken(made));
+        expect(counterOf(first), greaterThan(before));
+        // An index read since is at or above it; a retry answers the counter it stored.
+        expect(await indexCounter(), greaterThanOrEqualTo(counterOf(first)));
+        expect(await send(alex, [made]), [first]);
+
+        final mark = markOf(idOf(made));
+        final [marked] = await send(alex, [mark]);
+        expect(marked, taken(mark));
+        expect(counterOf(marked), greaterThan(counterOf(first)));
+        expect(await indexCounter(), greaterThanOrEqualTo(counterOf(marked)));
+        expect(await send(alex, [mark]), [marked]);
+
+        // A hold moves no index, so its answer names no counter; nor does a mark kept in history.
+        final held = flagChange(patient, flags['flag.low']!);
+        expect(await send(blair, [held]), [heldFor(held)]);
+        final second = markOf(idOf(made), 'Demo: second thoughts');
+        final [kept] = await send(admin, [second]);
+        expect(kept['details'], {'outcome': 'history_only'});
+      },
+    );
+
+    // The counter the triage first put off: the test server's version was worked out from the index's
+    // content, so it went back to an older number when the content did, and a receipt's counter could
+    // never be compared with it.
+    test('the team index’s counter is the team’s and only goes up, whatever its content went back to', () async {
+      final patient = server.seedPatient(preferredName: 'Demo Larch');
+      final start = await indexCounter();
+      final set = flagChange(patient, flags['flag.high']!);
+      final [setAnswer] = await send(alex, [set]);
+      // A clear of it: the index shows again what it showed before the set.
+      final clear = flagChange(patient, flags['flag.high']!, action: 'clear');
+      final [clearAnswer] = await send(alex, [clear]);
+      final [setAt, clearAt] = [counterOf(setAnswer), counterOf(clearAnswer)];
+      expect([setAt > start, clearAt > setAt], [true, true]);
+      final now = await indexCounter();
+      expect(now, greaterThanOrEqualTo(clearAt));
+      expect(await indexCounter(), now, reason: 'nothing changed since');
+      // Another team's index counts its own changes.
+      expect(await indexCounter(alex, otherTeam), 1);
     });
 
     test('is never later than the server’s receipt: a phone clock ahead is taken at the receipt', () async {

@@ -510,15 +510,16 @@ class PatientFlags {
   void install() => store.onConfirmed.add(_onConfirmed);
 
   /// What the phone keeps of a flag change of its own once a receipt confirms it, in the receipt's
-  /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, kept with
-  /// the record, which takes them when it goes; never a flag or a reason): the change's own time, as
-  /// the server's `when` reads it (the corrected time, else the device's); when the receipt came, by
-  /// the corrected clock; the server's times as it stored them, which its answer carries and a retry
-  /// answers the same (when it received the change, a held one's hold time, and the time a taken one
-  /// is ordered by); for each mark the server holds for a Program Admin, the mark's change, so it is
-  /// told from a held create of the same change; and whether a later mark was taken, which a held
-  /// one's fate no longer decides. [_read] dates a confirmed change by them until a chart gives the
-  /// server's time.
+  /// transaction, since its outbox entry, and the times on it, go then (IDs, times and counters only,
+  /// kept with the record, which takes them when it goes; never a flag or a reason): the change's own
+  /// time, as the server's `when` reads it (the corrected time, else the device's); when the receipt
+  /// came, by the corrected clock; the server's word as it stored it, which its answer carries and a
+  /// retry answers the same (when it received the change, a held one's hold time, the time a taken
+  /// one is ordered by, and the team index's counter just after a taken one); for each mark the
+  /// server holds for a Program Admin, the mark's change, so it is told from a held create of the same
+  /// change; and whether a later mark was taken, which a held one's fate no longer decides. [_read]
+  /// dates a confirmed change by them until a chart gives the server's time, and weighs it against
+  /// the index by the counter.
   void _onConfirmed(OutboxEntry e, AcceptedReceipt receipt) {
     if (e.entity != entityFlagChange) return;
     final kept = {...?_kept(e.recordId)};
@@ -529,8 +530,10 @@ class PatientFlags {
       // server received the change, so the clock at the receipt would date it later than it was.
       final receivedAt = _time(receipt.details?['receivedAt']);
       final effectiveAt = _time(receipt.details?['effectiveAt']);
+      final indexVersion = receipt.details?['indexVersion'];
       if (receivedAt != null) kept[_keptServerReceivedAt] = receivedAt.millisecondsSinceEpoch;
       if (effectiveAt != null) kept[_keptServerEffectiveAt] = effectiveAt.millisecondsSinceEpoch;
+      if (indexVersion is int) kept[_keptServerIndexVersion] = indexVersion;
     } else if (e.op == 'set' && e.field == 'enteredInError' && receipt.inReview) {
       kept[_keptHeldMarks] = [..._heldMarksOf(kept), e.changeId];
       kept.remove(_keptMarkTaken);
@@ -787,6 +790,7 @@ class PatientFlags {
           action: a['action'] as String? ?? '',
           at: at,
           receivedAt: receivedAt,
+          indexVersion: _counter(kept?[_keptServerIndexVersion]),
           pending: create != null,
           authorId: rec.authorUserId ?? '',
           authorName: rows[row.id]?.authorName ?? nameOf?.call(rec.authorUserId ?? ''),
@@ -805,9 +809,14 @@ class PatientFlags {
 
     // A patient whose chart the phone doesn't hold whole: the index's word stands for the server's
     // earlier changes, and what it can't reflect yet of this phone's is folded after it: a change still
-    // waiting, or one the server received after the index was worked out (both times the database's,
-    // review finding S1; for what an older build kept, when its receipt came by the corrected clock),
-    // else, where no time of its receipt was kept, one made after it.
+    // waiting, or one the index doesn't hold. Only the server knows which index holds which change, so
+    // a confirmed change counts while the team index's counter its receipt named is above the one the
+    // index was read at (review findings VR1, VR2). A time can't tell: the receipt's is when its push
+    // began, which can be before an index that left the change out while the push waited on the
+    // team's write lock. Where either counter is unknown (an older build's entry, or an answer
+    // without one), one the server received after the index was worked out (both times the
+    // database's, review finding S1; for what an older build kept, when its receipt came by the
+    // corrected clock), else, where no time of its receipt was kept, one made after it.
     final base = <FlagChangeRef>[];
     var counted = changes.where((c) => c.state == FlagChangeState.sent || c.state == FlagChangeState.waiting);
     final indexed = full ? null : index?.flagsOf(canonical);
@@ -816,8 +825,17 @@ class PatientFlags {
       for (final id in [?indexed.primary, ...indexed.secondary]) {
         base.add((id: '', flagId: id, action: 'set', effectiveAt: epoch, enteredInError: false));
       }
-      final refreshedAt = index!.state.refreshedAt;
-      counted = counted.where((c) => c.pending || refreshedAt == null || (c.receivedAt ?? c.at).isAfter(refreshedAt));
+      final state = index!.state;
+      final refreshedAt = state.refreshedAt;
+      final indexCounter = _counterOf(state.version);
+      bool unheld(_Change c) {
+        if (c.pending) return true;
+        final counter = c.indexVersion;
+        if (counter != null && indexCounter != null) return counter > indexCounter;
+        return refreshedAt == null || (c.receivedAt ?? c.at).isAfter(refreshedAt);
+      }
+
+      counted = counted.where(unheld);
     }
     final current = currentFlags(
       changes: [
@@ -887,6 +905,11 @@ class PatientFlags {
 
   static DateTime? _ms(Object? ms) => ms is int ? DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true) : null;
 
+  static int? _counter(Object? n) => n is int ? n : null;
+
+  /// The team index's counter an index's version names (`<counter>.<projection>`, team-index.ts).
+  static int? _counterOf(String? version) => version == null ? null : int.tryParse(version.split('.').first);
+
   /// By rank, then name (by code unit, as the server orders them), then ID.
   static List<_Flag> _ordered(Iterable<_Flag> flags) => [...flags]
     ..sort((a, b) {
@@ -948,6 +971,7 @@ class _Change {
     required this.action,
     required this.at,
     required this.receivedAt,
+    required this.indexVersion,
     required this.pending,
     required this.authorId,
     required this.authorName,
@@ -966,6 +990,10 @@ class _Change {
   /// For one made here, when the server received it, as its answer said; else when its receipt came,
   /// by the corrected clock; null while it waits, and where the phone kept none.
   final DateTime? receivedAt;
+
+  /// For one made here and taken, the team index's counter just after it, as its answer said; null
+  /// while it waits, and where the phone kept none.
+  final int? indexVersion;
 
   /// Made here, its create still waiting for its receipt.
   final bool pending;
@@ -1000,6 +1028,7 @@ const _keptAt = 'at';
 const _keptReceivedAt = 'receivedAt';
 const _keptServerReceivedAt = 'serverReceivedAt';
 const _keptServerEffectiveAt = 'serverEffectiveAt';
+const _keptServerIndexVersion = 'serverIndexVersion';
 const _keptHeldMarks = 'heldMarks';
 const _keptMarkTaken = 'markTaken';
 

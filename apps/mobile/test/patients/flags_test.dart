@@ -18,23 +18,45 @@ import 'package:sineobex_field/sync/clock.dart' show ClockState;
 import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 import 'package:sineobex_field/sync/sync_controller.dart';
-import 'package:sineobex_field/sync/sync_engine.dart' show RefreshReason;
+import 'package:sineobex_field/sync/sync_engine.dart' show RefreshReason, SyncOffline;
 
 import '../sync/fake_server.dart';
 import '../sync/phone_harness.dart';
 
 /// The phone's test server, with a hand that spoils a flag change's reason on its way, once: the
 /// server then refuses it `reason_invalid`, which no change the phone makes can be (the store refuses
-/// such a reason first), as a build that counts differently would.
+/// such a reason first), as a build that counts differently would. With [loseNext], the next push
+/// reaches the server, which begins it then, and its answer is lost (a timeout); the server stores it
+/// only at [commitLost], as of when it began: a push whose transaction still waits on the team's write
+/// lock after the phone gave up on it.
 class _Link implements ApiTransport {
-  _Link(this.inner);
+  _Link(this.inner, {required this.serverTime, required this.setServerTime});
   final ApiTransport inner;
+  final DateTime Function() serverTime;
+  final void Function(DateTime) setServerTime;
 
   /// The flag changes whose create goes out with an empty reason, once each.
   final spoil = <String>{};
 
+  bool loseNext = false;
+  Future<void> Function()? commitLost;
+
   @override
   Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) {
+    if (path == '/v1/sync/push' && loseNext) {
+      loseNext = false;
+      final began = serverTime();
+      commitLost = () async {
+        final now = serverTime();
+        setServerTime(began);
+        try {
+          await inner.send(method, path, query: query, body: body);
+        } finally {
+          setServerTime(now);
+        }
+      };
+      throw const NetworkException('timeout');
+    }
     if (path == '/v1/sync/push' && spoil.isNotEmpty) {
       final sent = jsonDecode(jsonEncode(body)) as Map<String, Object?>;
       for (final c in (sent['changes']! as List<Object?>).cast<Map<String, Object?>>()) {
@@ -108,7 +130,7 @@ void main() {
   setUp(() async {
     serverTime = start;
     server = FakeSyncServer(now: () => serverTime)..names[blair] = 'Demo Blair';
-    link = _Link(server.transportFor(alex, team));
+    link = _Link(server.transportFor(alex, team), serverTime: () => serverTime, setServerTime: (t) => serverTime = t);
     phone = TestPhone(userId: alex, teamId: team, transport: () => link, wall: start);
     services = servicesFor(FakeSyncServer.healthcareStaff.toList());
     high = server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
@@ -1332,6 +1354,65 @@ void main() {
       await services.charts.fetch([p], reason: FetchChartsReason.refresh);
       expect(flags().flagsOf(p).riskLevel?.flagId, high, reason: 'as the server holds it');
     });
+
+    // The triage's residual (VS1, VR1): a push whose answer is lost while its transaction still waits on
+    // the team's write lock, then an index worked out before it commits, then its stored receipt. The
+    // receipt is dated before the index, which leaves the change out; the team index's counter it
+    // names is above the index's, so the change counts after the index's word.
+    test('a change whose answer was lost while the server still stored it, an index worked out meanwhile, then '
+        'its stored receipt: it counts after the index’s word', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      seeded(p, medium, ago: const Duration(days: 1));
+      await indexRefresh();
+      server.offline = true;
+      await services.patients.open(p);
+      expect(isPartialChart(store(), p), isTrue);
+      advance(const Duration(minutes: 1));
+      flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      server.offline = false;
+      link.loseNext = true;
+      expect(await phone.engine.syncAll(force: true), isA<SyncOffline>());
+      expect(flagChanges(), hasLength(1), reason: 'its answer never came');
+      // Pull to refresh two seconds on: no push is under way, so the index downloads while the server
+      // still waits to store the change.
+      advance(const Duration(seconds: 2));
+      await indexRefresh();
+      expect(services.index.flagsOf(p)?.primary, medium, reason: 'worked out without the change');
+      await link.commitLost!();
+      advance(const Duration(seconds: 30));
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'its stored receipt confirms it');
+      expect(isPartialChart(store(), p), isTrue);
+      expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [high, high]);
+    });
+
+    // Where the receipt named no counter (what an older build kept), the times weigh it, as before.
+    test(
+      'a confirmed change whose receipt named no counter is weighed by the times, as an older build kept it',
+      () async {
+        final p = server.seedPatient(preferredName: 'Demo Wren');
+        seeded(p, medium, ago: const Duration(days: 1));
+        await indexRefresh();
+        server.offline = true;
+        await services.patients.open(p);
+        advance(const Duration(minutes: 1));
+        final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+        server.offline = false;
+        await phone.engine.syncAll(force: true);
+        expect(flagChanges(), isEmpty, reason: 'confirmed');
+        final kept = jsonDecode(store().receiptKept(id, 'flagChange')!) as Map<String, Object?>;
+        expect(kept['serverIndexVersion'], isA<int>());
+        store().keepForReceipt(id, 'flagChange', jsonEncode({...kept}..remove('serverIndexVersion')));
+        // Received after the index was worked out: it counts after the index's word.
+        expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [high, high]);
+        // A teammate's later change, and an index worked out since, which holds both.
+        advance(const Duration(minutes: 5));
+        seeded(p, medium);
+        advance(const Duration(minutes: 1));
+        await indexRefresh();
+        expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [medium, medium]);
+      },
+    );
 
     test('a change confirmed after an index that came while it waited counts, the chart not downloaded', () async {
       final p = server.seedPatient(preferredName: 'Demo Wren');
