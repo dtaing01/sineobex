@@ -145,6 +145,30 @@ void main() {
     },
   );
 
+  // services/api/test/patients-charts.test.ts holds the same case: a chart is read under row-level
+  // security, so another team's patient is none of this team's (review finding MR-4, for the chart).
+  test('answers 404 for a patient the team doesn’t have, and audits nothing', () async {
+    const neighbour = 'e4000000-0000-4000-8000-0000000000e4';
+    const otherTeam = '6b2a1d3f-9c8e-4f7b-8d4c-2e3f4a5b6c7d';
+    server.permissions[neighbour] = FakeSyncServer.healthcareStaff;
+    await register(alex, 'dev-chart');
+    final intake = change(entityPatient, 'create', consented({'preferredName': 'Demo Wren'}));
+    expect(results(await push(alex, 'dev-chart', [intake])).single['status'], 'accepted');
+    final p = intake['recordId']! as String;
+    final before = server.serverAudit.length;
+    for (final (who, inTeam, id) in [(neighbour, otherTeam, p), (alex, team, uuid())]) {
+      await expectLater(
+        server.handle(who, inTeam, 'GET', '/v1/patients/$id', null),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 404)),
+        reason: '$who asks for $id',
+      );
+    }
+    expect(server.serverAudit.sublist(before), isEmpty);
+    // The team's own member reads it.
+    final chart = (await server.handle(alex, team, 'GET', '/v1/patients/$p', null))! as Map<String, Object?>;
+    expect(chart['canonicalId'], p);
+  });
+
   test('a card conflict tells every member who manages the team’s people, naming the valid card', () async {
     server.permissions[admin] = {...FakeSyncServer.healthcareStaff, 'team.manage_users'};
     const gone = 'ad000000-0000-4000-8000-0000000000ae';

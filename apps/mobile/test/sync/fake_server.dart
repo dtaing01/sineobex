@@ -1205,6 +1205,8 @@ class FakeSyncServer {
     record
       ..storedAt = heldAt[c['changeId']] ?? now().toUtc()
       ..madeAt = now().toUtc();
+    // A patient is its team's (patients.team_id), whose chart no other team reads; a seed's is anyone's.
+    if (rules.entity == entityPatient) record.teamId = actor.teamId?.toLowerCase();
     for (final MapEntry(:key, :value) in initial.entries) {
       _history(record, key, 1, value, null, 'created', actor, c);
     }
@@ -3281,7 +3283,12 @@ class FakeSyncServer {
   /// `redirectedFrom`.
   Map<String, Object?> _chart(String userId, String teamId, String patientId) {
     _require(userId, 'patients.view');
-    if (records[patientId]?.entity != entityPatient) throw const ApiException(404, 'not_found', 'No such patient.');
+    final named = records[patientId];
+    // Another team's patient is none of this team's, as row-level security keeps it (charts.ts reads
+    // the chart in the team's scope): 404, and nothing is logged.
+    if (named?.entity != entityPatient || (named!.teamId != null && named.teamId != teamId.toLowerCase())) {
+      throw const ApiException(404, 'not_found', 'No such patient.');
+    }
     final canonical = canonicalOf(patientId);
     final chart = _chartOf(userId, teamId, canonical);
     serverAudit.add({
@@ -4588,8 +4595,9 @@ class FakeRecord {
   /// one. A note's snapshot gives it as its `createdAt`.
   DateTime? madeAt;
 
-  /// The team a flag change was made in (patient_flag_changes.team_id): its flag is read from that
-  /// team's presets, as the team holds it now.
+  /// The team a flag change or a patient was made in (patient_flag_changes.team_id, patients.team_id):
+  /// a flag change's flag is read from that team's presets, as the team holds it now, and no other
+  /// team reads either (the records read, a chart). Null for a seed's, which every team's tests read.
   String? teamId;
 
   /// The field as a FieldState: version 0 and no value when never written.
