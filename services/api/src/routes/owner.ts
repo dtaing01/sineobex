@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { installPresets } from '@sineobex/forms';
+import { installPresets, installWrote } from '@sineobex/forms';
 import { ownerScope } from '../auth/context.ts';
 import { CHW_PRESET } from '../auth/permissions.ts';
 import { conflict, notFound } from '../lib/errors.ts';
@@ -145,13 +145,13 @@ export function registerOwnerRoutes(app: App, deps: Deps): void {
       await audit(null, { action: 'team.created', entity: 'team', entityId: teamId, details: { name } });
       // Every note type version the platform ships (forms 3.2), in platform scope, which 0017's
       // policy allows. A new team holds no row, so nothing can differ; a failure fails the creation.
-      const { installed } = await installPresets(tx, teamId);
-      if (installed.length > 0)
+      const installed = await installPresets(tx, teamId);
+      if (installWrote(installed))
         await audit(teamId, {
           action: 'forms.presets_installed',
           entity: 'team',
           entityId: teamId,
-          details: { installed },
+          details: { installed: installed.installed, offered: installed.offered, heads: installed.heads },
         });
       // And every platform preset (phase 5 design 5.2), its maps checked against the note types just
       // installed, audited and its skips logged as the phone's pull does it: counts by kind, never a

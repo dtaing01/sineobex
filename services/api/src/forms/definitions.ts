@@ -1,6 +1,7 @@
 import {
   canonicalJson,
   installPresets,
+  installWrote,
   sha256Hex,
   type KeyVersion,
   type ResolvedNoteType,
@@ -50,15 +51,16 @@ export interface StoredDefinition {
 export async function listNoteTypes(scope: TeamScope): Promise<NoteTypeEntry[]> {
   const { teamId } = scope.team;
   return scope.tx(async (tx, audit) => {
-    const { installed, differing } = await installPresets(tx, teamId, { onDiffer: 'skip' });
-    if (installed.length > 0)
+    const result = await installPresets(tx, teamId, { onDiffer: 'skip' });
+    // A run that only offers, or only gives keys their heads, writes under a revision too.
+    if (installWrote(result))
       await audit({
         action: 'forms.presets_installed',
         entity: 'team',
         entityId: teamId,
-        details: { installed },
+        details: { installed: result.installed, offered: result.offered, heads: result.heads },
       });
-    if (differing.length > 0) logDiffering(scope, differing);
+    if (result.differing.length > 0) logDiffering(scope, result.differing);
 
     // Only the newest version's definition is opened, once per key.
     const rows = await tx<NoteTypeEntry[]>`

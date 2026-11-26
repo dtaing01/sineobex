@@ -172,8 +172,11 @@ export async function seed(
     // the seed audits neither and logs the counts, since it is no one's act, as its patients and
     // visits are not (demo-encounters.ts).
     for (const teamId of [DEMO_TEAM_ID, NEIGHBOUR_TEAM_ID]) {
-      const { installed } = await installPresets(tx, teamId, { presets: options.presets });
-      log(`  ${installed.length} note type version(s) installed in team ${teamId}`);
+      const { installed, offered, heads } = await installPresets(tx, teamId, { presets: options.presets });
+      log(
+        `  note types in team ${teamId}: ${installed.length} version(s) installed, ${offered.length} offered, ` +
+          `${heads.length} head(s) written`,
+      );
       const presets = totalsOf(await installTeamPresets(tx, teamId));
       log(
         `  platform presets in team ${teamId}: ${presets.install} installed, ${presets.update} updated, ` +

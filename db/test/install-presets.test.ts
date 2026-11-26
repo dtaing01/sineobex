@@ -67,8 +67,12 @@ describe('installing the presets', () => {
   it('gives a new team every preset, each naming the platform version it came from', async () => {
     const team = await makeTeam(db.owner, 'Install Team New');
     const result = await asPlatform((tx) => installPresets(tx, team, { presets }));
-    expect(keyVersions(result.installed)).toEqual(keyVersions(presets));
-    expect(result.differing).toEqual([]);
+    expect(result).toEqual({
+      installed: presets.map(({ key, version }) => ({ key, version })),
+      offered: [],
+      heads: presets.map((p) => p.key),
+      differing: [],
+    });
     const rows = await rowsOf(team);
     expect(
       rows.map(({ key, version, hash, origin, presetVersion, definition }) => ({
@@ -98,7 +102,7 @@ describe('installing the presets', () => {
     await asPlatform((tx) => installPresets(tx, team, { presets }));
     const before = await rowsOf(team);
     const again = await asPlatform((tx) => installPresets(tx, team, { presets }));
-    expect(again).toEqual({ installed: [], differing: [] });
+    expect(again).toEqual({ installed: [], offered: [], heads: [], differing: [] });
     expect(await rowsOf(team)).toEqual(before);
   });
 
@@ -107,7 +111,12 @@ describe('installing the presets', () => {
     await asPlatform((tx) => installPresets(tx, team, { presets }));
     const later = await nextVersion(presets[0]!);
     const result = await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, later] }));
-    expect(keyVersions(result.installed)).toEqual(keyVersions([later]));
+    expect(result).toEqual({
+      installed: [{ key: later.key, version: later.version }],
+      offered: [],
+      heads: [],
+      differing: [],
+    });
     const rows = await rowsOf(team);
     expect(keyVersions(rows)).toEqual(
       keyVersions(
@@ -160,8 +169,12 @@ describe('installing the presets', () => {
     const result = await asPlatform((tx) =>
       installPresets(tx, team, { presets: [...presets, later], onDiffer: 'skip' }),
     );
-    expect(keyVersions(result.differing)).toEqual(keyVersions([first!]));
-    expect(keyVersions(result.installed)).toEqual(keyVersions(rest));
+    expect(result).toEqual({
+      installed: rest.map(({ key, version }) => ({ key, version })),
+      offered: [],
+      heads: rest.map((p) => p.key),
+      differing: [{ key: first!.key, version: first!.version }],
+    });
     const rows = await rowsOf(team);
     expect(rows.find((r) => r.key === first!.key)).toMatchObject({ version: 1, hash: theirs.hash });
     expect(rows.filter((r) => r.key === first!.key)).toHaveLength(1);
@@ -206,17 +219,23 @@ describe('installing the presets', () => {
   it('gives a new team the nine released note types when no presets are named', async () => {
     const team = await makeTeam(db.owner, 'Install Team Released');
     const result = await asPlatform((tx) => installPresets(tx, team));
-    expect(keyVersions(result.installed)).toEqual([
-      'general_primary_care v1',
-      'harm_reduction v1',
-      'outreach v1',
-      'psychological v1',
-      'quick_encounter v1',
-      'red_flags_disposition v1',
-      'sexual_reproductive v1',
-      'social_needs v1',
-      'wound_care v1',
-    ]);
+    const released = [
+      'general_primary_care',
+      'harm_reduction',
+      'outreach',
+      'psychological',
+      'quick_encounter',
+      'red_flags_disposition',
+      'sexual_reproductive',
+      'social_needs',
+      'wound_care',
+    ];
+    expect(result).toEqual({
+      installed: released.map((key) => ({ key, version: 1 })),
+      offered: [],
+      heads: released,
+      differing: [],
+    });
     for (const row of await rowsOf(team))
       expect(await sha256Hex(canonicalJson(row.definition))).toBe(row.hash);
   });
@@ -407,7 +426,13 @@ describe('installing the note types, key by key (phase 5)', () => {
     for (const run of [1, 2]) {
       const revision = await revisionOf(team);
       const result = await asPlatform((tx) => installPresets(tx, team, { presets: platform }));
-      expect(result, `run ${run}`).toEqual({ installed: [], differing: [] });
+      // The first run puts version 3 on offer, which it writes and reports; the second has nothing to do.
+      expect(result, `run ${run}`).toEqual({
+        installed: [],
+        offered: run === 1 ? [{ key: checks!.key, version: 3 }] : [],
+        heads: [],
+        differing: [],
+      });
       expect(await versionsOf(team), `run ${run}: no row added`).toEqual(rowsBefore);
       const head = (await headsOf(team)).find((h) => h.key === checks!.key)!;
       expect(head, `run ${run}`).toMatchObject({
@@ -457,7 +482,12 @@ describe('installing the note types, key by key (phase 5)', () => {
     const rows = await versionsOf(team);
 
     const result = await asPlatform((tx) => installPresets(tx, team, { presets }));
-    expect(result).toEqual({ installed: [], differing: [] });
+    expect(result).toEqual({
+      installed: [],
+      offered: [],
+      heads: [...presets.map((p) => p.key), own.key].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+      differing: [],
+    });
     expect(await revisionOf(team)).toBe(3);
     expect(await headsOf(team)).toEqual(
       [
@@ -490,6 +520,8 @@ describe('installing the note types, key by key (phase 5)', () => {
     const heads = await headsOf(team);
     expect(await asPlatform((tx) => installPresets(tx, team, { presets }))).toEqual({
       installed: [],
+      offered: [],
+      heads: [],
       differing: [],
     });
     expect(await revisionOf(team)).toBe(3);
@@ -517,7 +549,12 @@ describe('installing the note types, key by key (phase 5)', () => {
       installPresets(tx, team, { presets: [...presets, checksV2, fullV2] }),
     );
     // The update writes the team's version 2 of the full type; the edited one is only offered.
-    expect(result).toEqual({ installed: [{ key: full!.key, version: 2 }], differing: [] });
+    expect(result).toEqual({
+      installed: [{ key: full!.key, version: 2 }],
+      offered: [{ key: checks!.key, version: 2 }],
+      heads: [],
+      differing: [],
+    });
     const events = await eventsOf(team);
     expect(events.filter((e) => e.act !== 'installed')).toEqual([
       {
@@ -549,8 +586,13 @@ describe('installing the note types, key by key (phase 5)', () => {
     const [checks] = presets;
     const v2 = await nextOf(checks!, 'Demo: Checks, second');
     const result = await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, v2] }));
-    expect(result.differing).toEqual([]);
-    expect(result.installed).toContainEqual({ key: checks!.key, version: 1 });
+    const keys = [...new Set(presets.map((p) => p.key))];
+    expect(result).toEqual({
+      installed: keys.map((key) => ({ key, version: 1 })),
+      offered: [],
+      heads: keys,
+      differing: [],
+    });
     const rows = (await versionsOf(team)).filter((r) => r.key === checks!.key);
     expect(rows.map((r) => [r.version, r.origin, r.presetVersion])).toEqual([[1, 'preset', 2]]);
     expect(rows[0]!.definition).toEqual({ ...v2.definition, version: 1 });
@@ -559,6 +601,8 @@ describe('installing the note types, key by key (phase 5)', () => {
     // Installed again, it is the platform's still: nothing differs, nothing is added.
     expect(await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, v2] }))).toEqual({
       installed: [],
+      offered: [],
+      heads: [],
       differing: [],
     });
   });
@@ -586,9 +630,12 @@ describe('installing the note types, key by key (phase 5)', () => {
     const first = await writer();
     const second = await writer();
     try {
-      expect(
-        (await installPresets(first as unknown as InstallSql, team, { presets })).installed,
-      ).toHaveLength(presets.length);
+      expect(await installPresets(first as unknown as InstallSql, team, { presets })).toEqual({
+        installed: presets.map(({ key, version }) => ({ key, version })),
+        offered: [],
+        heads: presets.map((p) => p.key),
+        differing: [],
+      });
       // The second reads before the first commits, so it sees nothing yet, then waits on the lock.
       const late = installPresets(second as unknown as InstallSql, team, { presets });
       for (let i = 0; i < 500; i++) {
@@ -599,7 +646,7 @@ describe('installing the note types, key by key (phase 5)', () => {
         await new Promise((r) => setTimeout(r, 10));
       }
       await first`commit`;
-      expect(await late).toEqual({ installed: [], differing: [] });
+      expect(await late).toEqual({ installed: [], offered: [], heads: [], differing: [] });
       await second`commit`;
     } finally {
       await first`rollback`.catch(() => {});
@@ -626,7 +673,7 @@ describe('installing the note types, key by key (phase 5)', () => {
         await tx`set local lock_timeout = '2s'`;
         return installPresets(tx, team, { presets });
       });
-      expect(answer).toEqual({ installed: [], differing: [] });
+      expect(answer).toEqual({ installed: [], offered: [], heads: [], differing: [] });
     } finally {
       await holder`rollback`.catch(() => {});
       holder.release();
@@ -652,7 +699,12 @@ describe('installing the note types, key by key (phase 5)', () => {
     const checksV2 = await nextOf(checks!);
     expect(
       await asPlatform((tx) => installPresets(tx, team, { presets: [...presets, fullV2, fullV3, checksV2] })),
-    ).toEqual({ installed: [{ key: full!.key, version: 2 }], differing: [] });
+    ).toEqual({
+      installed: [{ key: full!.key, version: 2 }],
+      offered: [{ key: checks!.key, version: 2 }],
+      heads: [],
+      differing: [],
+    });
 
     const heads = await headsOf(team);
     expect(heads.find((h) => h.key === full!.key)).toMatchObject({
@@ -702,6 +754,8 @@ describe('installing the note types, key by key (phase 5)', () => {
     expect(await asPlatform((tx) => installPresets(racing(tx), team, { presets, onDiffer: 'skip' }))).toEqual(
       {
         installed: rest.map((p) => ({ key: p.key, version: 1 })),
+        offered: [],
+        heads: rest.map((p) => p.key),
         differing: [{ key: checks!.key, version: 1 }],
       },
     );
@@ -712,6 +766,8 @@ describe('installing the note types, key by key (phase 5)', () => {
     // The next run gives it its head and nothing more, as for any key whose row differs.
     expect(await asPlatform((tx) => installPresets(tx, team, { presets, onDiffer: 'skip' }))).toEqual({
       installed: [],
+      offered: [],
+      heads: [checks!.key],
       differing: [{ key: checks!.key, version: 1 }],
     });
     expect((await headsOf(team)).map((h) => h.key)).toEqual(presets.map((p) => p.key));

@@ -19,6 +19,8 @@ describe('the presets the installer installs', () => {
     };
     expect(await installPresets(sql, '00000000-0000-4000-8000-000000000000', { presets: [] })).toEqual({
       installed: [],
+      offered: [],
+      heads: [],
       differing: [],
     });
     expect(asked).toEqual([]);

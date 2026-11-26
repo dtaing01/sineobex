@@ -16,7 +16,8 @@
  * types list), so it takes that transaction and never opens one: this package imports no database
  * library, and the API is bundled for an edge runtime. The transaction's context must let it write
  * the team's rows: the team's own scope, or platform scope (0017's and 0023's policies have both
- * arms). It writes no audit event: its callers audit forms.presets_installed.
+ * arms). It writes no audit event: its callers audit forms.presets_installed whenever it wrote
+ * (installWrote), with what it wrote, as the preset installer's callers audit its counts.
  *
  * A row is never changed (0017 is append-only). A platform row whose definition, named back as the
  * platform's version, is not the preset's means a released version was edited, which the lock
@@ -55,9 +56,24 @@ export type KeyVersion = { key: string; version: number };
 export type InstallResult = {
   /** The versions this call wrote, by the team's version numbers, in code-point order of their keys. */
   installed: KeyVersion[];
+  /**
+   * The platform versions this call put on offer, by key and the platform's version, in code-point
+   * order of their keys: only the head's platform_latest moved, and no version was written.
+   */
+  offered: KeyVersion[];
+  /** The keys this call gave a head they lacked, in code-point order: a key it installed, or one held without one. */
+  heads: string[];
   /** Platform versions the team holds with another definition, by the team's key and version. Only with `onDiffer: 'skip'`. */
   differing: KeyVersion[];
 };
+
+/**
+ * Whether a run wrote anything, under its one revision: a version, an offer or a missing head. Its
+ * callers audit forms.presets_installed exactly then, so no write of the team's note types is
+ * unaudited, as the preset installer's offers are not.
+ */
+export const installWrote = (result: InstallResult): boolean =>
+  result.installed.length + result.offered.length + result.heads.length > 0;
 
 export type InstallOptions = {
   /** The presets to install; generated/presets.json when left out. */
@@ -97,7 +113,13 @@ export async function installPresets(
 ): Promise<InstallResult> {
   const presets = options.presets ?? PRESETS;
   const skip = options.onDiffer === 'skip';
-  if (presets.length === 0) return { installed: [], differing: [] };
+  const nothing = (differing: KeyVersion[]): InstallResult => ({
+    installed: [],
+    offered: [],
+    heads: [],
+    differing,
+  });
+  if (presets.length === 0) return nothing([]);
 
   const plan = async () => {
     const held = await heldBy(sql, teamId);
@@ -110,10 +132,10 @@ export async function installPresets(
     return planned;
   };
   let { steps, differing } = await plan();
-  if (steps.length === 0) return { installed: [], differing };
+  if (steps.length === 0) return nothing(differing);
   await lockTeam(sql, teamId);
   ({ steps, differing } = await plan());
-  if (steps.length === 0) return { installed: [], differing };
+  if (steps.length === 0) return nothing(differing);
 
   // The versions first, so a writer that skipped the team lock and wrote one of them after the plan
   // is found before anything else is written: the run throws before its revision is taken.
@@ -135,7 +157,7 @@ export async function installPresets(
     differing = [...differing, ...lateDiffering];
   }
   const kept = steps.filter((s) => !lost.has(s.key));
-  if (kept.length === 0) return { installed: [], differing };
+  if (kept.length === 0) return nothing(differing);
 
   const revision = await takeRevision(sql, teamId);
   await writeHeads(sql, teamId, revision, kept);
@@ -144,6 +166,10 @@ export async function installPresets(
     installed: kept.flatMap((s) =>
       s.write !== null && wrote.has(s.key) ? [{ key: s.key, version: s.write.version }] : [],
     ),
+    offered: kept.flatMap((s) =>
+      s.effect === 'offer' ? [{ key: s.key, version: s.head.platformLatest! }] : [],
+    ),
+    heads: kept.flatMap((s) => (s.headMissing ? [s.key] : [])),
     differing,
   };
 }

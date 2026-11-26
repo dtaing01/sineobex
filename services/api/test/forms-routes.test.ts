@@ -65,7 +65,14 @@ describe('a new team’s presets', () => {
       select team_id as "teamId", details from sineobex.audit_events
       where action = 'forms.presets_installed' and entity_id = ${teamId}`;
     expect(events).toEqual([
-      { teamId, details: { installed: presets.map((p) => ({ key: p.key, version: p.version })) } },
+      {
+        teamId,
+        details: {
+          installed: presets.map((p) => ({ key: p.key, version: p.version })),
+          offered: [],
+          heads: presets.map((p) => p.key),
+        },
+      },
     ]);
   });
 
@@ -165,7 +172,11 @@ describe('GET /v1/forms/note-types', () => {
       actorUserId: member.userId,
       entity: 'team',
       entityId: teamId,
-      details: { installed: presets.map((p) => ({ key: p.key, version: p.version })) },
+      details: {
+        installed: presets.map((p) => ({ key: p.key, version: p.version })),
+        offered: [],
+        heads: presets.map((p) => p.key),
+      },
     });
     expect((await eventsAfter(mark)).map((e) => e.action)).toEqual(['forms.presets_installed']);
 
@@ -214,11 +225,60 @@ describe('GET /v1/forms/note-types', () => {
       ...rest.map(entryOf),
     ]);
     const [event] = await expectAudit(h, 'forms.presets_installed', { after: mark, teamId, count: 1 });
-    expect(event!.details).toEqual({ installed: rest.map((p) => ({ key: p.key, version: p.version })) });
+    // The skipped key still gets the head it lacked: a write like any other (design 4.3).
+    expect(event!.details).toEqual({
+      installed: rest.map((p) => ({ key: p.key, version: p.version })),
+      offered: [],
+      heads: presets.map((p) => p.key),
+    });
     const logged = spy.lines.slice(lines).map((l) => JSON.parse(l) as Json);
     expect(logged).toContainEqual(
       expect.objectContaining({ level: 'error', event: 'forms.preset_differs', teamId, count: 1 }),
     );
+  });
+
+  it('audits a run that only gives keys their missing heads, or only puts a version on offer, as it audits an install', async () => {
+    // Versions with no heads, as phase 4's installer left a team made after 0023: the list gives the
+    // keys their heads and nothing else, under a revision of its own, and says so.
+    const teamId = await createTeam(h, 'Demo Forms Heads Team');
+    const member = await memberWith(h, teamId, []);
+    for (const p of presets) await insertRow(h, teamId, p.definition, 'preset');
+    let mark = await auditMark(h);
+    expect((await list(member.token, teamId)).res.status).toBe(200);
+    let [event] = await expectAudit(h, 'forms.presets_installed', { after: mark, teamId, count: 1 });
+    expect(event).toMatchObject({
+      actorUserId: member.userId,
+      details: { installed: [], offered: [], heads: presets.map((p) => p.key) },
+    });
+
+    // The team's own version of a key, then the platform's next one, which is only offered.
+    const [checks] = presets;
+    await insertRow(h, teamId, { ...checks!.definition, version: 2, title: 'Demo: Checks, ours' }, 'team');
+    const { PRESETS } = await import('@sineobex/forms');
+    const definition = { ...checks!.definition, version: 2, title: 'Demo: Checks, the platform’s second' };
+    const next = {
+      key: checks!.key,
+      version: 2,
+      hash: await sha256Hex(canonicalJson(definition)),
+      definition,
+    };
+    (PRESETS as unknown as (typeof next)[]).push(next);
+    try {
+      mark = await auditMark(h);
+      expect((await list(member.token, teamId)).res.status).toBe(200);
+      [event] = await expectAudit(h, 'forms.presets_installed', { after: mark, teamId, count: 1 });
+      expect(event!.details).toEqual({
+        installed: [],
+        offered: [{ key: checks!.key, version: 2 }],
+        heads: [],
+      });
+      // Offered once: the next list writes nothing, and audits nothing.
+      mark = await auditMark(h);
+      expect((await list(member.token, teamId)).res.status).toBe(200);
+      expect(await eventsAfter(mark)).toEqual([]);
+    } finally {
+      (PRESETS as unknown as (typeof next)[]).splice((PRESETS as unknown[]).indexOf(next), 1);
+    }
   });
 
   it('shows a team only its own rows', async () => {
