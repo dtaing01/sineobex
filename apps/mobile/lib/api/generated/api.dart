@@ -4331,7 +4331,7 @@ class NewChoiceField {
   });
 
   final String kind;
-  /// Words: not empty, not only spaces
+  /// Words, with no space before or after: not empty, not only spaces
   final String label;
   /// Choose any number, else one
   final bool many;
@@ -4365,7 +4365,7 @@ class NewNumberField {
 
   final Object? decimals;
   final String kind;
-  /// Words: not empty, not only spaces
+  /// Words, with no space before or after: not empty, not only spaces
   final String label;
   final double max;
   final double min;
@@ -4399,7 +4399,7 @@ class NewTextField {
   });
 
   final String kind;
-  /// Words: not empty, not only spaces
+  /// Words, with no space before or after: not empty, not only spaces
   final String label;
   final NewTextFieldLines lines;
   /// 1 to 4000 characters

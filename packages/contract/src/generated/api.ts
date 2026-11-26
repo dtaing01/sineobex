@@ -2336,7 +2336,7 @@ export interface components {
              * @enum {string}
              */
             kind: "choice";
-            /** @description Words: not empty, not only spaces */
+            /** @description Words, with no space before or after: not empty, not only spaces */
             label: string;
             /** @description Choose any number, else one */
             many: boolean;
@@ -2350,7 +2350,7 @@ export interface components {
              * @enum {string}
              */
             kind: "number";
-            /** @description Words: not empty, not only spaces */
+            /** @description Words, with no space before or after: not empty, not only spaces */
             label: string;
             max: number;
             min: number;
@@ -2362,7 +2362,7 @@ export interface components {
              * @enum {string}
              */
             kind: "text";
-            /** @description Words: not empty, not only spaces */
+            /** @description Words, with no space before or after: not empty, not only spaces */
             label: string;
             /** @enum {string} */
             lines: "one" | "many";
@@ -2462,14 +2462,14 @@ export interface components {
             /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
             path: string;
         } | {
-            /** @description Words: not empty, not only spaces */
+            /** @description Words, with no space before or after: not empty, not only spaces */
             label: string;
             /** @enum {string} */
             op: "rename_label";
             /** @description A field’s path, the entry part of a repeating section left out, or a section’s id */
             path: string;
         } | {
-            /** @description Words: not empty, not only spaces */
+            /** @description Words, with no space before or after: not empty, not only spaces */
             label: string;
             /** @enum {string} */
             op: "add_option";
@@ -2478,7 +2478,7 @@ export interface components {
         } | {
             /** @description An option’s code */
             code: string;
-            /** @description Words: not empty, not only spaces */
+            /** @description Words, with no space before or after: not empty, not only spaces */
             label: string;
             /** @enum {string} */
             op: "rename_option";
@@ -2522,7 +2522,7 @@ export interface components {
             fields: (components["schemas"]["NewTextField"] | components["schemas"]["NewChoiceField"] | components["schemas"]["NewNumberField"])[];
             /** @enum {string} */
             op: "add_section";
-            /** @description Words: not empty, not only spaces */
+            /** @description Words, with no space before or after: not empty, not only spaces */
             title: string;
         } | {
             /** @description null puts it first */

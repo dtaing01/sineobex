@@ -597,6 +597,10 @@ export function publishNoteType(
       problemsOf(w.team, stored, p.definition, team[p.key]!, p.renames),
     );
     if (problems.length > 0) throw refusedVersions(problems);
+    // A title another active note type holds is refused as an add, a restore and a take refuse it;
+    // only a rename_type changes one, and only on the note type published.
+    if (own.definition.title !== held.title && (await titleHeld(w, own.definition.title, [held.key])))
+      throw refusal('name_taken');
     return {
       changes: {
         versions: outcome.published.map((p) => ({

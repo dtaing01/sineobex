@@ -145,7 +145,15 @@ const SentTitle = z
 const Path = z.string().openapi({
   description: 'A field’s path, the entry part of a repeating section left out, or a section’s id',
 });
-const Label = z.string().openapi({ description: 'Words: not empty, not only spaces' });
+/**
+ * A label, an answer's words or a section's title as an operation sends it: refused with white space
+ * before or after its words, as a title is (SentTitle), never trimmed; one that is empty or only
+ * spaces is the operation's to refuse (label_invalid), with its index.
+ */
+const Label = z
+  .string()
+  .refine((s) => s === s.trim() || s.trim() === '', { message: 'untrimmed' })
+  .openapi({ description: 'Words, with no space before or after: not empty, not only spaces' });
 const Code = z.string().openapi({ description: 'An option’s code' });
 const SectionId = z.string().openapi({ description: 'A section’s id' });
 const AfterSection = z.union([SectionId, z.null()]).openapi({ description: 'null puts it first' });

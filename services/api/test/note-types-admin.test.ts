@@ -753,6 +753,35 @@ describe('PUT /v1/admin/note-types/{key}', () => {
     expect(details).toEqual({ currentVersion: row.version + 1 });
   });
 
+  it('refuses a rename into a title another active note type holds, whatever its case, writing nothing; a removed one’s is free', async () => {
+    const t = await presetsTeam(h, 'Note Types Rename Taken');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const row = await rowOf('outreach', theirs);
+    const social = await rowOf('social_needs', theirs);
+    await refusedUnwritten(
+      () =>
+        theirs.publish('outreach', row.version, [
+          { op: 'rename_type', title: 'Demo: Outreach, for a moment' },
+          { op: 'rename_type', title: social.title.toUpperCase() },
+        ]),
+      409,
+      'name_taken',
+      t.teamId,
+    );
+    // Its own title, in another case, is its own.
+    const own = await theirs.publish('outreach', row.version, [
+      { op: 'rename_type', title: row.title.toUpperCase() },
+    ]);
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    // A removed note type's title is free, as for an add.
+    expect((await theirs.archive('social_needs', social.version)).status).toBe(200);
+    const freed = await theirs.publish('outreach', row.version + 1, [
+      { op: 'rename_type', title: social.title },
+    ]);
+    expect(freed.status, JSON.stringify(freed.body)).toBe(200);
+    expect(await headOf(t.teamId, 'outreach')).toMatchObject({ title: social.title });
+  });
+
   it('refuses a publish of a removed note type, and of one the team does not hold', async () => {
     const made = await api.create({ title: 'Demo: Soon removed', kinds: ['non_medical'], group: 'outreach' });
     const key = made.body.key as string;
@@ -810,7 +839,8 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
 
   it('refuses a version over the size limit, as the validator measures it, writing nothing', async () => {
     const row = await rowOf('outreach');
-    const label = `Demo: ${'long '.repeat(Math.ceil(MAX_DEFINITION_BYTES / 5))}`;
+    // Words with no space after them, which a label may not have (as a title may not).
+    const label = `Demo: ${'long '.repeat(Math.ceil(MAX_DEFINITION_BYTES / 5))}`.trimEnd();
     const details = await refusedUnwritten(
       () =>
         api.publish('outreach', row.version, [
@@ -1160,10 +1190,12 @@ describe('POST /v1/admin/note-types/{key}/take-update', () => {
     change: (d: ResolvedNoteType) => ResolvedNoteType = (d) => ({ ...d, title: `${d.title}, again` }),
   ) {
     const row = await rowOf(key);
-    expect(
-      (await api.publish(key, row.version, [{ op: 'rename_type', title: `Demo: ${row.title}, ours` }]))
-        .status,
-    ).toBe(200);
+    // A title of its own: "Demo: Harm reduction, ours" is the copy's added above, and a rename into
+    // a title another active note type holds is refused name_taken.
+    const edited = await api.publish(key, row.version, [
+      { op: 'rename_type', title: `Demo: ${row.title}, edited here` },
+    ]);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
     const next = await platformNext(key, change);
     const unrelease = release(next);
     await phoneLists();
@@ -1452,6 +1484,69 @@ describe('adding, removing, restoring and taking an update: what each checks', (
       'validation_failed',
       t.teamId,
     );
+  });
+
+  it('refuses a label, an answer’s words or a section’s title sent with spaces around them, as a title is, never trimming them', async () => {
+    const t = await presetsTeam(h, 'Note Types Labels');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const row = await rowOf('outreach', theirs);
+    const text = { kind: 'text', lines: 'one', maxLength: 100 } as const;
+    for (const [op, path] of [
+      [{ op: 'rename_label', path: 'outreach.notes', label: ' Demo: Padded' }, 'ops.0.label'],
+      [{ op: 'rename_label', path: 'outreach', label: 'Demo: Padded ' }, 'ops.0.label'],
+      [{ op: 'add_option', path: 'outreach.support', label: 'Demo: Padded ' }, 'ops.0.label'],
+      [
+        { op: 'rename_option', path: 'outreach.support', code: 'food', label: '\tDemo: Padded' },
+        'ops.0.label',
+      ],
+      [{ op: 'add_field', sectionId: 'outreach', ...text, label: 'Demo: Padded ' }, 'ops.0.label'],
+      [
+        {
+          op: 'add_field',
+          sectionId: 'outreach',
+          kind: 'choice',
+          label: 'Demo: Asked',
+          many: false,
+          options: ['Demo: Yes', ' Demo: No'],
+        },
+        'ops.0.options.1',
+      ],
+      [
+        {
+          op: 'add_section',
+          title: ' Demo: Padded',
+          afterSectionId: null,
+          fields: [{ ...text, label: 'Demo: Notes' }],
+        },
+        'ops.0.title',
+      ],
+      [
+        {
+          op: 'add_section',
+          title: 'Demo: Section',
+          afterSectionId: null,
+          fields: [{ ...text, label: 'Demo: Padded ' }],
+        },
+        'ops.0.fields.0.label',
+      ],
+    ] as [NoteTypeEdit, string][]) {
+      const details = await refusedUnwritten(
+        () => theirs.publish('outreach', row.version, [op]),
+        422,
+        'validation_failed',
+        t.teamId,
+      );
+      expect(details.fields, `${op.op} ${path}`).toEqual([{ path, problem: 'custom' }]);
+    }
+    // Only spaces are no words at all: the operation's to refuse, by its index, as for a title.
+    const blank = refused(
+      await theirs.publish('outreach', row.version, [
+        { op: 'rename_label', path: 'outreach.notes', label: '   ' },
+      ]),
+      422,
+      'label_invalid',
+    );
+    expect(blank).toEqual({ opIndex: 0 });
   });
 
   it('refuses a take when nothing is on offer and the version sent is not the current one: stale, with none on offer', async () => {

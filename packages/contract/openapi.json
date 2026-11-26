@@ -2993,7 +2993,7 @@
             "type": "string"
           },
           "label": {
-            "description": "Words: not empty, not only spaces",
+            "description": "Words, with no space before or after: not empty, not only spaces",
             "type": "string"
           },
           "many": {
@@ -3003,7 +3003,7 @@
           "options": {
             "description": "The options’ labels, one at least; their codes are made by the server",
             "items": {
-              "description": "Words: not empty, not only spaces",
+              "description": "Words, with no space before or after: not empty, not only spaces",
               "type": "string"
             },
             "type": "array"
@@ -3049,7 +3049,7 @@
             "type": "string"
           },
           "label": {
-            "description": "Words: not empty, not only spaces",
+            "description": "Words, with no space before or after: not empty, not only spaces",
             "type": "string"
           },
           "max": {
@@ -3081,7 +3081,7 @@
             "type": "string"
           },
           "label": {
-            "description": "Words: not empty, not only spaces",
+            "description": "Words, with no space before or after: not empty, not only spaces",
             "type": "string"
           },
           "lines": {
@@ -3385,7 +3385,7 @@
             "additionalProperties": false,
             "properties": {
               "label": {
-                "description": "Words: not empty, not only spaces",
+                "description": "Words, with no space before or after: not empty, not only spaces",
                 "type": "string"
               },
               "op": {
@@ -3410,7 +3410,7 @@
             "additionalProperties": false,
             "properties": {
               "label": {
-                "description": "Words: not empty, not only spaces",
+                "description": "Words, with no space before or after: not empty, not only spaces",
                 "type": "string"
               },
               "op": {
@@ -3439,7 +3439,7 @@
                 "type": "string"
               },
               "label": {
-                "description": "Words: not empty, not only spaces",
+                "description": "Words, with no space before or after: not empty, not only spaces",
                 "type": "string"
               },
               "op": {
@@ -3656,7 +3656,7 @@
                 "type": "string"
               },
               "title": {
-                "description": "Words: not empty, not only spaces",
+                "description": "Words, with no space before or after: not empty, not only spaces",
                 "type": "string"
               }
             },
