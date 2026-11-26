@@ -98,9 +98,12 @@ void main() {
   // widening has to move presetsReaderRevision, and this is where that is looked at.
   test('are the cases the reader’s revision was last looked at for', () {
     final cases = {...vectors}..remove('note');
+    // A number too big for a double reads as Infinity, which JSON can't write back: it is taken in
+    // as its text, as nothing else the vectors decode to is.
+    final encoded = jsonEncode(cases, toEncodable: (number) => '$number');
     expect(
-      {'revision': presetsReaderRevision, 'cases': sha256.convert(utf8.encode(jsonEncode(cases))).toString()},
-      {'revision': 1, 'cases': '61a9be2e7b3203df98ae11d0f0ea4cc7c81a6570a521765d109b8703f24d1666'},
+      {'revision': presetsReaderRevision, 'cases': sha256.convert(utf8.encode(encoded)).toString()},
+      {'revision': 1, 'cases': '09bb4744fe3da9ef0ebf1b0c7b8c2e68aa633cf9102517ce20561415e4fce3c4'},
       reason:
           'preset-bodies.json’s cases changed. If parsePreset now reads a body it refused before in a '
           'way presetsReader’s codes do not show (a bound widened, a when test or a result type added), '
@@ -182,6 +185,12 @@ void main() {
   group('each field reads as its own type:', () {
     const id = '00000000-0000-4000-8000-00000000a001';
     const category = '00000000-0000-4000-8000-00000000c001';
+
+    test('a whole number written with a fraction or an exponent, as a whole number', () {
+      // jsonDecode reads 1e2 as a double, where JavaScript reads the whole number it is.
+      final body = parsePreset('order_category', jsonDecode('{"name": "Demo: A", "behaviour": "supply", "sort": 1e2}'));
+      expect((body! as OrderCategoryBody).sort, isA<int>().having((s) => s, 'sort', 100));
+    });
 
     test('an order category', () {
       final body =
