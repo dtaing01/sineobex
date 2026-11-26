@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -256,6 +258,52 @@ void main() {
         handle.dispose();
       });
     }
+
+    // Review finding VX2: the row Show earlier visits put focus on took none of its InkWell's focus
+    // semantics, so a screen reader was told nothing of the move.
+    testWidgets('with a screen reader on, the first earlier visit is the node marked focused', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signInToChart(tester);
+      final routes = await withEncounterRoutes(tester, h);
+      await cacheChart(tester, h, p1Id, {
+        'timeline': {'encounters': pageOf(50), 'referrals': <Object?>[]},
+      });
+      routes.on(
+        'GET',
+        '/v1/patients/$p1Id/timeline',
+        (_) => {
+          'encounters': [
+            timelineVisit('e0000000-0000-4000-8000-000000000201', '2026-08-01T15:00:00.000Z', kind: 'non_medical'),
+          ],
+        },
+      );
+      await go(tester, '/patients/$p1Id');
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        accessibleNavigation: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await reveal(tester, find.widgetWithText(OutlinedButton, 'Show earlier visits'));
+      h.server.offline = false;
+      // As a screen reader activates it: its tap action, with keyboard focus nowhere near.
+      tester.semantics.tap(find.semantics.byLabel('Show earlier visits'));
+      await settle(tester);
+      await settle(tester);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'first earlier visit');
+      final first = row('^August 1, 2026$at, Non-Medical visit\$');
+      expect(
+        tester.getSemantics(first),
+        isSemantics(isButton: true, hasTapAction: true, isFocusable: true, isFocused: true),
+      );
+      // The one node marked focused, read as the row is.
+      final marked = find.semantics.byPredicate((n) => n.flagsCollection.isFocused == Tristate.isTrue);
+      expect([for (final n in marked.evaluate()) n.label], [tester.getSemantics(first).label]);
+      final rows = find.semantics.byPredicate((n) => n.label.contains('Non-Medical visit')).evaluate().toList();
+      expect(rows.length, greaterThan(1));
+      for (final n in rows) {
+        expect(n.flagsCollection.isFocused, isNot(Tristate.none), reason: '"${n.label}" focusable');
+      }
+      handle.dispose();
+    });
 
     // Review finding VX-4: what is said counts what came that the filter shows and that was not
     // shown already; a page the filter hides all of is said in its own words.
