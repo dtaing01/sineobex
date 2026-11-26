@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../patients/flags.dart' show NotAppliedFlagChange;
 import '../patients/patient_labels.dart' show patientFieldLabels;
 
 /// Words for sync states. Patient details never appear in these: field names, counts and times.
@@ -108,8 +109,10 @@ String? problemLabel(String? problem) => switch (problem) {
   _ => null,
 };
 
-/// A notice that needs no fix (design 12.1, Needs attention): kind and field only, never a value.
-String noticeLabel(String kind, String? field) => switch (kind) {
+/// A notice that needs no fix (design 12.1, Needs attention): kind and field only, never a value. A
+/// held flag change's notice says what the phone holds of the change ([flagChange]): a set, a clear or
+/// an Entered in error mark, else nothing of it (review finding W1).
+String noticeLabel(String kind, String? field, {NotAppliedFlagChange? flagChange}) => switch (kind) {
   'kept_both' =>
     'Two values recorded for ${field == null ? 'a field' : fieldLabel(field)}. Someone who knows this person will choose.',
   'nothing_to_recognise' => 'Kept the name: this person would have had no name or description left.',
@@ -139,7 +142,12 @@ String noticeLabel(String kind, String? field) => switch (kind) {
   'note_attested' => 'A visit you signed was attested.',
   'note_assigned' => 'A note was assigned to you to finish.',
   // Phase 5 (design 6.2, 8.2): a held flag change a Program Admin didn't apply.
-  'flag_change_not_applied' => 'A flag you set wasn’t applied. Open the patient to set it again.',
+  'flag_change_not_applied' => switch (flagChange) {
+    NotAppliedFlagChange.set => 'A flag you set wasn’t applied. Open the patient to set it again.',
+    NotAppliedFlagChange.clear => 'A flag you cleared wasn’t applied. Open the patient to clear it again.',
+    NotAppliedFlagChange.mark => 'Your Entered in error mark wasn’t applied. Open the patient to mark it again.',
+    null => 'A flag change you made wasn’t applied. Open the patient to check their flags.',
+  },
   _ => 'Something changed after it synced.',
 };
 

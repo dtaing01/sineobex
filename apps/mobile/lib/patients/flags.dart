@@ -190,6 +190,19 @@ class PatientFlagsView {
   final bool sentForReview;
 }
 
+/// What a held flag change of this phone's that a Program Admin didn't apply was, as the phone holds
+/// it ([PatientFlags.notAppliedOf]): what its notice says was not applied (review finding W1).
+enum NotAppliedFlagChange {
+  /// Its create, setting a flag.
+  set,
+
+  /// Its create, clearing one.
+  clear,
+
+  /// Its Entered in error mark.
+  mark,
+}
+
 /// The flag change intake records with a new patient (8.2): one risk level and why.
 typedef IntakeRiskLevel = ({String flagId, String reason});
 
@@ -449,6 +462,31 @@ class PatientFlags {
     _guardClock();
     store.fixRejected(changeId, {...refused.value! as Map<String, Object?>, 'reason': _reason(reason)});
     onChanged?.call();
+  }
+
+  /// What the `flag_change_not_applied` notice about the flag change [recordId] was for, as this phone
+  /// holds the change (design 6.2; review finding W1): its create, held here, a set or a clear; else an
+  /// Entered in error mark of it held here. Null where the phone holds neither, or no longer the change
+  /// a held create made (the phone lets go of what the server holds), or the store is frozen: the
+  /// notice then names no act.
+  NotAppliedFlagChange? notAppliedOf(String recordId) {
+    if (store.frozen) return null;
+    final marks = _heldMarksOf(_kept(recordId));
+    final held = [
+      for (final r in store.database.select('SELECT change_id FROM in_review WHERE entity = ? AND record_id = ?', [
+        entityFlagChange,
+        recordId,
+      ]))
+        r['change_id']! as String,
+    ];
+    if (held.any((id) => !marks.contains(id))) {
+      return switch (store.record(recordId)?.attributes['action']) {
+        'set' => NotAppliedFlagChange.set,
+        'clear' => NotAppliedFlagChange.clear,
+        _ => null,
+      };
+    }
+    return held.isNotEmpty ? NotAppliedFlagChange.mark : null;
   }
 
   // ---- receipts ----

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/features/sync/sync_labels.dart';
+import 'package:sineobex_field/patients/flags.dart' show NotAppliedFlagChange;
 import 'package:sineobex_field/sync/entities.dart';
 
 /// Needs attention names a change by its kind of record and the unsynced summary by its category:
@@ -75,10 +76,26 @@ void main() {
     expect(problemLabel('unknown_flag'), 'This flag isn’t on your team’s list. Choose a flag.');
     expect(problemLabel('reason_invalid'), 'The reason is empty or too long. Change the reason.');
     expect(
-      noticeLabel('flag_change_not_applied', null),
+      noticeLabel('flag_change_not_applied', null, flagChange: NotAppliedFlagChange.set),
       'A flag you set wasn’t applied. Open the patient to set it again.',
     );
     expect(entityLabel('patient_flag_change'), 'Flag change');
+  });
+
+  // Review finding W1: the notice of a held flag change follows what the phone holds of it.
+  test('a held flag change’s notice says what it was: a set, a clear, a mark, or nothing the phone holds', () {
+    expect(
+      {
+        for (final change in [...NotAppliedFlagChange.values, null])
+          change?.name: noticeLabel('flag_change_not_applied', null, flagChange: change),
+      },
+      {
+        'set': 'A flag you set wasn’t applied. Open the patient to set it again.',
+        'clear': 'A flag you cleared wasn’t applied. Open the patient to clear it again.',
+        'mark': 'Your Entered in error mark wasn’t applied. Open the patient to mark it again.',
+        null: 'A flag change you made wasn’t applied. Open the patient to check their flags.',
+      },
+    );
   });
 
   test('every outbox category has a name', () {

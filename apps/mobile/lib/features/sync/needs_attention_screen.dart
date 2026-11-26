@@ -26,7 +26,7 @@ import '../../encounters/referrals.dart' show settledByDate;
 import '../../forms/definition.dart' show ChoiceDef;
 import '../../forms/field_at.dart' show fieldAt;
 import '../../forms/forms_api.dart' show NoteTypeVersion;
-import '../../patients/flags.dart' show FlagView, clearsFlag, settledByFlag, settledByReason;
+import '../../patients/flags.dart' show FlagView, NotAppliedFlagChange, clearsFlag, settledByFlag, settledByReason;
 import '../../patients/patient_providers.dart';
 import '../../sync/entities.dart' show entityCorrection, entitySignoff;
 import '../../sync/local_store.dart';
@@ -160,6 +160,10 @@ class NeedsAttentionScreen extends ConsumerWidget {
             for (final n in notices)
               _NoticeCard(
                 notice: n,
+                // What the phone holds of a held flag change that wasn't applied words its notice (W1).
+                flagChange: n.kind == noticeFlagChangeNotApplied && n.recordId != null
+                    ? services?.flags.notAppliedOf(n.recordId!)
+                    : null,
                 onOpenNote: switch (_noteOf(n)) {
                   final note? when encounters != null => () => unawaited(_openNote(context, encounters, note)),
                   _ => null,
@@ -761,8 +765,17 @@ class _RemoveRefusedNoteState extends State<_RemoveRefusedNote> {
 }
 
 class _NoticeCard extends StatelessWidget {
-  const _NoticeCard({required this.notice, required this.onOpenNote, required this.onOpen, required this.onDone});
+  const _NoticeCard({
+    required this.notice,
+    required this.flagChange,
+    required this.onOpenNote,
+    required this.onOpen,
+    required this.onDone,
+  });
   final LocalNotice notice;
+
+  /// For a held flag change's notice, what the phone holds of the change; null for anything else.
+  final NotAppliedFlagChange? flagChange;
 
   /// **Open the note**, for a notice of a note's life (lifecycle 9.13).
   final VoidCallback? onOpenNote;
@@ -773,7 +786,7 @@ class _NoticeCard extends StatelessWidget {
   Widget build(BuildContext context) => StatusBanner(
     icon: notice.kind == 'id_link_superseded' ? LucideIcons.idCard : LucideIcons.info,
     tone: notice.kind == 'id_link_superseded' ? ChipTone.warning : ChipTone.info,
-    text: noticeLabel(notice.kind, notice.field),
+    text: noticeLabel(notice.kind, notice.field, flagChange: flagChange),
     action: Wrap(
       spacing: FieldSpace.s2,
       runSpacing: FieldSpace.s2,

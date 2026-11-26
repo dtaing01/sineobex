@@ -332,6 +332,110 @@ void main() {
       handle.dispose();
     });
 
+    // Review finding W1: the notice says what the phone holds of the change, not always a set.
+    Future<({AppHarness h, String high})> flagged(WidgetTester tester) async {
+      final h = await signIn(tester);
+      seedP1(h.server);
+      final high = h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      await syncAndRefresh(tester, h);
+      await tester.runAsync(() => h.patients.patients.open(p1Id));
+      return (h: h, high: high);
+    }
+
+    /// The words of the held flag change's notice, scrolled into view.
+    Future<String?> noticeWords(WidgetTester tester) async {
+      final notice = find.textContaining('wasn’t applied. Open the patient');
+      await expectShown(tester, notice);
+      return tester.widget<Text>(notice).data;
+    }
+
+    Future<void> rejected(WidgetTester tester, AppHarness h, String recordId) async {
+      final changeId = h.sync.store!.outbox().singleWhere((e) => e.recordId == recordId).changeId;
+      await syncAndRefresh(tester, h);
+      expect(h.server.held.keys, contains(changeId));
+      h.server.rejectHeld(changeId);
+      h.wall = h.wall.add(const Duration(minutes: 3));
+      await syncAndRefresh(tester, h);
+    }
+
+    testWidgets('a held clear that won’t be applied: the notice says it was a clear', (tester) async {
+      final handle = tester.ensureSemantics();
+      final (:h, :high) = await flagged(tester);
+      h.server.seed(entityFlagChange, {
+        'patientId': p1Id,
+        'flagId': high,
+        'action': 'set',
+        'reason': 'Demo: left hospital',
+      }, by: teammate);
+      // The role lost patients.edit at the desk: the server holds the clear for a Program Admin.
+      h.server.permissions[h.patients.userId] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      final id = h.sync.store!.createRecord(entityFlagChange, {
+        'patientId': p1Id,
+        'flagId': high,
+        'action': 'clear',
+        'reason': 'Demo: doing better',
+      });
+      await rejected(tester, h, id);
+      await openAttention(tester);
+      expect(await noticeWords(tester), 'A flag you cleared wasn’t applied. Open the patient to clear it again.');
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
+
+    testWidgets('a held Entered in error mark that won’t be applied: the notice says it was the mark', (tester) async {
+      final handle = tester.ensureSemantics();
+      final (:h, :high) = await flagged(tester);
+      final id = h.sync.store!.createRecord(entityFlagChange, {
+        'patientId': p1Id,
+        'flagId': high,
+        'action': 'set',
+        'reason': 'Demo: left hospital',
+      });
+      await syncAndRefresh(tester, h);
+      expect(h.server.records[id]?.status, 'active', reason: 'the set was taken');
+      // Then the role lost patients.edit at the desk: the mark is held for a Program Admin.
+      h.server.permissions[h.patients.userId] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      h.patients.flags.enterInError(id, 'Demo: set on the wrong patient');
+      await rejected(tester, h, id);
+      await openAttention(tester);
+      expect(
+        await noticeWords(tester),
+        'Your Entered in error mark wasn’t applied. Open the patient to mark it again.',
+      );
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
+
+    testWidgets('a held flag change this phone never held: the notice names no act, and opens the patient', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final (:h, high: _) = await flagged(tester);
+      // Made on another phone of the person's, held there, and not applied: this phone holds nothing of it.
+      h.server.notices.add(
+        FakeNotice(
+          'f1a90000-0000-4000-8000-0000000000a1',
+          h.patients.userId,
+          noticeFlagChangeNotApplied,
+          entityFlagChange,
+          'f1a90000-0000-4000-8000-0000000000a2',
+          h.server.now(),
+          patientId: p1Id,
+        ),
+      );
+      h.wall = h.wall.add(const Duration(minutes: 3));
+      await syncAndRefresh(tester, h);
+      await openAttention(tester);
+      expect(
+        await noticeWords(tester),
+        'A flag change you made wasn’t applied. Open the patient to check their flags.',
+      );
+      await expectScreenOk(tester);
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Open patient'));
+      expect(find.byType(PatientScreen), findsOneWidget);
+      handle.dispose();
+    });
+
     testWidgets('while the clock is paused the fixes wait, and say so (D35)', (tester) async {
       final (:h, changeId: _, recordId: _, medium: _) = await refusedFlag(tester);
       // The server's clock is hours from the phone's: charting pauses, and the fixes with it.
