@@ -921,6 +921,45 @@ void main() {
       });
     }
 
+    // Review finding VX5: the flag list, nothing typed, that lists no one said only "No one found on this
+    // phone.", not that the flags are why, where a search under the same flags says so.
+    for (final (online, run) in <(bool, Run?)>[for (final run in runs) (false, run), (true, null)]) {
+      testWidgets('a flag no one carries, chosen with nothing typed, says no one on this phone has every flag chosen '
+          '(${online ? 'online' : 'offline, ${runName(run!)}'})', (tester) async {
+        final handle = tester.ensureSemantics();
+        final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
+        final team = h.patients.teamId;
+        final high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+        h.server.addPreset(team, 'flag', flag('Demo: Low', 'primary', 'green', 30));
+        final round = h.server.seedPatient(preferredName: 'Demo Round');
+        h.server.seed(entityFlagChange, {
+          'patientId': round,
+          'flagId': high,
+          'action': 'set',
+          'reason': 'Demo: a reason',
+        });
+        await syncAndRefresh(tester, h);
+        h.server.offline = !online;
+        await openPatientsTab(tester);
+        final before = searchedEntries(h.sync.store!).length;
+        await chooseInDialog(tester, 'Risk level', ['Green · Demo: Low']);
+        const said = 'No one on this phone has every flag chosen.';
+        // Built, if under the pinned search box at a large text size, then scrolled to.
+        expect(find.text(said, skipOffstage: false), findsOneWidget);
+        await reveal(tester, find.text(said, skipOffstage: false));
+        // One sentence, in the live region the count is said in: nothing is typed, so there is no search
+        // to widen.
+        expect(tester.getSemantics(find.text(said)), isSemantics(isLiveRegion: true, label: said));
+        expect(find.text('Clear the flags to search everyone, or to add someone new.'), findsNothing);
+        expect(find.text('No one found on this phone.'), findsNothing);
+        expect(find.byType(PatientRow, skipOffstage: false), findsNothing);
+        // The list was read, and logged as naming no one.
+        expect([for (final e in searchedEntries(h.sync.store!).sublist(before)) e['patientIds']], [<Object?>[]]);
+        await expectScreenOk(tester);
+        handle.dispose();
+      });
+    }
+
     // Review finding X1: once the index went, the list a filter gave from it stayed on the tab, under
     // "The patient list was removed from this phone", with no filter left to clear it.
     testWidgets('the flag list goes with the index, its filter with it, and the tab shows its empty state again', (
@@ -998,6 +1037,7 @@ void main() {
         }
         expect(h.patients.index.state.removed, IndexRemoval.expired);
         expect(find.textContaining('found on this phone', skipOffstage: false), findsNothing);
+        expect(find.text('No one on this phone has every flag chosen.', skipOffstage: false), findsNothing);
         expect(find.byType(PatientRow, skipOffstage: false), findsNothing);
         expect(find.byType(ChosenFilterChip, skipOffstage: false), findsNothing);
         expect(find.text('Show more', skipOffstage: false), findsNothing);

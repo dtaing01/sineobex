@@ -420,7 +420,9 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   /// "1 patient found on this phone", once per list, never per keystroke. A search the filters
   /// narrowed to no one says they are why, and how to search everyone or add someone new, in the
   /// same live region: New patient with this name waits for a search no filter narrows (review W3).
-  Widget _found(int n, {required bool onPhone, bool filtered = false}) {
+  /// The filters' own list ([flagList], nothing typed) that lists no one says whom it looked for, in
+  /// one sentence: with nothing typed there is no search to widen (review VX5).
+  Widget _found(int n, {required bool onPhone, bool filtered = false, bool flagList = false}) {
     final text = Theme.of(context).textTheme;
     if (n == 0 && filtered) {
       final said = onPhone
@@ -444,7 +446,11 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       liveRegion: true,
       child: Text(
         n == 0
-            ? (onPhone ? 'No one found on this phone.' : 'No one found.')
+            ? (flagList
+                  ? _noOneCarries
+                  : onPhone
+                  ? 'No one found on this phone.'
+                  : 'No one found.')
             : '${n == 1 ? '1 patient' : '$n patients'} found${onPhone ? ' on this phone' : ''}',
         style: text.titleMedium,
       ),
@@ -452,6 +458,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   }
 
   static const _clearFlagsToSearch = 'Clear the flags to search everyone, or to add someone new.';
+  static const _noOneCarries = 'No one on this phone has every flag chosen.';
 
   /// The filters' chips, beside Born: each tier's only where the team's list offers the person a flag
   /// of it, so a team without flags, or a phone without its setup, shows none; and none where the
@@ -650,7 +657,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                         ],
                       ] else if (_emptyQuery && _flagged != null) ...[
                         // The filters with nothing typed: who on this phone carries the flags.
-                        _found(_flagged!.length, onPhone: true),
+                        _found(_flagged!.length, onPhone: true, flagList: true),
                         const SizedBox(height: FieldSpace.s2),
                         for (final p in _flagged!) ...[
                           PatientRow(
