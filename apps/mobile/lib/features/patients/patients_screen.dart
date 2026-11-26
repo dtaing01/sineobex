@@ -75,8 +75,12 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   String? _riskFilter;
   Set<String> _conditionFilter = const {};
 
-  /// The patients the filters list with nothing typed, read (and audited) once per choice.
+  /// The patients the filters list with nothing typed, read (and audited) once per choice, and again
+  /// a page at a time by Show more.
   List<FoundPatient>? _flagged;
+
+  /// How many more on this phone carry the filters' flags than [_flagged] shows.
+  int _flaggedMore = 0;
 
   static const _quiet = Duration(milliseconds: 600);
 
@@ -97,6 +101,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       _riskFilter = null;
       _conditionFilter = const {};
       _flagged = null;
+      _flaggedMore = 0;
       _loadEmpty();
     }
     if (widget.focusSearch && !old.focusSearch) _focus.requestFocus();
@@ -236,15 +241,35 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   void _listFlagged() {
     if (!_filtering || !_emptyQuery) {
       _flagged = null;
+      _flaggedMore = 0;
       if (!_filtering && _emptyQuery) _loadEmpty();
       return;
     }
+    _flagged = const [];
+    _flaggedMore = 0;
+    _nextFlagged();
+  }
+
+  /// Show more under the flag list: the next page of who carries the flags, one list of its own,
+  /// audited as what it adds (TeamIndex.withFlags).
+  void _moreFlagged() => setState(_nextFlagged);
+
+  void _nextFlagged() {
+    final shown = _flagged ?? const <FoundPatient>[];
     try {
-      _flagged = _s.index.withFlags(riskLevel: _riskFilter, conditions: _conditionFilter);
+      final page = _s.index.withFlags(riskLevel: _riskFilter, conditions: _conditionFilter, after: shown.length);
+      final listed = {for (final p in shown) p.patientId};
+      _flagged = [
+        ...shown,
+        for (final p in page.patients)
+          if (!listed.contains(p.patientId)) p,
+      ];
+      _flaggedMore = page.more;
       _problem = null;
     } on ChartingPaused catch (e) {
       // What can't be logged isn't shown (D21).
       _flagged = null;
+      _flaggedMore = 0;
       _problem = e.message;
     }
   }
@@ -494,6 +519,17 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
                         for (final p in _flagged!) ...[
                           PatientRow(patient: p, today: today, riskLevel: _riskLevelOf(p), onTap: () => _open(p)),
                           const SizedBox(height: FieldSpace.s2),
+                        ],
+                        // Everyone who carries the flags can be listed, a page at a time.
+                        if (_flaggedMore > 0) ...[
+                          Text(
+                            _flaggedMore == 1
+                                ? '1 more patient on this phone matches.'
+                                : '$_flaggedMore more patients on this phone match.',
+                            style: text.bodyLarge,
+                          ),
+                          const SizedBox(height: FieldSpace.s2),
+                          WideButton(label: 'Show more', onPressed: _moreFlagged),
                         ],
                       ] else if (_emptyQuery) ...[
                         if (_s.mayEdit && _s.patients.draft() != null) ...[

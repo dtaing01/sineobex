@@ -427,6 +427,55 @@ void main() {
       expect(rowOf('Demo Quillon'), findsOneWidget);
     });
 
+    testWidgets(
+      'the flag list says how many more match, and Show more lists them, each list logged as shown (item 24)',
+      (tester) async {
+        final h = await signIn(tester);
+        final frost = h.server.addPreset(h.patients.teamId, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+        final ids = [for (var i = 0; i < 55; i++) h.server.seedPatient(preferredName: 'Demo Round $i')];
+        for (final id in ids) {
+          h.server.seed(entityFlagChange, {
+            'patientId': id,
+            'flagId': frost,
+            'action': 'set',
+            'reason': 'Demo: a reason',
+          });
+        }
+        await syncAndRefresh(tester, h);
+        h.server.offline = true;
+        await openPatientsTab(tester);
+        final store = h.sync.store!;
+        final before = searchedEntries(store).length;
+        final list = find.byType(Scrollable).first;
+        // A long list: to its very end, and back to its top.
+        Future<void> toEnd() async {
+          for (var i = 0; i < 40; i++) {
+            await tester.drag(list, const Offset(0, -1000));
+            await tester.pump();
+          }
+          await tester.pumpAndSettle();
+        }
+
+        Future<void> toTop(Finder f) => tester.scrollUntilVisible(f, -500, scrollable: list, maxScrolls: 100);
+
+        await chooseInDialog(tester, 'Conditions', ['Blue · Demo: Frost risk'], done: true);
+        await expectShown(tester, find.text('50 patients found on this phone'));
+        await expectScreenOk(tester);
+        final more = find.text('5 more patients on this phone match.');
+        await toEnd();
+        expect(more, findsOneWidget);
+        await tapText(tester, 'Show more');
+        await toEnd();
+        expect(find.textContaining('more patient'), findsNothing);
+        expect(find.text('Show more'), findsNothing);
+        await toTop(find.text('55 patients found on this phone'));
+        expect(find.text('55 patients found on this phone'), findsOneWidget);
+        // Each list logged as it was shown: the first 50, then the 5 more.
+        final logged = [for (final e in searchedEntries(store).sublist(before)) e['patientIds']! as List<Object?>];
+        expect(logged.map((ids) => ids.length), [50, 5]);
+        expect({for (final ids in logged) ...ids}, ids.toSet());
+      },
+    );
     testWidgets('a sensitive flag is absent for a reader the flag rule hides it from', (tester) async {
       await listWithFlags(tester, permissions: FakeSyncServer.chw.toList());
       await tapOn(tester, find.widgetWithText(ActionChip, 'Conditions'));

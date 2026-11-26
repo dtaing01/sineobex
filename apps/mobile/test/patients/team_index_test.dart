@@ -397,7 +397,7 @@ void main() {
       server.offline = true;
 
       Set<String> listed({String? riskLevel, Set<String> conditions = const {}}) => {
-        for (final p in services.index.withFlags(riskLevel: riskLevel, conditions: conditions)) p.patientId,
+        for (final p in services.index.withFlags(riskLevel: riskLevel, conditions: conditions).patients) p.patientId,
       };
       expect(listed(riskLevel: high), {ids[0], ids[1]});
       expect(listed(conditions: {frost}), {ids[0], ids[2]});
@@ -405,7 +405,7 @@ void main() {
       expect(listed(riskLevel: medium, conditions: {frost}), {ids[2]});
       // No filter lists no one: the list is never browsed whole.
       expect(listed(), isEmpty);
-      final shown = services.index.withFlags(riskLevel: high).firstWhere((p) => p.patientId == ids[0]);
+      final shown = services.index.withFlags(riskLevel: high).patients.firstWhere((p) => p.patientId == ids[0]);
       expect(shown.preferredName, 'Demo 0');
 
       // Each list shown is logged before it returns, naming the patients and never a flag (CO-14).
@@ -428,6 +428,45 @@ void main() {
       expect(() => services.index.withFlags(riskLevel: high), throwsA(isA<ChartingPaused>()));
     });
 
+    test(
+      'the flag list shows 50 at a time, says how many more match, and logs each page as what it shows (item 24)',
+      () async {
+        // A cold night's Frost risk round needs everyone who carries it.
+        final ids = seed(120);
+        for (final id in ids) {
+          change(id, frost);
+        }
+        await refresher.refresh(RefreshReason.manual);
+        server.offline = true;
+        List<Map<String, Object?>> audits() => [
+          for (final e in store().outbox())
+            if (e.entity == entityAudit) e.value! as Map<String, Object?>,
+        ];
+        final before = audits().length;
+        final pages = [
+          for (final after in [0, 50, 100]) services.index.withFlags(conditions: {frost}, after: after),
+        ];
+        expect([for (final p in pages) (p.patients.length, p.more)], [(50, 70), (50, 20), (20, 0)]);
+        final shown = [for (final p in pages) ...p.patients.map((x) => x.patientId)];
+        expect(shown.toSet(), ids.toSet());
+        expect(shown, hasLength(120), reason: 'no patient on two pages');
+        // One entry per page, naming the patients it shows, never a flag.
+        final logged = audits().sublist(before);
+        expect(
+          [for (final a in logged) a['patientIds']],
+          [
+            for (final p in pages) [for (final x in p.patients) x.patientId],
+          ],
+        );
+        expect(logged.map((a) => a['resultCount']), [50, 50, 20]);
+        expect(logged.toString(), isNot(contains(frost)));
+        // Past the end, nothing more, and nothing logged.
+        final end = audits().length;
+        expect(services.index.withFlags(conditions: {frost}, after: 120).patients, isEmpty);
+        expect(audits().length, end);
+      },
+    );
+
     // Card P5-phone-index's own case: the flag rule's team half, beside its sensitive half above.
     test('a flag the phone’s copy of the presets doesn’t hold is left out, and filters for no one', () async {
       final ids = seed(1);
@@ -439,7 +478,7 @@ void main() {
       server.offline = true;
       expect(json(), contains(late));
       expect(services.index.flagsOf(ids[0])?.secondary, [frost]);
-      expect(services.index.withFlags(conditions: {late}), isEmpty);
+      expect(services.index.withFlags(conditions: {late}).patients, isEmpty);
     });
 
     test('a sensitive flag is in the index only for a reader who may see it, and filters for no one else', () async {
@@ -451,7 +490,7 @@ void main() {
       expect(services.index.flagsOf(ids[0])?.secondary, [frost, pregnancy]);
       expect(
         {
-          for (final p in services.index.withFlags(conditions: {pregnancy})) p.patientId,
+          for (final p in services.index.withFlags(conditions: {pregnancy}).patients) p.patientId,
         },
         {ids[0]},
       );
@@ -460,7 +499,7 @@ void main() {
       // downloaded under idx1+sens shows them none of it.
       final chw = servicesFor(FakeSyncServer.chw.toList());
       expect(chw.index.flagsOf(ids[0])?.secondary, [frost]);
-      expect(chw.index.withFlags(conditions: {pregnancy}), isEmpty);
+      expect(chw.index.withFlags(conditions: {pregnancy}).patients, isEmpty);
 
       // Their next download is under idx1, which never holds it.
       server.permissions[alex] = FakeSyncServer.chw;

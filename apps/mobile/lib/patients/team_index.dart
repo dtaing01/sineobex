@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' show max;
 
 import '../api/generated/api.dart' as api;
 import '../api/transport.dart';
@@ -177,17 +178,19 @@ class TeamIndex {
   /// Empty with neither (no browsing), and for a flag the person may not see. Throws
   /// [ChartingPaused] while the store is frozen.
   ///
-  /// Most recently seen first, then by preferred name, at most [searchMax] (what one audit entry
-  /// names, as Show more lists). The index is the server's word as of its last refresh: a change made
-  /// on this phone moves a patient in or out of a list once it has synced and the index has been
-  /// downloaded again.
-  List<FoundPatient> withFlags({String? riskLevel, Set<String> conditions = const {}}) {
+  /// Most recently seen first, then by preferred name, at most [searchMax] a list (what one audit
+  /// entry names, as search's Show more lists), with how many more carry the flags: Show more asks
+  /// for the next [searchMax] [after] the patients shown, a list of its own, audited as what it
+  /// shows, so everyone who carries a flag can be listed (a cold night's Frost risk round). The index
+  /// is the server's word as of its last refresh: a change made on this phone moves a patient in or
+  /// out of a list once it has synced and the index has been downloaded again.
+  FlaggedList withFlags({String? riskLevel, Set<String> conditions = const {}, int after = 0}) {
     if (store.frozen) throw ChartingPaused(store.frozenMessage!);
-    if (riskLevel == null && conditions.isEmpty) return const [];
+    if (riskLevel == null && conditions.isEmpty) return FlaggedList.none;
     expireIfStale();
     final bodies = _flagBodies();
-    if ([?riskLevel, ...conditions].any((id) => flagHidden(permissions, bodies[id]))) return const [];
-    if (!state.present) return const [];
+    if ([?riskLevel, ...conditions].any((id) => flagHidden(permissions, bodies[id]))) return FlaggedList.none;
+    if (!state.present) return FlaggedList.none;
     return store.transaction(() {
       final matched = <(String, Map<String, Object?>)>[];
       for (final row in store.database.select('SELECT patient_id, entry_json FROM team_index')) {
@@ -201,7 +204,9 @@ class TeamIndex {
         matched.add((id, e));
       }
       matched.sort((a, b) => _seenFirst(a.$1, a.$2, b.$1, b.$2));
-      final shown = [for (final (id, e) in matched.take(searchMax)) _row(id, e)];
+      final shown = [for (final (id, e) in matched.skip(after).take(searchMax)) _row(id, e)];
+      // Show more past the end shows no one, so nothing is logged.
+      if (after > 0 && shown.isEmpty) return FlaggedList.none;
       store.appendAudit(
         'patient.searched',
         patientIds: [for (final r in shown) r.patientId],
@@ -210,7 +215,7 @@ class TeamIndex {
         criteria: const [],
         source: 'team_index',
       );
-      return shown;
+      return FlaggedList(shown, more: max(0, matched.length - after - shown.length));
     });
   }
 
@@ -551,4 +556,15 @@ class TeamIndexRefresher implements AfterSyncRefresher {
       }
     }
   }
+}
+
+/// One list of the patients carrying the filters' flags: those it shows, and how many more on this
+/// phone carry them.
+class FlaggedList {
+  const FlaggedList(this.patients, {required this.more});
+
+  static const none = FlaggedList([], more: 0);
+
+  final List<FoundPatient> patients;
+  final int more;
 }
