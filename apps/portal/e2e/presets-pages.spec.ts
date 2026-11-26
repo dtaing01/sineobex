@@ -745,6 +745,8 @@ async function longCategory(): Promise<void> {
 }
 
 const STALE = 'Someone else changed this while you were editing. Reload to see their version.';
+/** A move refused stale (lib/refusals.ts, MOVE_STALE): the list is read again before it is said. */
+const MOVE_STALE = 'Someone changed these flags meanwhile. Check the list below and move again.';
 
 /**
  * What a page says when another admin's Remove or Restore refused an act meanwhile (PresetNotice):
@@ -2292,7 +2294,7 @@ test.describe('flags, /team/presets/flags', () => {
     expectOnlyIds(traffic.addresses);
   });
 
-  test('a move from a list another admin changed since is refused with the stale sentence, the list is read again, and the next move goes through', async ({
+  test('a move from a list another admin changed since is refused, the list is read again and the sentence says to check it and move again, and the next move goes through', async ({
     page,
   }) => {
     test.slow();
@@ -2309,7 +2311,7 @@ test.describe('flags, /team/presets/flags', () => {
     await changedMeanwhile<FlagBody>('flag', id, (b) => ({ ...b, name: 'Demo: Cracked lips' }));
     const before = await tierOf('secondary');
     await button('Move up Demo: Chapped lips').click();
-    await expect(alert).toHaveText(STALE);
+    await expect(alert).toHaveText(MOVE_STALE);
     await expect(alert).toBeFocused();
     // Read again: their change is on the page, and nothing moved.
     await expect(region.getByRole('listitem').getByRole('link')).toHaveText(before.map(pillOf));
@@ -2332,7 +2334,7 @@ test.describe('flags, /team/presets/flags', () => {
     await madeCondition('Demo: Blisters', 'green');
     const grown = await tierOf('secondary');
     await button('Move down Demo: Cracked lips').click();
-    await expect(alert).toHaveText(STALE);
+    await expect(alert).toHaveText(MOVE_STALE);
     await expect(region.getByRole('listitem').getByRole('link')).toHaveText(grown.map(pillOf));
     expect((await tierOf('secondary')).map((f) => [f.id, f.version])).toEqual(
       grown.map((f) => [f.id, f.version]),

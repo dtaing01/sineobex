@@ -93,6 +93,13 @@ export const TAKE_STALE = {
 } as const;
 
 /**
+ * A flag move refused stale, or ids_mismatch for a flag that joined or left the list since (design
+ * 5.1, 8.1): the action has read the list again by the time this is heard, so the list below is as
+ * it is now, and 8.1's stale sentence would ask for a reload already done.
+ */
+export const MOVE_STALE = 'Someone changed these flags meanwhile. Check the list below and move again.';
+
+/**
  * Which of TAKE_STALE a take's stale answer is, from its details (`currentVersion`, and
  * `platformVersion`, the version on offer now or null) against the versions the form sent; 8.1's
  * stale sentence when the details say neither.
@@ -316,10 +323,12 @@ export function presetRefusalState(
 
   switch (code) {
     case 'stale':
-      return state(act === 'take' ? takeStale(details, values) : PRESET_SENTENCES.stale);
+      return state(
+        act === 'take' ? takeStale(details, values) : act === 'move' ? MOVE_STALE : PRESET_SENTENCES.stale,
+      );
     // A flag order made from a list that has gained or lost a flag since is stale too (8.1).
     case 'ids_mismatch':
-      return state(PRESET_SENTENCES.stale);
+      return state(MOVE_STALE);
     case 'referenced':
       return state(referencedSentence(details?.referencedBy));
     case 'bundle_not_medical':

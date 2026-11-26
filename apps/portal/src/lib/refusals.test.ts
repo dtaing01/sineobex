@@ -3,6 +3,7 @@ import {
   errorCode,
   flagRefusal,
   flagRefusalSentence,
+  MOVE_STALE,
   PRESET_SENTENCES,
   presetRefusalState,
   NAME_PROBLEM,
@@ -83,12 +84,16 @@ describe('a preset form the API refused', () => {
     expect(refused('no_change', save('item')).values).toEqual(values);
   });
 
-  it('says a stale version, or a flag list changed since, in 8.1’s words', () => {
+  it('says a stale version in 8.1’s words, and a flag list changed since a move as read again', () => {
     const stale = 'Someone else changed this while you were editing. Reload to see their version.';
     expect(PRESET_SENTENCES.stale).toBe(stale);
-    for (const act of ['save', 'remove', 'move'] as const)
+    for (const act of ['save', 'remove'] as const)
       expect(refused('stale', { kind: 'flag', act }, { currentVersion: 3 }).error).toBe(stale);
-    expect(refused('ids_mismatch', { kind: 'flag', act: 'move' }).error).toBe(stale);
+    // A move's list is read again before it is said, so it asks for no reload (item 6).
+    const moved = 'Someone changed these flags meanwhile. Check the list below and move again.';
+    expect(MOVE_STALE).toBe(moved);
+    expect(refused('stale', { kind: 'flag', act: 'move' }, { flags: [] }).error).toBe(moved);
+    expect(refused('ids_mismatch', { kind: 'flag', act: 'move' }).error).toBe(moved);
   });
 
   it('says why a take is stale, from what changed since the review, and asks for no reload', () => {

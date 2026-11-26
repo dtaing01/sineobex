@@ -400,22 +400,23 @@ describe('moving a flag up or down its list', () => {
     });
   });
 
-  it('reads the list again with the stale sentence when another write changed it since', async () => {
+  it('reads the list again when another write changed it since, and says to check it and move again', async () => {
+    // The list is read again before the sentence is heard, so it asks for no reload (item 6).
     answer = refusal(409, 'stale', { flags: [{ id: LOW, currentVersion: 3 }] });
     const sent = { ...primary, move: `down:${HIGH}` };
     const r = await run(moveFlagAction, sent);
     expect(r.state).toEqual({
-      error: 'Someone else changed this while you were editing. Reload to see their version.',
+      error: 'Someone changed these flags meanwhile. Check the list below and move again.',
       values: sent,
     });
     expect(revalidated).toEqual(['/team/presets/flags']);
   });
 
-  it('reads the list again with the stale sentence when a flag joined or left it since', async () => {
+  it('reads the list again when a flag joined or left it since, and says to check it and move again', async () => {
     answer = refusal(422, 'ids_mismatch');
     const r = await run(moveFlagAction, { ...primary, move: `down:${HIGH}` });
     expect(r.state?.error).toBe(
-      'Someone else changed this while you were editing. Reload to see their version.',
+      'Someone changed these flags meanwhile. Check the list below and move again.',
     );
     expect(revalidated).toEqual(['/team/presets/flags']);
   });
