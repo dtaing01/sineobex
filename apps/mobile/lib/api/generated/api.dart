@@ -6169,11 +6169,11 @@ class QuarantinePage {
     required this.people,
   });
 
-  /// Oldest first
+  /// Oldest first. A held change of a flag the flag rule hides from the reviewer is left out, as if it were not held (D136)
   final List<QuarantineItem> items;
   /// Pass as afterId for the next page; null on the last
   final String? nextAfterId;
-  /// Everyone with items in this status, and the person filtered to, for a filter
+  /// Everyone with items in this status, and the person filtered to, for a filter: each only for an item listed to the reviewer
   final List<UserRef> people;
 
   factory QuarantinePage.fromJson(Map<String, dynamic> json) => QuarantinePage(

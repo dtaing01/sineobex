@@ -3057,14 +3057,14 @@ export interface components {
             value?: unknown;
         };
         QuarantinePage: {
-            /** @description Oldest first */
+            /** @description Oldest first. A held change of a flag the flag rule hides from the reviewer is left out, as if it were not held (D136) */
             items: components["schemas"]["QuarantineItem"][];
             /**
              * Format: uuid
              * @description Pass as afterId for the next page; null on the last
              */
             nextAfterId: string | null;
-            /** @description Everyone with items in this status, and the person filtered to, for a filter */
+            /** @description Everyone with items in this status, and the person filtered to, for a filter: each only for an item listed to the reviewer */
             people: components["schemas"]["UserRef"][];
         };
         QuarantineReceipt: {

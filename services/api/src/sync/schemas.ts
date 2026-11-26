@@ -355,12 +355,16 @@ export type QuarantineQueryValue = z.infer<typeof QuarantineQuery>;
 
 export const QuarantinePage = z
   .object({
-    items: z.array(QuarantineItem).openapi({ description: 'Oldest first' }),
+    items: z.array(QuarantineItem).openapi({
+      description:
+        'Oldest first. A held change of a flag the flag rule hides from the reviewer is left out, as if it were not held (D136)',
+    }),
     nextAfterId: Uuid.nullable().openapi({
       description: 'Pass as afterId for the next page; null on the last',
     }),
     people: z.array(UserRef).openapi({
-      description: 'Everyone with items in this status, and the person filtered to, for a filter',
+      description:
+        'Everyone with items in this status, and the person filtered to, for a filter: each only for an item listed to the reviewer',
     }),
   })
   .openapi('QuarantinePage');

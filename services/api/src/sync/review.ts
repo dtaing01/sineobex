@@ -1,7 +1,7 @@
 import { visibleAnswers } from '@sineobex/forms';
 import { problemCheckDue } from '@sineobex/presets';
 import type { TeamScope } from '../auth/context.ts';
-import { mayViewProblems, PERMISSION_KEYS } from '../auth/permissions.ts';
+import { mayViewProblems, PERMISSION_KEYS, type Permission } from '../auth/permissions.ts';
 import type { Tx } from '../db/database.ts';
 import {
   hiddenCorrections,
@@ -37,7 +37,8 @@ import {
   readsEntity,
   readsRecord,
   sensitiveHidden,
-  type FlagHead,
+  teamFlags,
+  type TeamFlag,
 } from './read-rules.ts';
 import { isSensitiveCode } from './entities/problem.ts';
 import {
@@ -82,6 +83,9 @@ interface QuarantineRow {
   decidedByName: string | null;
   decisionReason: string | null;
   patientId: string | null;
+  /** For a flag change, the flag it names and, for a mark, who made the change (heldFlagOf). */
+  flagId: string | null;
+  flagAuthorId: string | null;
 }
 
 /** Items per page of the review queue. */
@@ -90,40 +94,73 @@ export const QUARANTINE_PAGE_SIZE = 50;
 /**
  * The review queue, oldest first, a page at a time and optionally one person's, so one person's
  * flood of held work can't hide someone else's hand-over behind it.
+ *
+ * PLAN-OPEN (CO-15): should the queue also leave out, rather than list without its value, a held
+ * change of a sensitive problem for a reviewer who may not read sensitive things? Phases 3 and 4
+ * list it, as they do every change a reviewer may not read; phase 5 leaves out a hidden flag's
+ * (D136, leftOut).
  */
 export async function listQuarantine(scope: TeamScope, { status, userId, afterId }: QuarantineQueryValue) {
   return scope.tx(async (tx, audit) => {
-    // The patient each item is about (migration 0020, patient_of_change): the record itself, its
-    // row's patient, or what its value names; for a note or an encounter, through the encounter,
-    // on the chart or its create held here, whatever was decided on it. A sign-off and a
-    // correction answer through the note their value names, an addendum through its visit, and a
-    // referral or an allergy through its row, or its held create when the row does not exist.
-    // Values were never schema-checked, so text is read only when it is a UUID.
-    const rows = await tx<QuarantineRow[]>`
-      select q.*, u.display_name as user_name, du.display_name as decided_by_name,
-             sineobex.patient_of_change(q.entity, q.record_id, q.value) as patient_id
+    const flags = await teamFlags(tx, scope.team.teamId);
+    // Paged in SQL by (received_at, id), and read on until a page is listed or the queue ends, so
+    // what is left out for this reviewer never shortens a page while more is listed after it, and
+    // the cursor follows what was listed.
+    const page: QuarantineRow[] = [];
+    let more = false;
+    for (let after = afterId ?? null; ;) {
+      // The patient each item is about (migration 0020, patient_of_change): the record itself, its
+      // row's patient, or what its value names; for a note or an encounter, through the encounter,
+      // on the chart or its create held here, whatever was decided on it. A sign-off and a
+      // correction answer through the note their value names, an addendum through its visit, and a
+      // referral or an allergy through its row, or its held create when the row does not exist.
+      // Values were never schema-checked, so text is read only when it is a UUID.
+      const rows = await tx<QuarantineRow[]>`
+        select q.*, u.display_name as user_name, du.display_name as decided_by_name,
+               sineobex.patient_of_change(q.entity, q.record_id, q.value) as patient_id,
+               nf.flag_id, nf.flag_author_id
+        from sineobex.quarantine_items q
+        join sineobex.users u on u.id = q.user_id
+        left join sineobex.users du on du.id = q.decided_by
+        ${heldFlagOf(tx, scope.team.teamId)}
+        where q.status = ${status}
+          ${userId ? tx`and q.user_id = ${userId}` : tx``}
+          ${
+            after
+              ? tx`and (q.received_at, q.id) > (
+                  select a.received_at, a.id from sineobex.quarantine_items a where a.id = ${after})`
+              : tx``
+          }
+        order by q.received_at, q.id
+        limit ${QUARANTINE_PAGE_SIZE + 1}`;
+      for (const r of rows) {
+        if (leftOut(scope.team.permissions, flags, r)) continue;
+        if (page.length === QUARANTINE_PAGE_SIZE) {
+          more = true;
+          break;
+        }
+        page.push(r);
+      }
+      if (more || rows.length <= QUARANTINE_PAGE_SIZE) break;
+      after = rows.at(-1)!.id;
+    }
+    // Whom the queue can be filtered to: everyone with items in this status, and whoever it is
+    // filtered to already, so the filter still shows them once their last item is decided; each
+    // only for an item listed to this reviewer, so the filter names nobody for what it leaves out.
+    const candidates = await tx<
+      { userId: string; displayName: string; entity: string; flagId: string | null }[]
+    >`
+      select distinct u.id as user_id, u.display_name, q.entity, nf.flag_id
       from sineobex.quarantine_items q
       join sineobex.users u on u.id = q.user_id
-      left join sineobex.users du on du.id = q.decided_by
-      where q.status = ${status}
-        ${userId ? tx`and q.user_id = ${userId}` : tx``}
-        ${
-          afterId
-            ? tx`and (q.received_at, q.id) > (
-                select a.received_at, a.id from sineobex.quarantine_items a where a.id = ${afterId})`
-            : tx``
-        }
-      order by q.received_at, q.id
-      limit ${QUARANTINE_PAGE_SIZE + 1}`;
-    const page = rows.slice(0, QUARANTINE_PAGE_SIZE);
-    // Whom the queue can be filtered to: everyone with items in this status, and whoever it is
-    // filtered to already, so the filter still shows them once their last item is decided.
-    const people = await tx<{ userId: string; displayName: string }[]>`
-      select u.id as user_id, u.display_name from sineobex.users u
-      where u.id in (
-        select q.user_id from sineobex.quarantine_items q
-        where q.status = ${status} ${userId ? tx`or q.user_id = ${userId}` : tx``})
+      ${heldFlagOf(tx, scope.team.teamId)}
+      where q.status = ${status} ${userId ? tx`or q.user_id = ${userId}` : tx``}
       order by u.display_name, u.id`;
+    const people = new Map<string, { userId: string; displayName: string }>();
+    for (const c of candidates) {
+      if (!leftOut(scope.team.permissions, flags, c))
+        people.set(c.userId, { userId: c.userId, displayName: c.displayName });
+    }
     // The values are chart content, so looking at the queue is itself logged, item by item with
     // the patient, so a patient's access report shows it.
     await audit({
@@ -140,7 +177,7 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
       });
     }
     const shown = new Map<string, { field: string | null; value: unknown } | null>();
-    for (const r of page) shown.set(r.id, await shownChange(tx, scope, r));
+    for (const r of page) shown.set(r.id, await shownChange(tx, scope, flags, r));
     const items = page.map((r) => ({
       id: r.id,
       user: { userId: r.userId, displayName: r.userName },
@@ -159,9 +196,52 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
       decidedBy: r.decidedBy ? { userId: r.decidedBy, displayName: r.decidedByName ?? '' } : null,
       decisionReason: r.decisionReason,
     }));
-    return { items, nextAfterId: rows.length > page.length ? page.at(-1)!.id : null, people };
+    return { items, nextAfterId: more ? page.at(-1)!.id : null, people: [...people.values()] };
   });
 }
+
+/**
+ * Whether the review queue leaves a held change out for this reviewer altogether, unlisted,
+ * uncounted, naming nobody in its people filter, and neither accepted nor rejected by them (D136;
+ * design 6.2): a flag change whose flag, one of the team's, the flag rule hides from them. Listed
+ * without its value, it would still tell them its sender set or cleared a sensitive flag, and when.
+ * A change naming no flag of the team is hidden from every reviewer (shownChange), so it is listed
+ * so, for anyone to reject: left out, it would wait for good and its sender would never be told.
+ * What else a reviewer may not read is listed without its value, a mark's reason among them.
+ */
+function leftOut(
+  permissions: ReadonlySet<Permission>,
+  flags: ReadonlyMap<string, TeamFlag>,
+  item: Pick<QuarantineRow, 'entity' | 'flagId'>,
+): boolean {
+  if (item.entity !== 'patient_flag_change' || item.flagId === null) return false;
+  const flag = flags.get(item.flagId);
+  return flag !== undefined && flagHidden(permissions, flag);
+}
+
+/**
+ * The flag a held flag change of the queue (`q`) names, and for a set (an Entered in error mark) the
+ * change's author, as `nf.flag_id` and `nf.flag_author_id`: a create's own flag, read only when it is
+ * a UUID; for a mark, the change's as stored, or as its create held here names it, the latest, as
+ * the queue names its patient (0024, patient_of_change), with who made it, the row's author or that
+ * create's sender. Nulls for every other item. Only which flag: whether the reviewer may see it is
+ * the flag rule's to say (flagHidden, D99).
+ */
+const heldFlagOf = (tx: Tx, teamId: string) => tx`
+  left join lateral (
+    select case when q.op = 'create' then sineobex.as_uuid(q.value ->> 'flagId')
+                else coalesce(f.flag_id, c.flag_id) end as flag_id,
+           case when q.op = 'create' then null
+                when f.id is not null then f.author_user_id else c.user_id end as flag_author_id
+    from (select 1) one
+    left join sineobex.patient_flag_changes f
+      on q.op <> 'create' and f.team_id = ${teamId} and f.id = q.record_id
+    left join lateral (
+      select sineobex.as_uuid(h.value ->> 'flagId') as flag_id, h.user_id from sineobex.quarantine_items h
+      where q.op <> 'create' and h.team_id = ${teamId} and h.entity = 'patient_flag_change' and h.op = 'create'
+        and h.record_id = q.record_id
+      order by h.received_at desc limit 1) c on true
+    where q.entity = 'patient_flag_change') nf on true`;
 
 /**
  * A held change as this reviewer may read it, by the sync read's rules (read-rules.ts, the one copy
@@ -173,13 +253,14 @@ export async function listQuarantine(scope: TeamScope, { status, userId, afterId
  * may see; a sign-off goes without its hash to a reader who does not see every answer of any note. A problem and its notes need the problem list's keys, and a sensitive one,
  * or one whose create is still held, patients.view_sensitive. A flag change needs a flag the flag rule
  * shows them (phase 5 design 6.2, D87): a create's, or for a mark the change's, stored or its create
- * held here. Everything else needs patients.view. Values were never schema-checked,
- * so anything that cannot be read as a change of its kind is hidden.
+ * held here (heldFlagOf), read from [flags], the team's. Everything else needs patients.view. Values
+ * were never schema-checked, so anything that cannot be read as a change of its kind is hidden.
  */
 async function shownChange(
   tx: Tx,
   scope: TeamScope,
-  r: Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value' | 'recordId'>,
+  flags: ReadonlyMap<string, TeamFlag>,
+  r: Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value' | 'recordId' | 'flagId' | 'flagAuthorId'>,
 ): Promise<{ field: string | null; value: unknown } | null> {
   // Whether they read a record of this kind at all: the sync read's one copy (read-rules.ts).
   if (!readsEntity(scope.team.permissions, r.entity)) return null;
@@ -206,51 +287,16 @@ async function shownChange(
       return problem && !sensitiveHidden(scope.team.permissions, problem) ? shown : null;
     }
     case 'patient_flag_change': {
-      const held = await heldFlagChange(tx, scope.team.teamId, r, v, uuid);
-      if (flagHidden(scope.team.permissions, held.flag)) return null;
+      if (flagHidden(scope.team.permissions, (r.flagId && flags.get(r.flagId)) || null)) return null;
       // An Entered in error mark's value is the reason the change will be marked with, which the sync
       // read shows only to the change's author and Program Admins (flagChangeShown): a reviewer who is
       // neither is shown nothing of it, and so may not accept it (D87; review finding m-2).
-      const seesWhy = held.authorUserId === scope.principal.userId || scope.can('team.manage_users');
+      const seesWhy = r.flagAuthorId === scope.principal.userId || scope.can('team.manage_users');
       return r.op === 'set' && !seesWhy ? null : shown;
     }
     default:
       return shown;
   }
-}
-
-/**
- * The flag a held flag change names, and for a set (an Entered in error mark) the change's author: a
- * create's own flag, read only when it is a UUID; for a mark, the change's as stored, or as its
- * create held here names it, the latest, as the queue names its patient (0024, patient_of_change),
- * with who made it, the row's author or that create's sender. The flag is null when none is one of
- * the team's flags.
- */
-async function heldFlagChange(
-  tx: Tx,
-  teamId: string,
-  r: Pick<QuarantineRow, 'op' | 'recordId'>,
-  v: Record<string, unknown>,
-  uuid: (x: unknown) => string | null,
-): Promise<{ flag: FlagHead | null; authorUserId: string | null }> {
-  if (r.op === 'create') {
-    const flagId = uuid(v.flagId);
-    return { flag: flagId ? await flagHead(tx, teamId, flagId) : null, authorUserId: null };
-  }
-  const [named] = await tx<{ flagId: string | null; authorUserId: string | null }[]>`
-    select coalesce(f.flag_id, c.flag_id) as flag_id,
-           case when f.id is not null then f.author_user_id else c.user_id end as author_user_id
-    from (select 1) one
-    left join sineobex.patient_flag_changes f on f.team_id = ${teamId} and f.id = ${r.recordId}
-    left join lateral (
-      select sineobex.as_uuid(q.value ->> 'flagId') as flag_id, q.user_id from sineobex.quarantine_items q
-      where q.team_id = ${teamId} and q.entity = 'patient_flag_change' and q.op = 'create'
-        and q.record_id = ${r.recordId}
-      order by q.received_at desc limit 1) c on true`;
-  return {
-    flag: named?.flagId ? await flagHead(tx, teamId, named.flagId) : null,
-    authorUserId: named?.authorUserId ?? null,
-  };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -481,8 +527,9 @@ const waitingOnRecord = () =>
  * Accept applies the change to the chart under the usual rules, as the person who made it and
  * approved by the admin; if it would overwrite a different value, nothing is applied and the admin
  * is told, and a late change to a finished note is kept in its history as a push of it would be.
- * Only a reviewer who may read the change accepts it (403 `change_hidden`). Reject keeps the item,
- * with the reason, forever.
+ * Only a reviewer who may read the change accepts it (403 `change_hidden`), and one the queue leaves
+ * a change out for (leftOut) neither accepts nor rejects it. Reject keeps the item, with the reason,
+ * forever.
  *
  * PLAN-OPEN: may a Program Admin's accept put a held change over a value its sender never saw
  * (lifecycle 12.1 #36; plan section 6)? No: it is applied as it was made, at the version it named,
@@ -504,11 +551,16 @@ export async function decideQuarantine(
     const [peek] = await tx<Pick<QuarantineRow, 'entity' | 'op' | 'field' | 'value'>[]>`
       select entity, op, field, value from sineobex.quarantine_items where id = ${itemId}`;
     if (peek && takesTeamLock(peek as SyncChangeInput)) await lockTeamWrites(tx, scope.team.teamId);
+    const flags = await teamFlags(tx, scope.team.teamId);
     const rows = await tx<QuarantineRow[]>`
-      select q.*, null as user_name, null as decided_by_name, null as patient_id
-      from sineobex.quarantine_items q where q.id = ${itemId} for update`;
+      select q.*, null as user_name, null as decided_by_name, null as patient_id, nf.flag_id, nf.flag_author_id
+      from sineobex.quarantine_items q ${heldFlagOf(tx, scope.team.teamId)}
+      where q.id = ${itemId} for update of q`;
     const item = rows[0];
     if (!item) throw notFound('quarantined record');
+    // What the queue leaves out for this reviewer, they decide nothing of, and learn nothing of: not
+    // even whether it was decided already.
+    if (leftOut(scope.team.permissions, flags, item)) return 'left_out' as const;
     if (item.status !== 'pending') throw conflict('already_decided', 'This record was already reviewed.');
     // Review means a second person: nobody decides on their own change.
     if (item.userId === scope.principal.userId) return 'own' as const;
@@ -543,7 +595,7 @@ export async function decideQuarantine(
       // are the sync read's (review finding RD-3): anyone else may reject it, or leave it for someone
       // who can read it. Asked before anything else answers of the record. A change of a record whose
       // create is itself held reads as hidden until that record is decided, and waits on it.
-      if ((await shownChange(tx, scope, item)) === null) {
+      if ((await shownChange(tx, scope, flags, item)) === null) {
         if (await heldCreate(tx, { teamId: scope.team.teamId, authorId: item.userId }, change))
           throw waitingOnRecord();
         return 'hidden' as const;
@@ -682,12 +734,14 @@ export async function decideQuarantine(
     );
     throw forbidden('Someone else on the team must review your own records.', 'own_change');
   }
-  if (outcome === 'hidden') {
+  if (outcome === 'hidden' || outcome === 'left_out') {
     await scope.tx((_, audit) =>
       audit({ action: 'access.denied', details: { reason: 'change_hidden', itemId } }),
     );
     throw forbidden(
-      'Your role can’t read this record, so you can’t accept it onto the chart. You can reject it, or leave it for someone who can read it.',
+      outcome === 'hidden'
+        ? 'Your role can’t read this record, so you can’t accept it onto the chart. You can reject it, or leave it for someone who can read it.'
+        : 'Your role can’t read this record, so you can’t decide on it. Leave it for someone who can read it.',
       'change_hidden',
     );
   }

@@ -40,8 +40,9 @@ import {
 //   no reason: no `reason` attribute, and its field's value `{}`.
 // - The chart's `flags: {primary, secondary, history}` (patients-charts.test.ts has its shape): a
 //   history row's `reason`, and its `enteredInError.reason`, left out as the snapshot's are.
-// - A hidden flag's change is missing from the sync read, as a record the team does not have; in the
-//   review queue it is listed hidden (no field, no value) and its accept is 403 change_hidden.
+// - A hidden flag's change is missing from the sync read, as a record the team does not have; the
+//   review queue neither lists, counts nor decides it for that reviewer (403 change_hidden), and
+//   names nobody in its people filter for it.
 // - The audit log (CO-14), whose reader need not see sensitive flags: a flag change's two events
 //   name its tier and action, never its flag, so they hold the same keys for a sensitive flag and
 //   for one that is not, synced and from either route; a refusal over a flag hidden from the
@@ -336,9 +337,18 @@ describe('the review queue (D87)', () => {
       op: 'create',
       value: { patientId: patient, flagId: ids['flag.pregnancy'], action: 'set', reason: SECRET },
     });
+    // A mark of a stored change of the flag, and one of the create held above (its flag is the
+    // held create's).
     const mark = await bo.phone.change({
       entity: FLAG_CHANGE,
       recordId: pregnancy,
+      op: 'set',
+      field: 'enteredInError',
+      value: { reason: ERROR_WHY },
+    });
+    const markOfHeld = await bo.phone.change({
+      entity: FLAG_CHANGE,
+      recordId: create.recordId,
       op: 'set',
       field: 'enteredInError',
       value: { reason: ERROR_WHY },
@@ -348,38 +358,165 @@ describe('the review queue (D87)', () => {
       op: 'create',
       value: { patientId: patient, flagId: ids['flag.frost_risk'], action: 'clear', reason: WHY },
     });
-    expect((await bo.send(create, mark, seen)).map((r) => [r.reason, r.quarantined])).toEqual([
+    expect((await bo.send(create, mark, markOfHeld, seen)).map((r) => [r.reason, r.quarantined])).toEqual([
+      ['permission', true],
       ['permission', true],
       ['permission', true],
       ['permission', true],
     ]);
-    const byChange = (items: Awaited<ReturnType<typeof queueFor>>, c: Change) =>
-      items.find((i) => i.changeId === c.changeId)!;
+    const held = await h.scratch.owner<{ id: string; changeId: string }[]>`
+      select id, change_id as "changeId" from sineobex.quarantine_items where user_id = ${bo.id}`;
+    const itemOf = (c: Change) => held.find((i) => i.changeId === c.changeId)!.id;
+    const hiddenChanges = [create, mark, markOfHeld].map((c) => c.changeId);
+    const hiddenItems = [create, mark, markOfHeld].map(itemOf);
 
+    // Not listed, and not counted: the view logs the items it shows, and only those.
+    const before = await auditMark(h);
     const items = await queueFor(reviewer.token);
-    for (const c of [create, mark]) {
-      expect(byChange(items, c)).toMatchObject({ field: null, value: null, hidden: true });
-      const accepted = await decide(reviewer.token, byChange(items, c).id, 'accept');
-      expect([accepted.status, (accepted.body.error as { code: string }).code]).toEqual([
-        403,
-        'change_hidden',
-      ]);
-    }
-    expect(byChange(items, seen)).toMatchObject({
+    for (const changeId of hiddenChanges) expect(items.map((i) => i.changeId)).not.toContain(changeId);
+    const shown = items.find((i) => i.changeId === seen.changeId)!;
+    expect(shown).toMatchObject({
       field: null,
       value: { patientId: patient, flagId: ids['flag.frost_risk'], action: 'clear', reason: WHY },
     });
-    expect(byChange(items, seen).hidden).toBeUndefined();
-    // A hidden item names its record, as the queue names every item's, and nothing of what it holds.
-    const hidden = JSON.stringify(items.filter((i) => i.changeId !== seen.changeId));
-    for (const text of [SECRET, ERROR_WHY, ids['flag.pregnancy']!]) expect(hidden).not.toContain(text);
+    expect(shown.hidden).toBeUndefined();
+    const [viewed] = await expectAudit(h, 'quarantine.viewed', { after: before, count: 1 });
+    expect(viewed!.details).toMatchObject({ status: 'pending', count: items.length, userId: bo.id });
+    const itemViews = await expectAudit(h, 'quarantine.item_viewed', { after: before });
+    expect(itemViews.map((e) => e.details.itemId)).toEqual(items.map((i) => i.id));
+    for (const itemId of hiddenItems) expect(itemViews.map((e) => e.details.itemId)).not.toContain(itemId);
+    // Nothing of what it holds reaches the page at all.
+    for (const text of [SECRET, ERROR_WHY, ids['flag.pregnancy']!]) {
+      expect(JSON.stringify(items)).not.toContain(text);
+    }
 
-    // A reviewer who may see the flag reads both, and may accept them.
+    // Neither accepted nor rejected: refused as a change they may not read, logged, and left waiting.
+    for (const itemId of hiddenItems) {
+      for (const decision of ['accept', 'reject'] as const) {
+        const since = await auditMark(h);
+        const refused = await decide(reviewer.token, itemId, decision);
+        expect([refused.status, refused.body.error?.code], decision).toEqual([403, 'change_hidden']);
+        expect(JSON.stringify(refused.body)).not.toContain(SECRET);
+        const [denied] = await expectAudit(h, 'access.denied', { after: since, count: 1 });
+        expect(denied).toMatchObject({
+          actorUserId: reviewer.userId,
+          details: { reason: 'change_hidden', itemId },
+        });
+      }
+    }
+    const statuses = await h.scratch.owner<{ id: string; status: string }[]>`
+      select id, status from sineobex.quarantine_items where user_id = ${bo.id}`;
+    for (const itemId of hiddenItems) expect(statuses.find((r) => r.id === itemId)!.status).toBe('pending');
+
+    // A Program Admin, who may see the flag, reads all three, and decides them.
     const forAdmin = await queueFor(t.adminToken);
-    expect(byChange(forAdmin, create)).toMatchObject({ value: { reason: SECRET } });
-    expect(byChange(forAdmin, mark)).toMatchObject({ field: 'enteredInError', value: { reason: ERROR_WHY } });
-    expect((await decide(t.adminToken, byChange(forAdmin, create).id, 'accept')).status).toBe(200);
-    expect((await decide(t.adminToken, byChange(forAdmin, mark).id, 'reject')).status).toBe(200);
+    const forAdminOf = (c: Change) => forAdmin.find((i) => i.changeId === c.changeId)!;
+    expect(forAdminOf(create)).toMatchObject({ value: { reason: SECRET } });
+    expect(forAdminOf(mark)).toMatchObject({ field: 'enteredInError', value: { reason: ERROR_WHY } });
+    expect(forAdminOf(markOfHeld)).toMatchObject({ field: 'enteredInError', value: { reason: ERROR_WHY } });
+    expect((await decide(t.adminToken, forAdminOf(create).id, 'accept')).status).toBe(200);
+    expect((await decide(t.adminToken, forAdminOf(mark).id, 'reject')).status).toBe(200);
+    expect((await decide(t.adminToken, forAdminOf(markOfHeld).id, 'reject')).status).toBe(200);
+    // Decided, they stay out of the reviewer's accepted and rejected lists too.
+    for (const status of ['accepted', 'rejected'] as const) {
+      const r = await call(h, `/v1/team/quarantine?status=${status}&userId=${bo.id}`, {
+        token: reviewer.token,
+        teamId: t.teamId,
+      });
+      expect(r.status).toBe(200);
+      const changeIds = (r.body.items as { changeId: string }[]).map((i) => i.changeId);
+      for (const changeId of hiddenChanges) expect(changeIds, status).not.toContain(changeId);
+    }
+  });
+
+  it('names in its people filter no one whose only held work it leaves out for the reviewer', async () => {
+    const cy = await clinician(h, t, 'cy@example.com', 'Cy (demo)', 'none', 'billing_data');
+    const only = await cy.phone.change({
+      entity: FLAG_CHANGE,
+      op: 'create',
+      value: { patientId: patient, flagId: ids['flag.pregnancy'], action: 'set', reason: SECRET },
+    });
+    expect((await cy.send(only)).map((r) => [r.reason, r.quarantined])).toEqual([['permission', true]]);
+    const queue = async (token: string, query = '') => {
+      const r = await call(h, `/v1/team/quarantine${query}`, { token, teamId: t.teamId });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      return r.body as {
+        items: { id: string; changeId: string }[];
+        nextAfterId: string | null;
+        people: { userId: string; displayName: string }[];
+      };
+    };
+    const named = (q: Awaited<ReturnType<typeof queue>>) => q.people.map((p) => p.userId);
+    // Not for the whole queue, and not filtered to them either, in any status.
+    expect(named(await queue(reviewer.token))).not.toContain(cy.id);
+    const filtered = await queue(reviewer.token, `?userId=${cy.id}`);
+    expect(filtered.items).toEqual([]);
+    expect(filtered.nextAfterId).toBeNull();
+    expect(named(filtered)).not.toContain(cy.id);
+    // Bo has work it lists, so Bo is named.
+    expect(named(await queue(reviewer.token))).toContain(bo.id);
+    // The Program Admin's filter names them, and lists their item.
+    const forAdmin = await queue(t.adminToken, `?userId=${cy.id}`);
+    expect(forAdmin.items.map((i) => i.changeId)).toEqual([only.changeId]);
+    expect(named(forAdmin)).toContain(cy.id);
+    expect(named(await queue(t.adminToken))).toContain(cy.id);
+    expect((await decide(t.adminToken, forAdmin.items[0]!.id, 'reject')).status).toBe(200);
+    for (const status of ['pending', 'rejected']) {
+      expect(named(await queue(reviewer.token, `?status=${status}&userId=${cy.id}`)), status).not.toContain(
+        cy.id,
+      );
+    }
+    expect(named(await queue(t.adminToken, `?status=rejected`))).toContain(cy.id);
+  });
+
+  it('fills each page with what the reviewer may see, its cursor following what it lists', async () => {
+    // Held work written straight to the queue, oldest first: 60 changes of a flag the reviewer may
+    // not see, then 55 of one they may, then 5 more they may not.
+    const dee = await clinician(h, t, 'dee@example.com', 'Dee (demo)', 'none', 'billing_data');
+    await h.scratch.owner`
+      insert into sineobex.quarantine_items
+        (team_id, device_id, user_id, change_id, entity, record_id, op, value, value_hash, details,
+         device_time, reason, received_at)
+      select ${t.teamId}, ${dee.phone.deviceId}, ${dee.id}, gen_random_uuid(), 'patient_flag_change',
+             gen_random_uuid(), 'create',
+             jsonb_build_object('patientId', ${patient}::text, 'action', 'set', 'reason', ${WHY}::text,
+               'flagId', case when i < 60 or i >= 115 then ${ids['flag.pregnancy']!}::text
+                              else ${ids['flag.frost_risk']!}::text end),
+             'Demo: no hash', '{}'::jsonb, now(), 'permission', now() + i * interval '1 millisecond'
+      from generate_series(0, 119) as i`;
+    const pageOf = async (token: string, afterId?: string) => {
+      const query = new URLSearchParams({ userId: dee.id, ...(afterId ? { afterId } : {}) });
+      const r = await call(h, `/v1/team/quarantine?${query}`, { token, teamId: t.teamId });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      return r.body as {
+        items: { id: string; value: { flagId: string } | null }[];
+        nextAfterId: string | null;
+      };
+    };
+    const pages = async (token: string) => {
+      const sizes: number[] = [];
+      const listed: { id: string; value: { flagId: string } | null }[] = [];
+      for (let page = await pageOf(token); ; page = await pageOf(token, page.nextAfterId!)) {
+        sizes.push(page.items.length);
+        listed.push(...page.items);
+        if (!page.nextAfterId) break;
+        expect(page.nextAfterId).toBe(page.items.at(-1)!.id);
+      }
+      return { sizes, listed };
+    };
+    const arrived = await h.scratch.owner<{ id: string; flagId: string }[]>`
+      select id, value ->> 'flagId' as "flagId" from sineobex.quarantine_items
+      where user_id = ${dee.id} order by received_at, id`;
+
+    const forReviewer = await pages(reviewer.token);
+    expect(forReviewer.sizes).toEqual([50, 5]);
+    expect(forReviewer.listed.map((i) => i.id)).toEqual(
+      arrived.filter((r) => r.flagId === ids['flag.frost_risk']).map((r) => r.id),
+    );
+    const forAdmin = await pages(t.adminToken);
+    expect(forAdmin.sizes).toEqual([50, 50, 20]);
+    expect(forAdmin.listed.map((i) => i.id)).toEqual(arrived.map((r) => r.id));
+    await h.scratch.owner`delete from sineobex.quarantine_items where user_id = ${dee.id}`;
   });
 
   it('lists a held mark without its reason, and refuses its accept, to a reviewer who neither made the change nor manages the team’s people', async () => {
