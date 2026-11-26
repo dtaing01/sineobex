@@ -3,9 +3,11 @@ import Link from 'next/link';
 import { changeCredential, changeRole, removeMember } from '@/app/actions/team';
 import { ActionForm, SelectField, SubmitButton, TextField } from '@/components/ActionForm';
 import { CredentialFields } from '@/components/CredentialFields';
+import { STACKED_TABLE } from '@/components/SideBySide';
 import { api, unwrap } from '@/lib/api';
 import { CREDENTIAL_LABELS, formatDateTime } from '@/lib/labels';
 import { currentUser } from '@/lib/me';
+import styles from '../members.module.css';
 
 export const metadata: Metadata = { title: 'Team member' };
 
@@ -60,7 +62,7 @@ export default async function MemberPage({ params }: { params: Promise<{ members
 
       {member.status === 'active' && !adminLocked && (
         <>
-          <section aria-labelledby="role-heading" className="px-panel">
+          <section aria-labelledby="role-heading" className={`px-panel ${styles.access}`}>
             <h2 id="role-heading" className="px-h2">
               Change role
             </h2>
@@ -77,7 +79,7 @@ export default async function MemberPage({ params }: { params: Promise<{ members
             </ActionForm>
           </section>
 
-          <section aria-labelledby="cred-heading" className="px-panel">
+          <section aria-labelledby="cred-heading" className={`px-panel ${styles.access}`}>
             <h2 id="cred-heading" className="px-h2">
               Change credential
             </h2>
@@ -117,7 +119,7 @@ export default async function MemberPage({ params }: { params: Promise<{ members
         <h2 id="history-heading" className="px-h2">
           History
         </h2>
-        <table className="px-table">
+        <table className={STACKED_TABLE}>
           <caption className="sr-only">Changes to this person’s access, newest first</caption>
           <thead>
             <tr>
@@ -130,10 +132,10 @@ export default async function MemberPage({ params }: { params: Promise<{ members
           <tbody>
             {history.map((c) => (
               <tr key={c.id}>
-                <td>{formatDateTime(c.changedAt)}</td>
-                <td>{KIND_LABELS[c.kind] ?? c.kind}</td>
-                <td>{c.changedBy.displayName}</td>
-                <td>{c.reason ?? '—'}</td>
+                <td data-label="When">{formatDateTime(c.changedAt)}</td>
+                <td data-label="Change">{KIND_LABELS[c.kind] ?? c.kind}</td>
+                <td data-label="By">{c.changedBy.displayName}</td>
+                <td data-label="Reason">{c.reason ?? '—'}</td>
               </tr>
             ))}
           </tbody>

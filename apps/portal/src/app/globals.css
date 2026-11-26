@@ -388,12 +388,15 @@ p {
 .px-table tbody th {
   font-weight: 700;
 }
+/* A list item breaks a word longer than its line, as an email address can be with text spacing at
+   320 px, rather than widen the page; a word that fits its line stays whole. */
 .px-list {
   margin: 0;
   padding-left: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  overflow-wrap: anywhere;
 }
 .px-cards {
   list-style: none;

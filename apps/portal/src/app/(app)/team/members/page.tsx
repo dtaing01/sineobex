@@ -3,9 +3,11 @@ import Link from 'next/link';
 import { inviteMember } from '@/app/actions/team';
 import { ActionForm, SelectField, SubmitButton, TextField } from '@/components/ActionForm';
 import { CredentialFields } from '@/components/CredentialFields';
+import { STACKED_TABLE } from '@/components/SideBySide';
 import { api, unwrap } from '@/lib/api';
 import { CREDENTIAL_LABELS, formatDateTime } from '@/lib/labels';
 import { can, currentUser } from '@/lib/me';
+import styles from './members.module.css';
 
 export const metadata: Metadata = { title: 'Team members' };
 
@@ -34,7 +36,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
         <h2 id="active-heading" className="px-h2">
           Active ({active.length})
         </h2>
-        <table className="px-table">
+        <table className={STACKED_TABLE}>
           <caption className="sr-only">Active team members</caption>
           <thead>
             <tr>
@@ -54,9 +56,9 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
                     m.displayName
                   )}
                 </th>
-                <td>{m.role.name}</td>
-                <td>{CREDENTIAL_LABELS[m.credential]}</td>
-                <td>{formatDateTime(m.invitedAt)}</td>
+                <td data-label="Role">{m.role.name}</td>
+                <td data-label="Credential">{CREDENTIAL_LABELS[m.credential]}</td>
+                <td data-label="Invited">{formatDateTime(m.invitedAt)}</td>
               </tr>
             ))}
           </tbody>
@@ -64,7 +66,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
       </section>
 
       {manage && (
-        <section aria-labelledby="invite-heading" className="px-panel">
+        <section aria-labelledby="invite-heading" className={`px-panel ${styles.access}`}>
           <h2 id="invite-heading" className="px-h2">
             Invite someone
           </h2>

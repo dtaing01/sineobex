@@ -1,6 +1,14 @@
 import { createHash, randomUUID, webcrypto } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { customRole, expectAccessible, MFA_CODE, PASSWORD, setRole as moveTo, signIn } from './helpers';
+import {
+  customRole,
+  expectAccessible,
+  expectReflowWithSpacing,
+  MFA_CODE,
+  PASSWORD,
+  setRole as moveTo,
+  signIn,
+} from './helpers';
 
 // Phase 2 admin screens with real data: phones register and sync against the API the portal
 // uses, as the seeded demo staff (made-up people).
@@ -127,6 +135,8 @@ test('a Program Admin sees what each phone holds and wipes a lost one', async ({
   await expect(row).toContainText('7 minutes behind, charting paused');
   await expect(page.getByRole('status')).toContainText('holding unsynced work');
   await expectAccessible(page, '/team/devices');
+  // Six columns, stacked on a narrow screen: nothing scrolls sideways (finding outside phase 5).
+  await expectReflowWithSpacing(page, '/team/devices', { axe: true });
 
   const section = page
     .getByRole('region', { name: /^Wipe Jordan Lee \(demo\)’s phone/ })
@@ -136,12 +146,14 @@ test('a Program Admin sees what each phone holds and wipes a lost one', async ({
   await wipe.getByRole('button', { name: 'Wipe this phone' }).click();
   await expect(wipe.getByRole('alert')).toContainText('Give a reason');
   await expectAccessible(page, '/team/devices (reason missing)', { inPlace: true });
+  await expectReflowWithSpacing(page, '/team/devices (reason missing)', { axe: true });
   await wipe.getByLabel('Reason').fill('Reported stolen on the route');
   await wipe.getByRole('button', { name: 'Wipe this phone' }).click();
   // The section now says so from the page's own state, not just the form's answer.
   await expect(section.getByRole('status')).toContainText('Wipe requested');
   await expect(row).toContainText('Wipe requested');
   await expectAccessible(page, '/team/devices (wipe requested)', { inPlace: true });
+  await expectReflowWithSpacing(page, '/team/devices (wipe requested)', { axe: true });
 
   // The phone's next sync is told to wipe, and nothing more it sends is applied.
   const next = await apiPost(jordan.token, '/v1/sync/push', {
@@ -393,4 +405,5 @@ test('a person with two phones gets a wipe section for each, told apart by name'
   ).toBeGreaterThanOrEqual(2);
   expect(new Set(names).size).toBe(names.length);
   await expectAccessible(page, '/team/devices');
+  await expectReflowWithSpacing(page, '/team/devices, two phones for one person');
 });

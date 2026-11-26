@@ -2,8 +2,10 @@ import type { Schemas } from '@sineobex/contract';
 import type { Metadata } from 'next';
 import { wipeDevice } from '@/app/actions/devices';
 import { ActionForm, SubmitButton, TextField } from '@/components/ActionForm';
+import { STACKED_TABLE } from '@/components/SideBySide';
 import { api, unwrap } from '@/lib/api';
 import { formatDateTime, unsyncedSummary } from '@/lib/labels';
+import styles from './devices.module.css';
 
 export const metadata: Metadata = { title: 'Phones' };
 
@@ -74,7 +76,7 @@ export default async function DevicesPage() {
         {devices.length === 0 ? (
           <p>No phone has synced with this team yet.</p>
         ) : (
-          <table className="px-table">
+          <table className={`${STACKED_TABLE} ${styles.phones}`}>
             <caption className="sr-only">Phones, their sync status and what they still hold</caption>
             <thead>
               <tr>
@@ -98,9 +100,9 @@ export default async function DevicesPage() {
                         {d.platform === 'ios' ? 'iPhone' : 'Android'} · app {d.appVersion}
                       </span>
                     </th>
-                    <td>{STATUS[d.status]}</td>
-                    <td>{d.lastSyncAt ? formatDateTime(d.lastSyncAt) : 'Never'}</td>
-                    <td>
+                    <td data-label="Status">{STATUS[d.status]}</td>
+                    <td data-label="Last sync">{d.lastSyncAt ? formatDateTime(d.lastSyncAt) : 'Never'}</td>
+                    <td data-label="Waiting on the phone">
                       {unsyncedSummary(d.unsyncedCounts)}
                       {d.oldestUnsyncedAt && (
                         <span className={stale ? 'px-warn' : 'sx-help'}>
@@ -110,8 +112,10 @@ export default async function DevicesPage() {
                         </span>
                       )}
                     </td>
-                    <td>{clockText(d)}</td>
-                    <td>{d.openRejections === 0 ? 'Nothing' : `${d.openRejections} rejected`}</td>
+                    <td data-label="Clock">{clockText(d)}</td>
+                    <td data-label="Needs attention">
+                      {d.openRejections === 0 ? 'Nothing' : `${d.openRejections} rejected`}
+                    </td>
                   </tr>
                 );
               })}

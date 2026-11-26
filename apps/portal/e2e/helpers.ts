@@ -196,3 +196,76 @@ export async function expectReflow(page: Page, label: string, width = 320) {
   expect(overflow, `${label} scrolls sideways at ${width} px`).toBeLessThanOrEqual(0);
   if (before) await page.setViewportSize(before);
 }
+
+/** WCAG 1.4.12's text spacing on every element, as a reader's own style sheet sets it, or taken off. */
+export async function textSpacing(page: Page, on: boolean) {
+  await page.evaluate((on) => {
+    const spacing: [string, string][] = [
+      ['line-height', '1.5'],
+      ['letter-spacing', '0.12em'],
+      ['word-spacing', '0.16em'],
+    ];
+    for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+      const set: [string, string][] = el.tagName === 'P' ? [...spacing, ['margin-bottom', '2em']] : spacing;
+      for (const [property, value] of set) {
+        if (on) el.style.setProperty(property, value, 'important');
+        else el.style.removeProperty(property);
+      }
+    }
+  }, on);
+}
+
+/**
+ * The words a table in main draws across two lines although they fit on one of its cell's lines:
+ * only a word longer than that may break. A break after a hyphen or a slash is a line break, not a
+ * split word; a stacked table's heading row, kept for screen readers in a box one pixel wide, is not
+ * drawn.
+ */
+export function tableWordsSplit(): string[] {
+  const out: string[] = [];
+  const range = document.createRange();
+  for (const cell of document.querySelectorAll<HTMLElement>('main table th, main table td')) {
+    if (cell.closest('thead') && cell.closest('thead')!.getBoundingClientRect().width <= 1) continue;
+    const style = getComputedStyle(cell);
+    const line = cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement?.closest('.sr-only')) continue;
+      for (const m of (node.textContent ?? '').matchAll(/[^\s\-\u2010-\u2014/]+/g)) {
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+        if (new Set(rects.map((r) => Math.round(r.top))).size < 2) continue;
+        if (rects.reduce((width, r) => width + r.width, 0) <= line - 1) out.push(m[0]);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * WCAG 1.4.10 under 1.4.12, as the preset pages check it: nothing scrolls sideways at 320 px, nor
+ * with text spacing there and at 640 px (1280 px at 200% zoom), and no table splits a word that fits
+ * its line; with `axe`, then axe in all three themes at 320 px, in place. The spacing is taken off
+ * and the viewport put back after.
+ */
+export async function expectReflowWithSpacing(page: Page, label: string, options: { axe?: boolean } = {}) {
+  const before = page.viewportSize();
+  for (const [width, spaced] of [
+    [320, false],
+    [320, true],
+    [640, true],
+  ] as const) {
+    await textSpacing(page, spaced);
+    await page.setViewportSize({ width, height: before?.height ?? 800 });
+    const at = `${label} at ${width} px${spaced ? ', with text spacing' : ''}`;
+    expect(await page.evaluate(tableWordsSplit), `${at}: table words split that fit their line`).toEqual([]);
+    await expectReflow(page, at, width);
+  }
+  await textSpacing(page, false);
+  if (options.axe) {
+    await page.setViewportSize({ width: 320, height: before?.height ?? 800 });
+    await expectAccessible(page, `${label} at 320 px`, { inPlace: true });
+  }
+  if (before) await page.setViewportSize(before);
+}
