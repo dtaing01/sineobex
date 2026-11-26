@@ -261,6 +261,19 @@ describe('POST /v1/patients/charts', () => {
     expect(link!.details).toMatchObject({ tokenRef: await idLinkTokenRef(TOKEN), source: 'cache' });
   });
 
+  // Review finding S3: the phone's test server holds this case too (fake_parity_test.dart).
+  it('never shows another team’s patient', async () => {
+    const mark = await auditMark(h);
+    const res = await charts(clinician.token, { patientIds: [otherTeamPatient, p3], reason: 'opened' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ChartBundleValue;
+    expect(body.charts.map((c) => c.canonicalId)).toEqual([p3]);
+    expect(body.missing).toEqual([otherTeamPatient]);
+    expect(JSON.stringify([body.charts, body.redirects])).not.toContain(otherTeamPatient);
+    const events = await expectAudit(h, 'patient.viewed', { after: mark, count: 1 });
+    expect(events[0]!.patientId).toBe(p3);
+  });
+
   it('projects every chart in the bundle', async () => {
     const body = (await (
       await charts(billing.token, { patientIds: [p1], reason: 'refresh' })

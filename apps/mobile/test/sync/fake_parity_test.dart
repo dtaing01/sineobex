@@ -169,6 +169,73 @@ void main() {
     expect(chart['canonicalId'], p);
   });
 
+  // Review finding S3: another team's member reads none of the team's patients, through any read.
+  // Each case is named as the API's that holds it: patients-index.test.ts, patients-search.test.ts and
+  // patients-charts.test.ts; the match check's candidates are the team's as matching.test.ts holds them.
+  // The team's patient is seeded, as most phone tests seed theirs: it belongs to the test's own team.
+  group('another team’s member', () {
+    const neighbour = 'e4000000-0000-4000-8000-0000000000e4';
+    const otherTeam = '6b2a1d3f-9c8e-4f7b-8d4c-2e3f4a5b6c7d';
+    late String ours;
+    late String theirs;
+
+    setUp(() async {
+      server.permissions[neighbour] = FakeSyncServer.healthcareStaff;
+      await register(alex, 'dev-alex');
+      ours = server.seedPatient(preferredName: 'Wrenna');
+      theirs = server.seedPatient(preferredName: 'Wrenna', team: otherTeam);
+    });
+
+    Future<Map<String, Object?>> asked(String who, String inTeam, String path, Map<String, Object?> body) async =>
+        (await server.handle(who, inTeam, 'POST', path, body))! as Map<String, Object?>;
+
+    test('the team index: never shows another team’s patient', () async {
+      List<Object?> entries(Map<String, Object?> page) => [
+        for (final e in page['entries']! as List) (e as Map)['patientId'],
+      ];
+      expect(entries(await asked(alex, team, '/v1/patients/index', {'limit': 100})), [ours]);
+      final forThem = await asked(neighbour, otherTeam, '/v1/patients/index', {'limit': 100});
+      expect(
+        [entries(forThem), forThem['redirects']],
+        [
+          [theirs],
+          isEmpty,
+        ],
+      );
+    });
+
+    test('search: never shows another team’s patient', () async {
+      List<Object?> hits(Map<String, Object?> found) => [
+        for (final h in found['hits']! as List) (h as Map)['patientId'],
+      ];
+      final body = {'name': 'Wrenna', 'surface': 'phone'};
+      expect(hits(await asked(alex, team, '/v1/patients/search', body)), [ours]);
+      expect(hits(await asked(neighbour, otherTeam, '/v1/patients/search', body)), [theirs]);
+    });
+
+    test('the charts bundle: never shows another team’s patient', () async {
+      final bundle = await asked(neighbour, otherTeam, '/v1/patients/charts', {
+        'patientIds': [ours, theirs],
+        'reason': 'opened',
+      });
+      expect([for (final c in bundle['charts']! as List) (c as Map)['canonicalId']], [theirs]);
+      expect(bundle['missing'], [ours]);
+      // A chart of the team's own, asked alone by another team's member: 404, as the API answers it.
+      await expectLater(
+        server.handle(neighbour, otherTeam, 'GET', '/v1/patients/$ours', null),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 404)),
+      );
+    });
+
+    test('the match check: never shows another team’s patient', () async {
+      final found = await asked(neighbour, otherTeam, '/v1/patients/match', {
+        'preferredName': 'Wrenna',
+        'surface': 'phone',
+      });
+      expect([for (final c in found['candidates']! as List) (c as Map)['patientId']], [theirs]);
+    });
+  });
+
   test('a card conflict tells every member who manages the team’s people, naming the valid card', () async {
     server.permissions[admin] = {...FakeSyncServer.healthcareStaff, 'team.manage_users'};
     const gone = 'ad000000-0000-4000-8000-0000000000ae';

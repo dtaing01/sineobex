@@ -112,6 +112,11 @@ class FakeSyncServer {
   /// The server's own clock.
   DateTime Function() now;
 
+  /// The test's own team: the first a request named. A patient seeded without a team of its own
+  /// belongs to it ([seedPatient]), as every patient the API holds belongs to one, so another team's
+  /// member reads none of it (review finding S3).
+  String? homeTeam;
+
   final devices = <String, _Device>{};
   final records = <String, FakeRecord>{};
   final receipts = <String, _Receipt>{};
@@ -340,8 +345,16 @@ class FakeSyncServer {
   }
 
   /// A record made online (or seeded): [entity]'s create applied with every permission, as an
-  /// admin's online action would be. Returns its ID; throws when the create is refused.
-  String seed(String entity, Map<String, Object?> value, {String? id, String by = 'seed-user', DateTime? at}) {
+  /// admin's online action would be, in [team] when one is given. Returns its ID; throws when the
+  /// create is refused.
+  String seed(
+    String entity,
+    Map<String, Object?> value, {
+    String? id,
+    String by = 'seed-user',
+    DateTime? at,
+    String? team,
+  }) {
     final recordId = id ?? _uuid();
     final when = (at ?? now()).toUtc().toIso8601String();
     final c = <String, Object?>{
@@ -356,12 +369,13 @@ class FakeSyncServer {
       'correctedTime': when,
       'clockVerified': true,
     };
-    final o = _decide(_Actor(by, 'seed-device', _allPermissions, holdForReview: false), c);
+    final o = _decide(_Actor(by, 'seed-device', _allPermissions, holdForReview: false, teamId: team), c);
     if (o['status'] != 'accepted') throw StateError('seed refused: ${o['reason']} ${o['details']}');
     return recordId;
   }
 
-  /// A patient made online, with the consent every create carries.
+  /// A patient made online, with the consent every create carries, in [team]: by default the test's
+  /// own ([homeTeam]), so another team's member reads none of it.
   String seedPatient({
     String? id,
     String? preferredName = 'Demo Patient',
@@ -371,6 +385,7 @@ class FakeSyncServer {
     String? usualArea,
     String by = 'seed-user',
     DateTime? at,
+    String? team,
   }) => seed(
     entityPatient,
     {
@@ -391,6 +406,7 @@ class FakeSyncServer {
     id: id,
     by: by,
     at: at,
+    team: team,
   );
 
   /// Merges [mergedId] into [intoId] (design 3.4): nothing moves, the merged record points at the
@@ -674,6 +690,7 @@ class FakeSyncServer {
     Map<String, String>? query,
   }) async {
     if (offline) throw const NetworkException('offline');
+    homeTeam ??= teamId.toLowerCase();
     onRequest?.call(path);
     // Round-trip through JSON, as HTTP would, with the API's body limit (app.ts).
     final encoded = rawBody == null ? null : jsonEncode(rawBody);
@@ -701,7 +718,7 @@ class FakeSyncServer {
         ('POST', '/v1/patients/index') => _index(userId, teamId, body!),
         ('POST', '/v1/patients/charts') => _charts(userId, teamId, body!),
         ('POST', '/v1/patients/search') => _search(userId, teamId, body!),
-        ('POST', '/v1/patients/match') => _match(userId, body!),
+        ('POST', '/v1/patients/match') => _match(userId, teamId, body!),
         ('GET', _) when _chartPath.hasMatch(path) => _chart(userId, teamId, _chartPath.firstMatch(path)![1]!),
         ('POST', _) when _noticeRead.hasMatch(path) => _markRead(userId, _noticeRead.firstMatch(path)![1]!),
         ('GET', _) when _historyPath.hasMatch(path) => _historyOf(
@@ -1211,7 +1228,8 @@ class FakeSyncServer {
     record
       ..storedAt = heldAt[c['changeId']] ?? now().toUtc()
       ..madeAt = now().toUtc();
-    // A patient is its team's (patients.team_id), whose chart no other team reads; a seed's is anyone's.
+    // A patient is its team's (patients.team_id), whose chart no other team reads; a seed's, unless it
+    // names one, the test's own ([_inTeam]).
     if (rules.entity == entityPatient) record.teamId = actor.teamId?.toLowerCase();
     for (final MapEntry(:key, :value) in initial.entries) {
       _history(record, key, 1, value, null, 'created', actor, c);
@@ -2842,11 +2860,11 @@ class FakeSyncServer {
   };
 
   /// Live redirects: every merged record and the canonical patient its chart is now ([into] only).
-  List<Map<String, Object?>> _redirects({Set<String>? into}) => [
+  List<Map<String, Object?>> _redirects({Set<String>? into, String? teamId}) => [
     for (final r
         in records.values.where((r) => r.entity == entityPatient && r.status == 'merged').toList()
           ..sort((a, b) => a.id.compareTo(b.id)))
-      if (into == null || into.contains(canonicalOf(r.id)))
+      if ((into == null || into.contains(canonicalOf(r.id))) && (teamId == null || _inTeam(r, teamId)))
         {
           'mergedId': r.id,
           'survivorId': canonicalOf(r.id),
@@ -2931,12 +2949,14 @@ class FakeSyncServer {
     // design 6.1), so a role that gains or loses sight of one downloads the index anew.
     final projection = _flagHidden(perms, (teamId: teamId.toLowerCase(), sensitive: true)) ? 'idx1' : 'idx1+sens';
     final flags = _teamFlags(teamId);
-    final active = records.values.where((r) => r.entity == entityPatient && r.status == 'active').toList()
-      ..sort((a, b) => a.id.compareTo(b.id));
+    // The team's patients only (team-index.ts reads them under the team, row-level security behind).
+    final active =
+        records.values.where((r) => r.entity == entityPatient && r.status == 'active' && _inTeam(r, teamId)).toList()
+          ..sort((a, b) => a.id.compareTo(b.id));
     final all = [
       for (final p in active) _indexEntry(p, _currentFlags(perms, teamId, flags, _ofGroup(entityFlagChange, p.id))),
     ];
-    final content = valueHash({'entries': all, 'redirects': _redirects()});
+    final content = valueHash({'entries': all, 'redirects': _redirects(teamId: teamId)});
     final version = '${_indexVersions.putIfAbsent(content, () => _indexVersions.length + 1)}.$projection';
     // Dated by the server's clock that dates a receipt, to the millisecond as the API answers it
     // (team-index.ts, review finding S1).
@@ -2958,7 +2978,13 @@ class FakeSyncServer {
       'userId': userId,
       'details': {'version': version, 'after': after, 'next': next, 'count': page.length},
     });
-    return {...base, 'status': 'page', 'entries': page, 'next': next, 'redirects': after == null ? _redirects() : []};
+    return {
+      ...base,
+      'status': 'page',
+      'entries': page,
+      'next': next,
+      'redirects': after == null ? _redirects(teamId: teamId) : [],
+    };
   }
 
   /// A record as RecordSnapshot shows it.
@@ -3261,9 +3287,11 @@ class FakeSyncServer {
     _require(userId, 'patients.view');
     final requested = {for (final id in (b['patientIds']! as List<Object?>).cast<String>()) id.toLowerCase()};
     chartRequests.add(requested.length);
+    // Another team's patient is none of this team's (charts.ts canonicalOf reads in the team): listed
+    // missing, as one the team never had.
     final groups = <String>{
       for (final id in requested)
-        if (records[id]?.entity == entityPatient) canonicalOf(id),
+        if (records[id] case final r? when r.entity == entityPatient && _inTeam(r, teamId)) canonicalOf(id),
     };
     final charts = [
       for (final id in groups)
@@ -3296,7 +3324,7 @@ class FakeSyncServer {
     final named = records[patientId];
     // Another team's patient is none of this team's, as row-level security keeps it (charts.ts reads
     // the chart in the team's scope): 404, and nothing is logged.
-    if (named?.entity != entityPatient || (named!.teamId != null && named.teamId != teamId.toLowerCase())) {
+    if (named?.entity != entityPatient || !_inTeam(named!, teamId)) {
       throw const ApiException(404, 'not_found', 'No such patient.');
     }
     final canonical = canonicalOf(patientId);
@@ -3353,8 +3381,18 @@ class FakeSyncServer {
     );
   }
 
-  Iterable<String> get _activePatients =>
-      records.values.where((r) => r.entity == entityPatient && r.status == 'active').map((r) => r.id);
+  /// [teamId]'s patients on the chart (candidates.ts: every query is led by the team).
+  Iterable<String> _activePatients(String teamId) => records.values
+      .where((r) => r.entity == entityPatient && r.status == 'active' && _inTeam(r, teamId))
+      .map((r) => r.id);
+
+  /// Whether [r] is [teamId]'s, as row-level security keeps it: a patient's and a flag change's own
+  /// team; a patient seeded without one, the test's own ([homeTeam]); anything else, which keeps no
+  /// team here, any team's.
+  bool _inTeam(FakeRecord r, String teamId) {
+    final team = r.teamId ?? (r.entity == entityPatient ? homeTeam : null);
+    return team == null || team == teamId.toLowerCase();
+  }
 
   /// Who someone is in a result list (projection.ts loadSummaries and projectSummary): on the phone,
   /// never a legal name (D40).
@@ -3436,7 +3474,7 @@ class FakeSyncServer {
     final surface = b['surface'] as String? ?? 'phone';
     final all = NameSource.values.toSet();
     final limit = ((b['limit'] as num?) ?? searchLimit).toInt();
-    final candidates = [for (final id in _activePatients) _candidate(id, all)];
+    final candidates = [for (final id in _activePatients(teamId)) _candidate(id, all)];
     var (:hits, :truncated) = query.isEmpty
         ? (hits: const <RankedGroup>[], truncated: false)
         : rankSearch(query, candidates, limit: flagIds == null ? limit : candidates.length);
@@ -3466,7 +3504,7 @@ class FakeSyncServer {
   }
 
   /// POST /v1/patients/match (match.ts): the intake's check before saving.
-  Map<String, Object?> _match(String userId, Map<String, Object?> b) {
+  Map<String, Object?> _match(String userId, String teamId, Map<String, Object?> b) {
     // The candidates are names and births: a role refused search is refused them here too (S5).
     _require(userId, 'patients.view');
     _require(userId, 'patients.edit');
@@ -3489,7 +3527,8 @@ class FakeSyncServer {
     }
     final surface = b['surface'] as String? ?? 'phone';
     final found = rankMatches(subject, [
-      for (final id in _activePatients) _candidate(id, {NameSource.legal, NameSource.preferred, NameSource.alias}),
+      for (final id in _activePatients(teamId))
+        _candidate(id, {NameSource.legal, NameSource.preferred, NameSource.alias}),
     ], exclude: exclude);
     final checkId = _uuid();
     final candidates = [for (final f in found) _hit(f, surface)];
@@ -3952,9 +3991,9 @@ class FakeSyncServer {
       // Looked up as the database compares a UUID, whatever case it was asked in; missing as asked.
       final r = records[(ref['id'] as String?)?.toLowerCase()];
       // A record of another team is none of this one's, as row-level security keeps it (review
-      // finding MR-4). Only a flag change and a patient made by a push keep their team here; a seed's
-      // records name none.
-      final ours = r != null && (r.teamId == null || r.teamId == teamId.toLowerCase());
+      // finding MR-4). Only a flag change and a patient keep their team here, a seeded patient the
+      // test's own unless it names one ([_inTeam]); a seed's other records name none.
+      final ours = r != null && _inTeam(r, teamId);
       final shown = !ours || r.entity != ref['entity'] ? null : _asRead(userId, teamId, perms, r);
       if (shown == null) {
         missing.add(ref);

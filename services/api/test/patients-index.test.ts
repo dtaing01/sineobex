@@ -253,6 +253,19 @@ describe('an index page', () => {
     }
   });
 
+  // Review finding S3: the phone's test server holds this case too (fake_parity_test.dart).
+  it('never shows another team’s patient', async () => {
+    const other = await createTeam(h, 'Other Team (demo)');
+    const neighbour = await memberWith(h, other, ROLES['Healthcare Staff']!);
+    const theirs = (await createPatient(h, other, neighbour.userId, { preferredName: 'Del' })).id;
+    const ours = (await page(staff.token)).entries.map((e) => e.patientId);
+    expect(ours).toEqual(expect.arrayContaining([p1]));
+    expect(ours).not.toContain(theirs);
+    const forThem = await page(neighbour.token, {}, other);
+    expect(forThem.entries.map((e) => e.patientId)).toEqual([theirs]);
+    expect(forThem.redirects).toEqual([]);
+  });
+
   it('answers unchanged for the version the phone holds, and logs nothing', async () => {
     const { version } = await page(staff.token);
     const mark = await auditMark(h);
