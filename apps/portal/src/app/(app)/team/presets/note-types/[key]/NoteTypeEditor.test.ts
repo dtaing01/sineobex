@@ -193,23 +193,23 @@ describe('what a published version hid (item 10, design 5.4’s Show again)', ()
       copyTakenWords(sections, sectionId, before, { id: sectionId, title, made });
     // A field, an answer and the section's own id, each held now.
     expect(words('t_5', 'Demo: Shoes', ['t_5', 't_2'])).toBe(
-      'A part of this section would be confused with the field “Demo: Kit given” this note type has, so it can’t be copied in. Add the fields you need instead.',
+      'A part of this section would be confused with the field “Demo: Kit given” this note type has, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     expect(words('t_5', 'Demo: Shoes', ['t_5', 't_6', 't_3'])).toBe(
-      'A part of this section would be confused with the answer “Demo: Blanket” this note type has, so it can’t be copied in. Add the fields you need instead.',
+      'A part of this section would be confused with the answer “Demo: Blanket” this note type has, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     expect(words('t_1', 'Demo: Shoes', ['t_1', 't_6'])).toBe(
-      'This section would be confused with the section “Demo: Kit check” this note type has, so it can’t be copied in. Add the fields you need instead.',
+      'This section would be confused with the section “Demo: Kit check” this note type has, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     // Held before: a field, an answer, and a section under another title.
     expect(words('t_5', 'Demo: Shoes', ['t_5', 't_7'])).toBe(
-      'A part of this section would be confused with the field “Demo: Old shoes” this note type had before, so it can’t be copied in. Add the fields you need instead.',
+      'A part of this section would be confused with the field “Demo: Old shoes” this note type had before, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     expect(words('t_5', 'Demo: Shoes', ['t_5', 't_8'])).toBe(
-      'A part of this section would be confused with the answer “Demo: Wool socks” this note type had before, so it can’t be copied in. Add the fields you need instead.',
+      'A part of this section would be confused with the answer “Demo: Wool socks” this note type had before, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     expect(words('t_9', 'Demo: Shoes', ['t_9'])).toBe(
-      'This section would be confused with the section “Demo: Feet” this note type had before, so it can’t be copied in. Add the fields you need instead.',
+      'This section would be confused with the section “Demo: Feet” this note type had before, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     // A part held now is named before one held before.
     expect(words('t_5', 'Demo: Shoes', ['t_5', 't_7', 't_2'])).toContain(
@@ -319,7 +319,7 @@ describe('what the editor makes of a Publish’s answer', () => {
     expect(copyTakenWords(sections, 'water')).toBe(ID_TAKEN.before);
     expect(ID_TAKEN.now).toBe('This note type already has this section, so it can’t be copied in again.');
     expect(ID_TAKEN.before).toBe(
-      'This note type has, or had before, a part this section would be confused with, so it can’t be copied in. Add the fields you need instead.',
+      'This note type has, or had before, a part this section would be confused with, so it can’t be copied in. Undo this copy, then add a section of your own with the fields you need.',
     );
     for (const words of Object.values(ID_TAKEN)) expect(words).not.toMatch(/Show the old one again/);
   });
