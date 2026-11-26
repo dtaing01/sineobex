@@ -26,7 +26,8 @@ const teamSetupLocation = '/team-setup';
 const teamSetupTitle = 'Team setup';
 
 /// Where the phone holds no copy of the team's presets (phase 5 design 6.1): a team first opened
-/// offline. Team setup, the flags sheet and intake's risk level each say it.
+/// offline. Team setup and the flags sheet say it. Intake's risk level says words of its own, since
+/// the patient can still be created there (`_riskLevelBlocked`, review finding W5).
 // PLAN-OPEN (PL-25): what does a team first opened offline after a sign-out offer of its presets?
 // Nothing until it is opened online, as with its team index: each place that needs them says so.
 const setupNotDownloaded = 'Your team’s setup hasn’t downloaded yet. Connect to finish.';
