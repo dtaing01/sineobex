@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   apiCall,
@@ -9,6 +10,7 @@ import {
   portalNav,
   signIn,
   staffToken,
+  TEAM,
   watchCsp,
   watchTraffic,
 } from './helpers';
@@ -99,6 +101,63 @@ async function publishedMeanwhile(key: string, ops: unknown[]): Promise<number> 
   });
   expect(res.status).toBe(200);
   return ((await res.json()) as { version: number }).version;
+}
+
+/** The e2e database as the API's own role (playwright.config.ts), for the one write no route makes. */
+const API_DATABASE_URL =
+  process.env.E2E_API_DATABASE_URL ??
+  'postgres://sineobex_api_e2e:e2e-local-only@localhost:5432/sineobex_e2e';
+
+/**
+ * Sineobex's version of a platform note type on offer to a copy of it the team made (design 5.2's
+ * offer; P4's B-1, which had no end-to-end case): the platform ships version 1 of every note type, so
+ * no team is ever offered one in this database. The copy is marked as the platform note type's own
+ * (its origin key, 0025), taken from no platform version and with version 1 seen, so that version is
+ * on offer above it, and the list answers it, as taking it would write it, for review; the platform's
+ * own copy gives the origin up, as a take as new leaves it, since a team names a platform note type
+ * once. Written as the API's role in the team's scope, under the team lock, at a revision taken as
+ * takeRevision takes one, as 0023 asks of every head written; with no event, as an offer writes none.
+ * A take gives the copy the platform's version, so nothing is left on offer.
+ */
+function offerPlatformNoteType(key: string, origin: string) {
+  const sql = `
+    begin;
+    select set_config('app.team_id', :'team', true);
+    select pg_advisory_xact_lock(hashtextextended('sineobex.audit:' || :'team'::uuid::text, 0));
+    with taken as (
+      update sineobex.team_preset_state set revision = revision + 1 where team_id = :'team'::uuid
+      returning team_id, revision)
+    select set_config('app.revision_' || replace(team_id::text, '-', ''), revision::text, true) from taken;
+    update sineobex.note_types
+    set origin_key = null,
+        revision = current_setting('app.revision_' || replace(:'team', '-', ''))::bigint
+    where team_id = :'team'::uuid and key = :'origin';
+    update sineobex.note_types
+    set origin_key = :'origin', platform_latest = 1,
+        revision = current_setting('app.revision_' || replace(:'team', '-', ''))::bigint
+    where team_id = :'team'::uuid and key = :'key'
+    returning 'offered ' || key;
+    commit;`;
+  const out = execFileSync(
+    'psql',
+    [
+      API_DATABASE_URL,
+      '-X',
+      '-q',
+      '-A',
+      '-t',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-v',
+      `team=${TEAM}`,
+      '-v',
+      `key=${key}`,
+      '-v',
+      `origin=${origin}`,
+    ],
+    { input: sql, encoding: 'utf8' },
+  );
+  expect(out, 'the copy is offered its platform version').toContain(`offered ${key}`);
 }
 
 /** The access.denied events the audit log holds for a seeded staff member, newest first. */
@@ -515,7 +574,9 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await page.keyboard.press('Enter');
     const box = section.getByLabel('New words for the field “Notes”');
     await expect(box).toBeFocused();
-    await box.fill('Demo: What happened');
+    // Typed with spaces around the words: held, and sent, as the words alone, since the API refuses
+    // a label with spaces around it, as it refuses a title (item 14).
+    await box.fill('  Demo: What happened ');
     await page.keyboard.press('Enter');
     await expect(rename).toBeFocused();
     await expect(editor.said).toHaveText(
@@ -565,7 +626,8 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
     await expect(editor.held.getByRole('list')).toHaveCSS('list-style-type', 'decimal');
     for (const item of await editor.heldItems.all()) await expect(item).toHaveCSS('display', 'list-item');
     // Undo of an added answer: focus goes on to the next added one's Undo, else to the box (B-5).
-    await section.getByLabel('A new answer for “Support provided”').fill('Demo: Gloves');
+    // Its words typed with a space after them are held as the words alone.
+    await section.getByLabel('A new answer for “Support provided”').fill('Demo: Gloves ');
     await page.keyboard.press('Enter');
     const undoAdded = (words: string) =>
       section.getByRole('button', {
@@ -757,6 +819,148 @@ test.describe('a note type’s editor, /team/presets/note-types/[key]', () => {
 
     await expectNothingStored(page, 'The editor after its refusals');
     expectOnlyKeys(traffic.addresses);
+  });
+
+  test('a part a published version hid is offered Show again in the words it last had, and comes back as it was; a copy of a hidden section is refused naming it', async ({
+    page,
+  }) => {
+    test.slow();
+    // Another admin rewords Notes, then hides it; and hides Eyes in a copy of the clinic note type.
+    const key = await added({ title: 'Demo: Shown again round', copyOf: 'outreach' });
+    await publishedMeanwhile(key, [
+      { op: 'rename_label', path: 'outreach.notes', label: 'Demo: What happened' },
+    ]);
+    await publishedMeanwhile(key, [{ op: 'set_hidden', path: 'outreach.notes', hidden: true }]);
+    const clinic = await added({ title: 'Demo: Eye clinic', copyOf: 'general_primary_care' });
+    await publishedMeanwhile(clinic, [{ op: 'set_hidden', path: 'eyes', hidden: true }]);
+    await signIn(page, 'admin@example.com');
+    const csp = watchCsp(page);
+    const traffic = watchTraffic(page);
+
+    await page.goto(`${LIST}/${key}`);
+    let editor = editorOf(page);
+    const hidden = page.getByRole('region', { name: 'Hidden in a published version', exact: true });
+    await expect(hidden).toContainText('The field “Demo: What happened” in “Outreach / community encounter”');
+    await expectAccessible(page, 'The editor, a part a published version hid');
+    await expectReflow(page, 'The editor, a part a published version hid');
+    await hidden
+      .getByRole('button', { name: 'Show again the field “Demo: What happened”', exact: true })
+      .click();
+    // The button keeps focus, saying what a press does now; the change is held until Publish.
+    await expect(
+      hidden.getByRole('button', { name: 'Keep it hidden the field “Demo: What happened”', exact: true }),
+    ).toBeFocused();
+    await expect(editor.said).toHaveText(
+      'Held: Show again the field “Demo: What happened”. 1 change to publish.',
+    );
+    await expect(hidden).toContainText('Shown again when you publish.');
+    await editor.reason.fill('Demo: notes are back');
+    await editor.publish.click();
+    await expect(page).toHaveURL(new RegExp(`${LIST}/${key}\\?published=4$`));
+    const shown = await noteType(key);
+    expect(shown.version).toBe(4);
+    expect(shown.definition.sections[0]!.fields.find((f) => f.id === 'notes')).toMatchObject({
+      label: 'Demo: What happened',
+    });
+    await expect(page.getByRole('region', { name: 'Hidden in a published version' })).toHaveCount(0);
+
+    // Copying the hidden Eyes back from the platform's clinic note type is refused, naming it.
+    await page.goto(`${LIST}/${clinic}`);
+    editor = editorOf(page);
+    const copy = page.getByRole('region', { name: 'Copy a section', exact: true });
+    await copy.getByRole('button', { name: 'Copy a section from another note type', exact: true }).click();
+    await copy.getByLabel('From the note type').selectOption({ label: 'General / primary care' });
+    await copy.getByLabel('The section').selectOption({ label: 'Eyes' });
+    await copy.getByRole('button', { name: 'Hold this copy', exact: true }).click();
+    await editor.reason.fill('Demo: eyes again');
+    await editor.publish.click();
+    await expect(editor.alert).toBeFocused();
+    await expect(editor.alert).toContainText(
+      'This note type held this section before, as “Eyes”, so it can’t be copied in again. Show it again instead, under Hidden in a published version.',
+    );
+    await expect(
+      page.getByRole('region', { name: 'Hidden in a published version', exact: true }),
+    ).toContainText('The section “Eyes”');
+    await expectAccessible(page, 'Publish, a copy of a hidden section refused', { inPlace: true });
+    expect((await noteType(clinic)).version).toBe(2);
+
+    await expectNothingStored(page, 'The editor after Show again');
+    expectOnlyKeys(traffic.addresses);
+    expect(csp).toEqual([]);
+  });
+
+  test('Sineobex’s update to a note type is drawn on its own page at heading level 2 and in the list at 3, reviewed and taken in place (B-1)', async ({
+    page,
+  }) => {
+    test.slow();
+    // Sexual and reproductive health is charted on nowhere else in these runs: removed, so its title
+    // is free for the update to take, and its update put on offer to a copy the team made of it.
+    const platform = await noteType('sexual_reproductive');
+    const removed = await apiCall(await admin(), 'POST', '/v1/admin/note-types/sexual_reproductive/archive', {
+      baseVersion: platform.version,
+      reason: 'Demo: replaced by our own',
+    });
+    expect(removed.status).toBe(200);
+    const key = await added({ title: 'Demo: Our reproductive health', copyOf: 'sexual_reproductive' });
+    offerPlatformNoteType(key, 'sexual_reproductive');
+    const offered = await noteType(key);
+    try {
+      expect(offered).toMatchObject({ version: 1, customized: true });
+      await signIn(page, 'admin@example.com');
+      const csp = watchCsp(page);
+      const traffic = watchTraffic(page);
+
+      // On its own page: the offer follows the h1 at level 2, so the outline never skips one.
+      await page.goto(`${LIST}/${key}`);
+      const offer = page.getByRole('region', { name: 'Update available for Demo: Our reproductive health' });
+      await expect(offer.getByRole('heading', { level: 2 })).toHaveText(/^Update available/);
+      await expect(offer).toContainText('Sineobex updated this preset. Your edited copy hasn’t changed.');
+      await offer.locator('summary').click();
+      await expect(offer.getByRole('table')).toBeVisible();
+      await expectAccessible(page, 'A note type’s page, an update on offer', { inPlace: true });
+      await expectReflow(page, 'A note type’s page, an update on offer');
+
+      // In the list: under the note type's h2, at level 3.
+      await page.goto(LIST);
+      const row = page.getByRole('region', { name: 'Demo: Our reproductive health', exact: true });
+      await expect(
+        row.getByRole('heading', { level: 3, name: 'Update available for Demo: Our reproductive health' }),
+      ).toBeVisible();
+      await expectAccessible(page, 'Note types, an update on offer');
+      await expectReflow(page, 'Note types, an update on offer');
+
+      // Taken in place from its own page: the platform's version again, and nothing left on offer.
+      await page.goto(`${LIST}/${key}`);
+      await offer.getByLabel('Reason').fill('Demo: Sineobex’s wording');
+      await offer
+        .getByRole('button', {
+          name: 'Replace with the new version of Demo: Our reproductive health',
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole('heading', { name: 'Update taken: Sexual and reproductive health', exact: true }),
+      ).toBeFocused();
+      expect(await noteType(key)).toMatchObject({
+        version: 2,
+        title: 'Sexual and reproductive health',
+        customized: false,
+      });
+      await expect(page.getByText('Update available', { exact: true })).toHaveCount(0);
+      await expectNothingStored(page, 'An update taken');
+      expectOnlyKeys(traffic.addresses);
+      expect(csp).toEqual([]);
+    } finally {
+      // Whatever a run that stopped short left on offer is taken, so later cases see none.
+      const now = await noteType(key);
+      if ((now as { update?: unknown }).update)
+        await apiCall(await admin(), 'POST', `/v1/admin/note-types/${key}/take-update`, {
+          baseVersion: now.version,
+          platformVersion: 1,
+          asNew: false,
+          reason: 'Demo: left on offer by a test',
+        });
+    }
   });
 
   test('a stale sign-in at Publish is confirmed in a tab of its own, and the held changes stay to be published', async ({
@@ -1239,26 +1443,27 @@ test.describe('field supplies, /team/presets/field-supplies', () => {
     expect(await mapping(id)).toMatchObject({ version: 3, body: { when: { includes: 'hygiene' } } });
 
     // Another admin retires the answer and hides the other mapping's field: the page says each
-    // mapping suggests nothing now, and names the hidden field as stored.
+    // mapping suggests nothing now, and what to do, and names the field and the answer in the words
+    // the version that last had them used (item 10), not as stored.
     await publishedMeanwhile(key, [
       { op: 'retire_option', path: 'outreach.support', code: 'hygiene' },
       { op: 'set_hidden', path: 'outreach.notes', hidden: true },
     ]);
     await page.reload();
     await expect(food).toContainText(
-      'This answer was retired from the note type’s current version, so this mapping suggests nothing.',
+      'This answer was retired from the note type’s current version, so this mapping suggests nothing. Choose another answer under Edit, or remove it.',
     );
-    await expect(fact(food, 'Answer')).toHaveText('hygiene');
+    await expect(fact(food, 'Answer')).toHaveText('Hygiene');
     const notes = section('Demo: Notes on the supply round');
     await expect(notes).toContainText(
-      'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
+      'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
     );
-    await expect(fact(notes, 'Field')).toHaveText('outreach.notes');
+    await expect(fact(notes, 'Field')).toHaveText('Outreach / community encounter: Notes');
 
     // A clinic note's vaccine whose answer is retired: its grid keeps its cell, so the mapping on that
-    // row is named in the version's words, the row by its code, the answer by the cell's (B-13). And
-    // a grid hidden whole: a mapping on one of its cells shows its long stored path, which breaks
-    // rather than push the page sideways at 320 px (B-6).
+    // row is named in the version's words, the row in the retired answer's, the answer by the cell's
+    // (B-13). And a grid hidden whole: a mapping on one of its cells is named in the words of the
+    // version that had the grid, which wrap rather than push the page sideways at 320 px (B-6).
     const clinic = await added({ title: 'Demo: Long clinic', copyOf: 'general_primary_care' });
     await mapped({
       name: 'Demo: Food for a vaccine given',
@@ -1281,17 +1486,19 @@ test.describe('field supplies, /team/presets/field-supplies', () => {
     await page.reload();
     const vaccine = section('Demo: Food for a vaccine given');
     await expect(vaccine).toContainText(
-      'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing.',
+      'The row this mapping is on was retired from the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
     );
     await expect(fact(vaccine, 'Field')).toHaveText(
-      'Preventative care: Status for each vaccine: pneumococcal',
+      'Preventative care: Status for each vaccine: Pneumococcal',
     );
     await expect(fact(vaccine, 'Answer')).toHaveText('Given today');
     const node = section('Demo: Socks for an enlarged node');
     await expect(node).toContainText(
-      'This field is hidden in the note type’s current version, so this mapping suggests nothing.',
+      'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved.',
     );
-    await expect(fact(node, 'Field')).toHaveText('lymphatic.node_findings.supraclavicular.findings');
+    await expect(fact(node, 'Field')).toHaveText(
+      'Lymphatic: Findings for each node group: Supraclavicular: Findings',
+    );
     await expectAccessible(page, 'Field supplies, a field hidden and an answer retired');
     await expectReflow(page, 'Field supplies, a field hidden and an answer retired');
 
