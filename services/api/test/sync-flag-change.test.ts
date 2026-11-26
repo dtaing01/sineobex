@@ -183,11 +183,25 @@ describe('phase 5 sync: flag changes', () => {
       ...more,
     });
 
+  /**
+   * What a create's answer says of when the server stored it (6.1): when it was received, and once on
+   * the chart the time it is ordered by. A mark's says nothing of it.
+   */
+  const timesOf = (c: Change, held: boolean) =>
+    c.entity === FLAG_CHANGE && c.op === 'create'
+      ? {
+          details: held
+            ? { receivedAt: expect.any(String) }
+            : { receivedAt: expect.any(String), effectiveAt: expect.any(String) },
+        }
+      : {};
+
   const taken = (c: Change, serverVersion = 1) => ({
     changeId: c.changeId,
     status: 'accepted',
     serverVersion,
     hash: c.valueHash,
+    ...timesOf(c, false),
   });
 
   const refusedAs = (c: Change, reason: string, details: Record<string, unknown>) => ({
@@ -206,6 +220,7 @@ describe('phase 5 sync: flag changes', () => {
     message: expect.any(String),
     quarantined: true,
     hash: c.valueHash,
+    ...timesOf(c, true),
   });
 
   const row = async (id: string) =>
@@ -460,6 +475,72 @@ describe('phase 5 sync: flag changes', () => {
       action: 'set',
       tier: 'primary',
     });
+  });
+
+  // Review finding S1: a phone weighs its own change against the team index's time by when the server
+  // received it. A lost answer's retry must be answered that time, as stored, never the retry's.
+  it('answers a create with the times it stored, taken or held, and a retry with the same times', async () => {
+    // A patient of its own, so no other case reads these changes.
+    const patient = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Pine' })).id;
+    const made = await flagChange(kim, patient, presetId('flag.dehydration_risk'), {
+      deviceTime: fromNow(-3),
+    });
+    const [first] = await kim.send(made);
+    const stored = (await row(made.recordId))!;
+    expect(first).toEqual({
+      ...taken(made),
+      details: { receivedAt: stored.receivedAt.toISOString(), effectiveAt: stored.effectiveAt.toISOString() },
+    });
+    expect(stored.effectiveAt).toEqual(new Date(made.deviceTime));
+    // Later, its first answer lost: the stored receipt, with the stored times.
+    await new Promise((r) => setTimeout(r, 25));
+    expect(await kim.send(made)).toEqual([first]);
+
+    // Held: when the hold received it, the same to a retry.
+    const held = await flagChange(bo, patient, presetId('flag.dehydration_risk'), { action: 'clear' });
+    const [heldAnswer] = await bo.send(held);
+    const item = (await itemOf(held))!;
+    expect(heldAnswer).toEqual({ ...heldFor(held), details: { receivedAt: item.receivedAt.toISOString() } });
+    await new Promise((r) => setTimeout(r, 25));
+    expect(await bo.send(held)).toEqual([heldAnswer]);
+    // Accepted from review, the change is received when it was held, and a retry is answered so.
+    expect((await decide(item.id, 'accept')).status).toBe(200);
+    const accepted = (await row(held.recordId))!;
+    expect(accepted.receivedAt).toEqual(item.receivedAt);
+    expect(await bo.send(held)).toEqual([
+      {
+        ...taken(held),
+        details: {
+          receivedAt: item.receivedAt.toISOString(),
+          effectiveAt: accepted.effectiveAt.toISOString(),
+        },
+      },
+    ]);
+  });
+
+  it('dates a receipt and the team index on one clock, the database’s, whatever the API’s says', async () => {
+    const patient = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Spruce' })).id;
+    // The API's clock (deps.now) stands weeks from the database's in this harness.
+    expect(Math.abs(h.clock.now.getTime() - Date.now())).toBeGreaterThan(60 * 60_000);
+    const indexAt = async () => {
+      const r = await call(h, '/v1/patients/index', {
+        method: 'POST',
+        token: kim.token,
+        teamId: t.teamId,
+        json: {},
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      return new Date(r.body.generatedAt as string);
+    };
+    const receivedAt = async (c: Change) => {
+      const [answer] = await kim.send(c);
+      return new Date((answer!.details as { receivedAt: string }).receivedAt);
+    };
+    const before = await receivedAt(await flagChange(kim, patient, presetId('flag.high')));
+    const generated = await indexAt();
+    const after = await receivedAt(await flagChange(kim, patient, presetId('flag.low')));
+    expect(before.getTime()).toBeLessThan(generated.getTime());
+    expect(generated.getTime()).toBeLessThan(after.getTime());
   });
 
   it('an archived flag, or one archived since, is taken and kept: it stays on the patient', async () => {

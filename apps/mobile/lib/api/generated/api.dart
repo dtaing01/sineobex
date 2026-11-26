@@ -7386,7 +7386,7 @@ class SyncResult {
   });
 
   final String changeId;
-  /// What the server did beyond storing the value. A sign-off’s (lifecycle 4.6): effect, status, attestation, hashMatches, and for effect none its reason: already_finished, not_author or empty (an empty draft, which does not count)
+  /// What the server did beyond storing the value. A sign-off’s (lifecycle 4.6): effect, status, attestation, hashMatches, and for effect none its reason: already_finished, not_author or empty (an empty draft, which does not count). A patient flag change’s create (phase 5 design 6.1): receivedAt, when the server received it (a held one’s hold time), and once on the chart effectiveAt, the time it is ordered by, both as stored, so a retry answers the same times
   final Map<String, Object?>? details;
   /// The server’s hash of what it stored; purge only on a match
   final String? hash;

@@ -38,10 +38,15 @@ export async function teamIndexPage(scope: TeamScope, input: TeamIndexInput): Pr
     ? INDEX_PROJECTION
     : `${INDEX_PROJECTION}+sens`;
   return scope.tx(async (tx, audit) => {
-    const [counter] = await tx<{ version: string }[]>`
-      select version::text from sineobex.team_index_versions where team_id = sineobex.current_team_id()`;
+    // When it was worked out is the database's clock, the transaction's now(), read with the version:
+    // the clock a flag change's receipt is dated on (insertFlagChange), so a phone that weighs its own
+    // change against the index's time compares two times of one clock (6.1).
+    const [counter] = await tx<{ version: string | null; generatedAt: Date }[]>`
+      select (select version::text from sineobex.team_index_versions where team_id = sineobex.current_team_id())
+               as version,
+             now() as generated_at`;
     const version = `${counter?.version ?? '0'}.${projection}`;
-    const generatedAt = scope.deps.now().toISOString();
+    const generatedAt = counter!.generatedAt.toISOString();
     const base = { version, projection, generatedAt };
     if (input.after === undefined && input.have === version)
       return { ...base, status: 'unchanged', entries: [], next: null, redirects: [] };

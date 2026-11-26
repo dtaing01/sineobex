@@ -230,6 +230,29 @@ describe('an index page', () => {
     ).toEqual(active.map((a) => [a.id, a.attributes.alias]).sort());
   });
 
+  // Review finding S1: the index's time is weighed on the phone against a flag change's receipt,
+  // which the database dates, so the index is dated by the same clock, never the API's.
+  it('is dated by the database’s clock when it was worked out, a page or unchanged, whatever the API’s clock says', async () => {
+    const was = h.clock.now;
+    h.clock.set(new Date(Date.now() - 3 * 24 * 60 * 60_000));
+    try {
+      const dbNow = async () =>
+        (await h.scratch.owner<{ now: Date }[]>`select now() as now`)[0]!.now.getTime();
+      const before = await dbNow();
+      const first = await page(staff.token);
+      const unchanged = await page(staff.token, { have: first.version });
+      const after = await dbNow();
+      expect(unchanged.status).toBe('unchanged');
+      for (const answer of [first, unchanged]) {
+        const at = new Date(answer.generatedAt).getTime();
+        expect(at).toBeGreaterThanOrEqual(before);
+        expect(at).toBeLessThanOrEqual(after);
+      }
+    } finally {
+      h.clock.set(was);
+    }
+  });
+
   it('answers unchanged for the version the phone holds, and logs nothing', async () => {
     const { version } = await page(staff.token);
     const mark = await auditMark(h);

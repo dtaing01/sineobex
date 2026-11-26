@@ -948,14 +948,20 @@ class FakeSyncServer {
     };
   }
 
-  /// apply.ts hold: what it waits on goes to the audit event, not to the phone, whose answer carries
-  /// no details (review finding P8).
+  /// apply.ts hold: what it waits on goes to the audit event, not to the phone (review finding P8);
+  /// a flag change's create is answered when the hold received it (heldDetails, review finding S1).
   Map<String, Object?> _hold(_Actor actor, Map<String, Object?> c, String reason, {String? waitsOn}) {
-    quarantine[c['changeId']! as String] = c;
-    held[c['changeId']! as String] = (userId: actor.userId, deviceId: actor.deviceId, reason: reason, waitsOn: waitsOn);
-    heldInTeam[c['changeId']! as String] = actor.teamId;
-    heldAt[c['changeId']! as String] ??= now().toUtc();
-    return {'status': 'rejected', 'reason': reason, 'quarantined': true};
+    final id = c['changeId']! as String;
+    quarantine[id] = c;
+    held[id] = (userId: actor.userId, deviceId: actor.deviceId, reason: reason, waitsOn: waitsOn);
+    heldInTeam[id] = actor.teamId;
+    final at = heldAt[id] ??= now().toUtc();
+    return {
+      'status': 'rejected',
+      'reason': reason,
+      'quarantined': true,
+      if (c['entity'] == entityFlagChange && c['op'] == 'create') 'details': {'receivedAt': _isoMs(at)},
+    };
   }
 
   /// The person's own create, held for review, of a record [c] needs: the record it changes, or a
@@ -1238,7 +1244,8 @@ class FakeSyncServer {
           });
       // Its time is the change's, never later than the server's receipt, a held change's hold time
       // (4.5, D90), so a phone whose clock runs ahead never wins every change. Its one field is the
-      // mark, so it writes no history of its own.
+      // mark, so it writes no history of its own. The answer carries both times as stored, kept in
+      // the receipt for a retry (patient-flag-change.ts flagChangeTimes; review finding S1).
       case entityFlagChange:
         final made = DateTime.parse(at);
         final receipt = record.storedAt!;
@@ -1253,6 +1260,7 @@ class FakeSyncServer {
             'effectiveAt': _isoMs(made.isBefore(receipt) ? made : receipt),
             'clockVerified': c['clockVerified'] == true,
           });
+        details = {'receivedAt': _isoMs(receipt), 'effectiveAt': record.attributes['effectiveAt']};
       case entityEncounter:
         // What the server keeps with a visit and no set changes (encounter.ts load).
         record.attributes.addAll({
@@ -2930,7 +2938,9 @@ class FakeSyncServer {
     ];
     final content = valueHash({'entries': all, 'redirects': _redirects()});
     final version = '${_indexVersions.putIfAbsent(content, () => _indexVersions.length + 1)}.$projection';
-    final base = {'version': version, 'projection': projection, 'generatedAt': _iso(now())};
+    // Dated by the server's clock that dates a receipt, to the millisecond as the API answers it
+    // (team-index.ts, review finding S1).
+    final base = {'version': version, 'projection': projection, 'generatedAt': _isoMs(now())};
     final after = b['after'] as String?;
     if (after == null && b['have'] == version) {
       return {...base, 'status': 'unchanged', 'entries': <Object?>[], 'next': null, 'redirects': <Object?>[]};

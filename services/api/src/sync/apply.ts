@@ -6,6 +6,7 @@ import { applyField } from './entities/fields.ts';
 import { medicalHidden } from '../encounters/read.ts';
 import { fieldForSender, NOTHING_SHOWN } from './entities/note.ts';
 import { missingParent, missingProblem, rulesFor } from './entities/index.ts';
+import { flagChangeTimes } from './entities/patient-flag-change.ts';
 import { flagChangeShown, flagHead, readsRecord } from './read-rules.ts';
 import { AuditAppend, type ParentRef } from './entities/values.ts';
 import {
@@ -545,7 +546,9 @@ async function decide(
 }
 
 /**
- * Holds a change for a Program Admin to review, and tells the phone it may let go of it.
+ * Holds a change for a Program Admin to review, and tells the phone it may let go of it. What it
+ * waits on goes to the audit event, never to the phone (review finding P8); a flag change's create
+ * is answered when the server received it, the hold's time (heldDetails).
  * PLAN-OPEN: does the review queue name the rule that held a change (lifecycle 12.1 #26; plan
  * section 6)? No: the reason is `permission` whichever rule held it, and nothing stored names the
  * rule. A question for the portal's queues (L6).
@@ -566,7 +569,20 @@ async function hold(
     entityId: c.recordId,
     details: { changeId: c.changeId, reason, ...details },
   });
-  return { status: 'rejected', reason, quarantined: true };
+  const answered = await heldDetails(tx, c);
+  return { status: 'rejected', reason, quarantined: true, ...(answered ? { details: answered } : {}) };
+}
+
+/**
+ * What a held change's answer carries, kept in its receipt and so answered the same to a retry: for a
+ * flag change's create, when the server received it, as the hold stored it (flagChangeTimes), which a
+ * phone weighs against the team index's time (phase 5 design 6.1). Nothing for anything else.
+ */
+async function heldDetails(tx: Tx, c: SyncChangeInput): Promise<Record<string, unknown> | null> {
+  if (c.entity !== 'patient_flag_change' || c.op !== 'create') return null;
+  const [held] = await tx<{ receivedAt: Date }[]>`
+    select received_at from sineobex.quarantine_items where change_id = ${c.changeId}`;
+  return held ? flagChangeTimes(held) : null;
 }
 
 /**

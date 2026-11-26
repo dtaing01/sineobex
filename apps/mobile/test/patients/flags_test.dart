@@ -607,6 +607,34 @@ void main() {
       expect(view.history.last.at, start, reason: 'its receipt’s time, as the server’s effective time is');
     });
 
+    // Review finding S1, the chart's side: a change confirmed by a receipt replayed after its first
+    // answer was lost is dated as the server dated it, never by when the replay was answered.
+    test('a change whose first answer was lost, made while the clock had no reference, is dated as the server '
+        'dated it, not by when its receipt came again', () async {
+      final p = await openedPatient();
+      server.offline = true;
+      phone.boot.reboot();
+      phone.wall = phone.wall.add(const Duration(hours: 2));
+      await phone.restart();
+      services = servicesFor(FakeSyncServer.healthcareStaff.toList());
+      expect(phone.clock.status.state, ClockState.unverified);
+      final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      server.offline = false;
+      server.dropPushResponses = 1;
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), hasLength(1), reason: 'the server took it; its answer never came');
+      // The person puts the clock right; half an hour on, the phone sends the change again.
+      phone.wall = phone.wall.subtract(const Duration(hours: 2));
+      advance(const Duration(minutes: 30));
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'its stored receipt confirms it');
+      final dated = DateTime.parse(server.records[id]!.attributes['effectiveAt']! as String);
+      expect(dated, start, reason: 'the server dated it at its first receipt');
+      expect(flags().flagsOf(p).history.single.at, dated);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      expect(flags().flagsOf(p).history.single.at, dated, reason: 'as the chart dates it');
+    });
+
     test(
       'a change the server holds for review shows only as Sent for review, until a Program Admin accepts it',
       () async {
@@ -1155,6 +1183,39 @@ void main() {
       await phone.engine.syncAll(force: true);
       expect(flagChanges(), isEmpty, reason: 'confirmed');
       expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [high, high]);
+    });
+
+    // Review finding S1: the index's time and a receipt's are both the server's. A change whose first
+    // answer was lost is confirmed by its stored receipt, which says when the server received it, so an
+    // index worked out since, which holds it and a teammate's later change, keeps its word.
+    test('a change whose first answer was lost counts as the index holds it once its receipt comes again, under '
+        'a teammate’s later change', () async {
+      final p = server.seedPatient(preferredName: 'Demo Wren');
+      await indexRefresh();
+      server.offline = true;
+      await services.patients.open(p);
+      expect(isPartialChart(store(), p), isTrue);
+      advance(const Duration(minutes: 1));
+      flags().record(p, flagId: medium, action: 'set', reason: 'Demo: doing better');
+      server.offline = false;
+      server.dropPushResponses = 1;
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), hasLength(1), reason: 'the server took it; its answer never came');
+
+      // A teammate sets High later; the index, downloaded again, holds both, High last.
+      advance(const Duration(minutes: 5));
+      seeded(p, high);
+      advance(const Duration(minutes: 1));
+      await indexRefresh();
+      expect(services.index.flagsOf(p)?.primary, high);
+
+      advance(const Duration(seconds: 30));
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'its stored receipt confirms it');
+      expect(isPartialChart(store(), p), isTrue);
+      expect([flags().flagsOf(p).riskLevel?.flagId, flags().riskLevelOf(p)?.flagId], [high, high]);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      expect(flags().flagsOf(p).riskLevel?.flagId, high, reason: 'as the server holds it');
     });
 
     test('a change confirmed after an index that came while it waited counts, the chart not downloaded', () async {

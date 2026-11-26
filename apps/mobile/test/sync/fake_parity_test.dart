@@ -5885,11 +5885,20 @@ void main() {
     Map<String, Object?> markOf(String changeId, [String why = markReason, Map<String, Object?> more = const {}]) =>
         change(entityFlagChange, 'set', {'reason': why}, recordId: changeId, field: 'enteredInError', more: more);
 
+    /// What a create's answer says of when the server stored it (6.1); a mark's says nothing of it.
+    Map<String, Object?> timesOf(Map<String, Object?> c, {required bool held}) =>
+        c['entity'] == entityFlagChange && c['op'] == 'create'
+        ? {
+            'details': {'receivedAt': isA<String>(), if (!held) 'effectiveAt': isA<String>()},
+          }
+        : const {};
+
     Map<String, Object?> taken(Map<String, Object?> c, [int serverVersion = 1]) => {
       'changeId': c['changeId'],
       'status': 'accepted',
       'serverVersion': serverVersion,
       'hash': c['valueHash'],
+      ...timesOf(c, held: false),
     };
 
     Matcher refusedAs(String reason, Map<String, Object?> details) =>
@@ -5902,6 +5911,7 @@ void main() {
       'message': 'rejected: $why',
       'quarantined': true,
       'hash': c['valueHash'],
+      ...timesOf(c, held: true),
     };
 
     String idOf(Map<String, Object?> c) => c['recordId']! as String;
@@ -5977,6 +5987,74 @@ void main() {
       // On the chart under its flag.
       final chart = (await server.handle(alex, team, 'GET', '/v1/patients/$patient', null))! as Map<String, Object?>;
       expect(((chart['flags']! as Map<String, Object?>)['primary']! as Map<String, Object?>)['flagId'], low);
+    });
+
+    // Review finding S1. This server's clock moves, as the API's database's does between two requests.
+    test('answers a create with the times it stored, taken or held, and a retry with the same times', () async {
+      var clock = now;
+      server = FakeSyncServer(now: () => clock);
+      for (final user in [alex, blair]) {
+        await register(user, 'dev-$user');
+      }
+      server.permissions[blair] = const {'patients.view', 'billing.view_codes', 'inventory.view'};
+      final dehydration = server.addPreset(team, 'flag', flagBody('Dehydration risk', 'secondary', 'orange', 20));
+      final patient = server.seedPatient(preferredName: 'Demo Pine');
+      String ms(DateTime t) =>
+          DateTime.fromMillisecondsSinceEpoch(t.millisecondsSinceEpoch, isUtc: true).toIso8601String();
+
+      final madeAt = clock.subtract(const Duration(minutes: 3));
+      final made = flagChange(patient, dehydration, more: {'deviceTime': madeAt.toIso8601String()});
+      final [first] = await send(alex, [made]);
+      expect(first, {
+        ...taken(made),
+        'details': {'receivedAt': ms(clock), 'effectiveAt': ms(madeAt)},
+      });
+      expect(server.records[idOf(made)]!.attributes['effectiveAt'], ms(madeAt));
+      // Later, its first answer lost: the stored receipt, with the stored times.
+      clock = clock.add(const Duration(minutes: 1));
+      expect(await send(alex, [made]), [first]);
+
+      // Held: when the hold received it, the same to a retry.
+      final heldAt = clock;
+      final held = flagChange(patient, dehydration, action: 'clear', more: {'deviceTime': heldAt.toIso8601String()});
+      final [heldAnswer] = await send(blair, [held]);
+      expect(heldAnswer, {
+        ...heldFor(held),
+        'details': {'receivedAt': ms(heldAt)},
+      });
+      clock = clock.add(const Duration(minutes: 1));
+      expect(await send(blair, [held]), [heldAnswer]);
+      // Accepted from review, the change is received when it was held, and a retry is answered so.
+      server.acceptHeld(held['changeId']! as String);
+      clock = clock.add(const Duration(minutes: 1));
+      expect(await send(blair, [held]), [
+        {
+          ...taken(held),
+          'details': {'receivedAt': ms(heldAt), 'effectiveAt': ms(heldAt)},
+        },
+      ]);
+    });
+
+    test('dates a receipt and the team index on one clock, the database’s, whatever the API’s says', () async {
+      var clock = now;
+      server = FakeSyncServer(now: () => clock);
+      await register(alex, 'dev-$alex');
+      final high = server.addPreset(team, 'flag', flagBody('High', 'primary', 'red', 10));
+      final low = server.addPreset(team, 'flag', flagBody('Low', 'primary', 'green', 30));
+      final patient = server.seedPatient(preferredName: 'Demo Spruce');
+      Future<DateTime> receivedAt(Map<String, Object?> c) async {
+        final [answer] = await send(alex, [c]);
+        return DateTime.parse((answer['details']! as Map<String, Object?>)['receivedAt']! as String);
+      }
+
+      final before = await receivedAt(flagChange(patient, high));
+      clock = clock.add(const Duration(seconds: 1));
+      final index =
+          (await server.handle(alex, team, 'POST', '/v1/patients/index', <String, Object?>{}))! as Map<String, Object?>;
+      final generated = DateTime.parse(index['generatedAt']! as String);
+      clock = clock.add(const Duration(seconds: 1));
+      final after = await receivedAt(flagChange(patient, low));
+      expect([before.isBefore(generated), generated.isBefore(after)], [true, true]);
     });
 
     test('is never later than the server’s receipt: a phone clock ahead is taken at the receipt', () async {

@@ -422,8 +422,9 @@ class SyncEngine {
           if (r.reason == RejectReason.hashMismatch) {
             unanswered++;
           } else if (r.quarantined == true && r.hash == e.valueHash) {
-            // Held by the server for a Program Admin: stored there, so it can leave the phone.
-            store.confirm(e, serverVersion: r.serverVersion ?? 0, inReview: true);
+            // Held by the server for a Program Admin: stored there, so it can leave the phone. Its
+            // details say what the server kept of it (a flag change's hold time).
+            store.confirm(e, serverVersion: r.serverVersion ?? 0, details: r.details, inReview: true);
             confirmed++;
           } else {
             store.reject(e, reason: r.reason?.wire ?? 'validation', message: r.message, details: r.details);

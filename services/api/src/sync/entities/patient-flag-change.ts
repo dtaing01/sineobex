@@ -65,6 +65,12 @@ export interface NewFlagChange {
  */
 export type FlagChangeRefusal = 'unknown_flag' | 'reason_invalid' | 'hidden' | 'archived';
 
+/** When a stored flag change was received, and the time it is ordered by, as its row holds them. */
+export interface FlagChangeTimes {
+  receivedAt: Date;
+  effectiveAt: Date;
+}
+
 /**
  * The one check and insert of a flag change, which the push and the portal's flag route both call,
  * so the online and offline paths cannot drift (design 7, D99): the flag, then the reason, then the
@@ -72,14 +78,18 @@ export type FlagChangeRefusal = 'unknown_flag' | 'reason_invalid' | 'hidden' | '
  * caller's transaction. The flag is read with its sensitive uncast (flagHead) and checked before the
  * insert, so its foreign key never throws inside a push. `refuseArchivedSet` is the portal's rule: a
  * flag no longer on the team's list is never offered to be set (5.1). `stored` is false when the id
- * is taken, and then nothing is written.
+ * is taken, and then nothing is written; when true, `times` are the row's.
  */
 export async function insertFlagChange(
   tx: Tx,
   audit: AuditFn,
   change: NewFlagChange,
   { refuseArchivedSet = false }: { refuseArchivedSet?: boolean } = {},
-): Promise<{ refused: FlagChangeRefusal } | { stored: boolean; flag: FlagHead }> {
+): Promise<
+  | { refused: FlagChangeRefusal }
+  | { stored: false; flag: FlagHead }
+  | { stored: true; flag: FlagHead; times: FlagChangeTimes }
+> {
   const flag = await flagHead(tx, change.teamId, change.flagId);
   if (!flag) return { refused: 'unknown_flag' };
   if (flagReasonInvalid(change.reason)) return { refused: 'reason_invalid' };
@@ -93,7 +103,7 @@ export async function insertFlagChange(
   // than when the server received it, as a patient's last seen (D90): a phone whose clock runs ahead
   // never wins every change. The receipt is the database's clock (a hold's time, else now), never
   // the API's, which can run ahead of it: 0024's check compares the two.
-  const rows = await tx`
+  const [times] = await tx<FlagChangeTimes[]>`
     insert into sineobex.patient_flag_changes (id, team_id, patient_id, flag_id, action, reason, effective_at,
       received_at, device_time, clock_verified, author_user_id, created_device_id, change_id, approved_by)
     select ${change.id}, ${change.teamId}, ${change.patientId}, ${change.flagId}, ${change.action},
@@ -102,8 +112,8 @@ export async function insertFlagChange(
            ${change.deviceId}::uuid, ${change.changeId}::uuid, ${change.approvedBy}::uuid
     from (select coalesce(${change.receivedAt}::timestamptz, now()) as at) r
     on conflict (id) do nothing
-    returning id`;
-  if (rows.length === 0) return { stored: false, flag };
+    returning received_at, effective_at`;
+  if (!times) return { stored: false, flag };
   await audit({
     action: 'patient_flag.changed',
     entity: 'patient_flag_change',
@@ -112,8 +122,17 @@ export async function insertFlagChange(
     deviceTime: change.deviceTime,
     details: { ...change.auditDetails, action: change.action, ...flagDetails(flag) },
   });
-  return { stored: true, flag };
+  return { stored: true, flag, times };
 }
+
+/**
+ * A flag change's times as a push answers them (SyncResult.details): when the server received it, a
+ * held change's hold time, and once on the chart the time it is ordered by.
+ */
+export const flagChangeTimes = (t: { receivedAt: Date; effectiveAt?: Date }) => ({
+  receivedAt: t.receivedAt.toISOString(),
+  ...(t.effectiveAt ? { effectiveAt: t.effectiveAt.toISOString() } : {}),
+});
 
 // PLAN-OPEN (CO-14): what may the audit log say of a patient's flag change? Its tier and its
 // action, never its flag, for any flag.
@@ -237,8 +256,12 @@ export const flagChangeRules: EntityRules<Value> = {
     // A flag hidden from its sender is no refusal they can fix: decide holds it (apply.ts).
     if ('refused' in stored)
       return stored.refused === 'hidden' ? rejected('permission') : invalid(stored.refused);
-    // Its one field is the mark, so the create writes no history of its own, as a referral's.
-    return stored.stored ? { status: 'accepted', serverVersion: 1 } : invalid('record_exists');
+    // Its one field is the mark, so the create writes no history of its own, as a referral's. The
+    // answer carries the row's times, kept in the receipt and so answered the same to a retry: a phone
+    // weighs its change against the team index's time by when the server received it (6.1), which a
+    // lost answer's retry would otherwise date by when the retry was answered.
+    if (!stored.stored) return invalid('record_exists');
+    return { status: 'accepted', serverVersion: 1, details: flagChangeTimes(stored.times) };
   },
 
   // PLAN-OPEN (PL-18): what happens to a flag change made on the wrong patient? It is marked entered

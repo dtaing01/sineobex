@@ -459,7 +459,9 @@ class PatientFlags {
   /// What the phone keeps of a flag change of its own once a receipt confirms it, in the receipt's
   /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, in `kv`;
   /// never a flag or a reason): the change's own time, as the server's `when` reads it (the corrected
-  /// time, else the device's); when the receipt came, by the corrected clock; for each mark the
+  /// time, else the device's); when the receipt came, by the corrected clock; the server's times as
+  /// it stored them, which its answer carries and a retry answers the same (when it received the
+  /// change, a held one's hold time, and the time a taken one is ordered by); for each mark the
   /// server holds for a Program Admin, the mark's change, so it is told from a held create of the
   /// same change; and whether a later mark was taken, which a held one's fate no longer decides.
   /// [_read] dates a confirmed change by them until a chart gives the server's time. What it kept of
@@ -470,6 +472,12 @@ class PatientFlags {
     if (e.op == 'create') {
       kept[_keptAt] = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
       kept[_keptReceivedAt] = _now().millisecondsSinceEpoch;
+      // The server's own word, where its answer gives it: a lost answer's retry came later than the
+      // server received the change, so the clock at the receipt would date it later than it was.
+      final receivedAt = _time(receipt.details?['receivedAt']);
+      final effectiveAt = _time(receipt.details?['effectiveAt']);
+      if (receivedAt != null) kept[_keptServerReceivedAt] = receivedAt.millisecondsSinceEpoch;
+      if (effectiveAt != null) kept[_keptServerEffectiveAt] = effectiveAt.millisecondsSinceEpoch;
     } else if (e.op == 'set' && e.field == 'enteredInError' && receipt.inReview) {
       kept[_keptHeldMarks] = [..._heldMarksOf(kept), e.changeId];
       kept.remove(_keptMarkTaken);
@@ -700,11 +708,15 @@ class PatientFlags {
       final serverAt = _time(a['effectiveAt']);
       final kept = create == null ? _kept(row.id) : null;
       final keptAt = _ms(kept?[_keptAt]);
-      final receivedAt = _ms(kept?[_keptReceivedAt]);
-      // One confirmed here that no chart dates yet: by its own time, never later than its receipt, as
-      // the server dates it (D90; section 11, row 30), and not by when its record was made here, which
-      // is the phone's own clock, uncorrected.
-      final ownAt = keptAt != null && receivedAt != null && receivedAt.isBefore(keptAt) ? receivedAt : keptAt;
+      // When the server received it, as it said; else, for what an older build kept, when the receipt
+      // came by the corrected clock.
+      final receivedAt = _ms(kept?[_keptServerReceivedAt]) ?? _ms(kept?[_keptReceivedAt]);
+      // One confirmed here that no chart dates yet: as the server dated it, where it said; else by its
+      // own time, never later than its receipt, as the server dates it (D90; section 11, row 30), and
+      // not by when its record was made here, which is the phone's own clock, uncorrected.
+      final ownAt =
+          _ms(kept?[_keptServerEffectiveAt]) ??
+          (keptAt != null && receivedAt != null && receivedAt.isBefore(keptAt) ? receivedAt : keptAt);
       final dated = serverAt ?? create?.correctedTime ?? create?.deviceTime ?? ownAt ?? row.createdAt;
       var at = dated;
       if (rec.origin == 'local') {
@@ -745,9 +757,9 @@ class PatientFlags {
 
     // A patient whose chart the phone doesn't hold whole: the index's word stands for the server's
     // earlier changes, and what it can't reflect yet of this phone's is folded after it: a change still
-    // waiting, or one whose receipt came after the index was worked out (the index's time is the
-    // server's, the receipt's the corrected clock's), else, where the receipt's time wasn't kept, one
-    // made after it.
+    // waiting, or one the server received after the index was worked out (both times the database's,
+    // review finding S1; for what an older build kept, when its receipt came by the corrected clock),
+    // else, where no time of its receipt was kept, one made after it.
     final base = <FlagChangeRef>[];
     var counted = changes.where((c) => c.state == FlagChangeState.sent || c.state == FlagChangeState.waiting);
     final indexed = full ? null : index?.flagsOf(canonical);
@@ -903,8 +915,8 @@ class _Change {
   /// The server's time for it, or this phone's for one made here that no chart lists yet.
   final DateTime at;
 
-  /// For one made here, when its receipt came, by the corrected clock; null while it waits, and where
-  /// the phone kept none.
+  /// For one made here, when the server received it, as its answer said; else when its receipt came,
+  /// by the corrected clock; null while it waits, and where the phone kept none.
   final DateTime? receivedAt;
 
   /// Made here, its create still waiting for its receipt.
@@ -938,6 +950,8 @@ const _manageUsers = 'team.manage_users';
 const _keptKvPrefix = 'flagChange.';
 const _keptAt = 'at';
 const _keptReceivedAt = 'receivedAt';
+const _keptServerReceivedAt = 'serverReceivedAt';
+const _keptServerEffectiveAt = 'serverEffectiveAt';
 const _keptHeldMarks = 'heldMarks';
 const _keptMarkTaken = 'markTaken';
 
