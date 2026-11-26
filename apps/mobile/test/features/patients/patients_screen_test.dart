@@ -674,6 +674,53 @@ void main() {
       expectFocusOn(ActionChip, 'Born');
     });
 
+    // Review finding VX3: a risk level chosen and then archived, the team's last, leaves no Risk level
+    // chooser to take its chip's place, and its clear button gave focus to nothing on screen. Focus
+    // goes where a condition's clear sends it: Conditions, the chosen conditions, then Born.
+    for (final online in [false, true]) {
+      for (final (left, focus) in [
+        ('a condition offered', (ActionChip, 'Conditions')),
+        ('a chosen condition archived too', (ChosenFilterChip, 'Condition: no longer on the team’s list')),
+        ('no condition', (ActionChip, 'Born')),
+      ]) {
+        testWidgets('a risk level no longer on the team’s list, cleared by keyboard with $left, gives focus to '
+            '"${focus.$2}" (${online ? 'online' : 'offline'})', (tester) async {
+          final h = await signIn(tester);
+          final team = h.patients.teamId;
+          final high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+          final frost = left == 'no condition'
+              ? null
+              : h.server.addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+          final round = h.server.seedPatient(preferredName: 'Demo Round');
+          for (final id in [high, ?frost]) {
+            h.server.seed(entityFlagChange, {
+              'patientId': round,
+              'flagId': id,
+              'action': 'set',
+              'reason': 'Demo: a reason',
+            });
+          }
+          await syncAndRefresh(tester, h);
+          await openPatientsTab(tester);
+          await chooseInDialog(tester, 'Risk level', ['Red · Demo: High']);
+          if (left == 'a chosen condition archived too') {
+            await chooseInDialog(tester, 'Conditions', ['Blue · Demo: Frost risk'], done: true);
+            h.server.archivePreset(team, frost!);
+          }
+          h.server.archivePreset(team, high);
+          await syncAndRefresh(tester, h);
+          h.server.offline = !online;
+          await expectShown(tester, find.text('1 patient found on this phone'));
+          expect(find.text('Risk level: no longer on the team’s list'), findsOneWidget);
+          expect(find.widgetWithText(ActionChip, 'Risk level'), findsNothing, reason: 'no level left to choose');
+          await enterFromSearch(tester, clearOf('Clear risk level'));
+          expect(find.text('Risk level: no longer on the team’s list'), findsNothing);
+          expectFocusOn(focus.$1, focus.$2);
+          await expectScreenOk(tester);
+        });
+      }
+    }
+
     testWidgets('a sensitive flag is absent for a reader the flag rule hides it from', (tester) async {
       await listWithFlags(tester, permissions: FakeSyncServer.chw.toList());
       await tapOn(tester, find.widgetWithText(ActionChip, 'Conditions'));
