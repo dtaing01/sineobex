@@ -376,14 +376,21 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   }
 
   /// The risk level taken off: for someone on its clear button, focus goes to Risk level, the
-  /// chooser that takes the chip's place.
+  /// chooser that takes the chip's place. A level no longer on the team's list may have been the
+  /// last, and then no chooser comes back: focus goes to Conditions, the chosen conditions, then Born,
+  /// as a condition's clear does (review finding VX3).
   void _clearRiskLevel() {
     final follow = focusFollows(context, _node('risk.clear'));
     setState(() {
       _riskFilter = null;
       _filtersChanged();
     });
-    _focusAfterFrame(follow, [_node('risk')]);
+    _focusAfterFrame(follow, [
+      _node('risk'),
+      _node('conditions'),
+      for (final id in _conditionFilter) _node('condition.$id'),
+      _node('born'),
+    ]);
   }
 
   /// One chosen condition taken off, the others kept: for someone on its clear button, focus goes to
