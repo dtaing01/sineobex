@@ -13,6 +13,7 @@ import 'package:sineobex_field/presets/models.dart';
 import 'package:sineobex_field/presets/preset_store.dart';
 import 'package:sineobex_field/presets/presets_refresher.dart';
 import 'package:sineobex_field/sync/entities.dart' show entityFlagChange, entityPatient;
+import 'package:sineobex_field/sync/local_store.dart' show ChangeState;
 import 'package:sineobex_field/sync/sync_controller.dart';
 import 'package:sineobex_field/sync/sync_engine.dart';
 
@@ -34,6 +35,26 @@ class _Pulls implements ApiTransport {
       pulls.add((query: {...?query}, answer: jsonDecode(jsonEncode(answer)) as Map<String, Object?>));
     }
     return answer;
+  }
+}
+
+/// The test server behind a hand that names, in the next push's answers, a hash the phone never sent,
+/// once: step 8's receipt confirms only the exact value, on the phone's side too (review finding S5).
+class _OtherHash implements ApiTransport {
+  _OtherHash(this.inner);
+  final ApiTransport inner;
+  bool armed = false;
+
+  @override
+  Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
+    final answer = await inner.send(method, path, query: query, body: body);
+    if (!armed || path != '/v1/sync/push') return answer;
+    armed = false;
+    final copy = jsonDecode(jsonEncode(answer)) as Map<String, Object?>;
+    for (final r in (copy['results']! as List<Object?>).cast<Map<String, Object?>>()) {
+      if (r['hash'] is String) r['hash'] = '0' * 64;
+    }
+    return copy;
   }
 }
 
@@ -67,6 +88,7 @@ void main() {
   late DateTime serverTime;
   late FakeSyncServer server;
   late _Pulls network;
+  late _OtherHash answers;
   late TestPhone phone;
   late PatientServices services;
 
@@ -95,7 +117,8 @@ void main() {
     expect(staffPerson['role'], 'healthcare_staff');
     platformIds = givePlatformPresets(server, team);
     network = _Pulls(server.transportFor(staff, team));
-    phone = TestPhone(userId: staff, teamId: team, transport: () => network, wall: start);
+    answers = _OtherHash(network);
+    phone = TestPhone(userId: staff, teamId: team, transport: () => answers, wall: start);
     final open = OpenTeam(
       userId: staff,
       teamId: team,
@@ -314,6 +337,16 @@ void main() {
 
     later(const Duration(minutes: 5));
     server.offline = false;
+    // A receipt confirms only the exact value: an answer naming another hash leaves the change waiting
+    // on the phone, and the stored receipt, naming the hash the phone sent, confirms it.
+    answers.armed = true;
+    await phone.engine.syncAll(force: true);
+    expect(server.receipts[queued.changeId]?.status, 'accepted', reason: 'the server took it');
+    expect(
+      [for (final e in phone.store.outbox()) (e.changeId, e.state)],
+      [(queued.changeId, ChangeState.pending)],
+      reason: 'another hash confirms nothing',
+    );
     expect(await phone.engine.syncAll(force: true), isA<SyncDone>());
     // Accepted, its receipt naming the hash the phone sent.
     expect(expected8['receipts'], {'status': 'accepted', 'hashConfirmed': true});

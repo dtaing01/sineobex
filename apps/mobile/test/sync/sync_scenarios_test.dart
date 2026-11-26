@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/transport.dart';
 import 'package:sineobex_field/sync/clock.dart';
@@ -9,6 +11,26 @@ import 'fake_server.dart';
 import 'phone_harness.dart';
 import 'test_note_types.dart';
 import 'uplink.dart';
+
+/// The test server behind a hand that names, in the next push's answers, a hash the phone never sent,
+/// once: what a server holding another value under the change's ID would answer.
+class _OtherHash implements ApiTransport {
+  _OtherHash(this.inner);
+  final ApiTransport inner;
+  bool armed = false;
+
+  @override
+  Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
+    final answer = await inner.send(method, path, query: query, body: body);
+    if (!armed || path != '/v1/sync/push') return answer;
+    armed = false;
+    final copy = jsonDecode(jsonEncode(answer)) as Map<String, Object?>;
+    for (final r in (copy['results']! as List<Object?>).cast<Map<String, Object?>>()) {
+      if (r['hash'] is String) r['hash'] = '0' * 64;
+    }
+    return copy;
+  }
+}
 
 /// Phase 2 done-when: charting in airplane mode, killing the app mid-sync, reconnecting on a slow
 /// network, a 7-minute clock offset, and two people editing the same draft.
@@ -803,6 +825,40 @@ void main() {
       expect(p.store.outbox(), hasLength(1));
       expect(p.store.needsAttention(), isEmpty);
       expect(server.records, isEmpty);
+    });
+
+    // Review finding S5: the phone's half of the hash-confirmed receipt. The case above spoils the
+    // phone's own hash, so the server refuses it before any receipt; these answer with a receipt that
+    // names a hash the phone never sent.
+    TestPhone behind(_OtherHash link) {
+      final p = TestPhone(userId: alex, teamId: team, transport: () => link, wall: start);
+      phones.add(p);
+      return p;
+    }
+
+    test('an accepted answer naming another hash confirms nothing: the change waits, and its stored receipt '
+        'confirms it', () async {
+      final link = _OtherHash(server.transportFor(alex, team));
+      final p = behind(link);
+      final id = p.store.createEncounter(kind: 'medical');
+      link.armed = true;
+      await p.engine.syncAll();
+      expect(server.records.containsKey(id), isTrue, reason: 'the server took it');
+      expect([for (final e in p.store.outbox()) (e.recordId, e.state)], [(id, ChangeState.pending)]);
+      await p.engine.syncAll(force: true);
+      expect(p.store.outbox(), isEmpty, reason: 'the stored receipt, naming the hash the phone sent, confirms it');
+    });
+
+    test('a held answer naming another hash lets go of nothing: the change stays on the phone', () async {
+      server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('encounters.chart');
+      final link = _OtherHash(server.transportFor(alex, team));
+      final p = behind(link);
+      final id = p.store.createEncounter(kind: 'medical');
+      link.armed = true;
+      await p.engine.syncAll();
+      expect(server.held, hasLength(1), reason: 'the server held it');
+      expect([for (final e in p.store.outbox()) e.recordId], [id], reason: 'never let go of');
+      expect(p.store.inReviewCount(), 0, reason: 'nor counted as held there');
     });
   });
 
