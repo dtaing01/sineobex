@@ -2751,9 +2751,10 @@ class FakeSyncServer {
     ].nonNulls.toList();
   }
 
-  /// Re-runs matching for [patientId]'s group: every other active patient at or above the queue
-  /// threshold is flagged (a decided pair is left alone). True when a pair names a patient the
-  /// creator was not shown at intake ([shown], [dismissed]).
+  /// Re-runs matching for [patientId]'s group: every other active patient of its team at or above
+  /// the queue threshold is flagged (a decided pair is left alone). True when a pair names a patient
+  /// the creator was not shown at intake ([shown], [dismissed]). Another team's patient is never a
+  /// candidate (candidates.ts: every query is led by the team; review finding VS5).
   bool _rematch(String patientId, String source, {List<String> shown = const [], List<String> dismissed = const []}) {
     final self = canonicalOf(patientId);
     final names = _keysOf(self);
@@ -2764,9 +2765,13 @@ class FakeSyncServer {
       for (final p in pairs)
         if (p.status == 'kept_separate' && (p.a == self || p.b == self)) p.a == self ? p.b : p.a,
     };
+    final team = records[self]!.teamId ?? homeTeam;
     final candidates = [
       for (final r in records.values)
-        if (r.entity == entityPatient && r.status == 'active' && !exclude.contains(r.id))
+        if (r.entity == entityPatient &&
+            r.status == 'active' &&
+            !exclude.contains(r.id) &&
+            (team == null || _inTeam(r, team)))
           CandidateGroup(
             patientId: r.id,
             keys: _keysOf(r.id),
