@@ -134,6 +134,21 @@ export const flagChangeTimes = (t: { receivedAt: Date; effectiveAt?: Date }) => 
   ...(t.effectiveAt ? { effectiveAt: t.effectiveAt.toISOString() } : {}),
 });
 
+/**
+ * The team index's counter as this transaction sees it just after a flag change's write moved it
+ * (0024's triggers): what a taken create's and a taken mark's answer carry as `indexVersion`, kept in
+ * the receipt (phase 5 design 6.1, review finding VR1). The write holds the counter's row until it
+ * commits, so the number reaches an index only with the change: an index whose counter, read before
+ * its entries, is below it was worked out without the change, and one at or above it holds it. A
+ * time can't tell the phone that: the receipt's is when the change's transaction began, which can be
+ * before an index that left it out while it waited on the team's write lock.
+ */
+export async function teamIndexCounter(tx: Tx, teamId: string): Promise<number> {
+  const [row] = await tx<{ version: string }[]>`
+    select version::text from sineobex.team_index_versions where team_id = ${teamId}`;
+  return Number(row?.version ?? '0');
+}
+
 // PLAN-OPEN (CO-14): what may the audit log say of a patient's flag change? Its tier and its
 // action, never its flag, for any flag.
 /**
@@ -257,11 +272,19 @@ export const flagChangeRules: EntityRules<Value> = {
     if ('refused' in stored)
       return stored.refused === 'hidden' ? rejected('permission') : invalid(stored.refused);
     // Its one field is the mark, so the create writes no history of its own, as a referral's. The
-    // answer carries the row's times, kept in the receipt and so answered the same to a retry: a phone
-    // weighs its change against the team index's time by when the server received it (6.1), which a
-    // lost answer's retry would otherwise date by when the retry was answered.
+    // answer carries the row's times and the team index's counter after the insert, kept in the
+    // receipt and so answered the same to a retry: a phone dates its change by the times, which a lost
+    // answer's retry would otherwise date by when the retry was answered, and tells by the counter
+    // whether an index holds it (6.1).
     if (!stored.stored) return invalid('record_exists');
-    return { status: 'accepted', serverVersion: 1, details: flagChangeTimes(stored.times) };
+    return {
+      status: 'accepted',
+      serverVersion: 1,
+      details: {
+        ...flagChangeTimes(stored.times),
+        indexVersion: await teamIndexCounter(ctx.tx, ctx.actor.teamId),
+      },
+    };
   },
 
   // PLAN-OPEN (PL-18): what happens to a flag change made on the wrong patient? It is marked entered
@@ -290,4 +313,6 @@ export const flagChangeRules: EntityRules<Value> = {
   writeAction: () => 'patient_flag.entered_in_error',
   // The flag it was about, as its create's event names it: its tier, never its id.
   writeDetails: (s) => flagDetails(flagOf(s.rec)),
+  // A mark taken moves the team index as its create did, and is answered the counter after it.
+  writeAnswer: async (s) => ({ indexVersion: await teamIndexCounter(s.tx, s.actor.teamId) }),
 };

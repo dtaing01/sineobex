@@ -88,7 +88,8 @@ export async function writeValue(
     },
   });
   await s.rules.afterWrite?.(s);
-  return { status: 'accepted', serverVersion: version };
+  const details = await s.rules.writeAnswer?.(s);
+  return { status: 'accepted', serverVersion: version, ...(details ? { details } : {}) };
 }
 
 /**

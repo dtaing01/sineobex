@@ -185,16 +185,49 @@ describe('phase 5 sync: flag changes', () => {
 
   /**
    * What a create's answer says of when the server stored it (6.1): when it was received, and once on
-   * the chart the time it is ordered by. A mark's says nothing of it.
+   * the chart the time it is ordered by and the team index's counter after it. A mark taken says the
+   * counter only; a held change names no counter, since a hold moves no index.
    */
   const timesOf = (c: Change, held: boolean) =>
     c.entity === FLAG_CHANGE && c.op === 'create'
       ? {
           details: held
             ? { receivedAt: expect.any(String) }
-            : { receivedAt: expect.any(String), effectiveAt: expect.any(String) },
+            : {
+                receivedAt: expect.any(String),
+                effectiveAt: expect.any(String),
+                indexVersion: expect.any(Number),
+              },
         }
-      : {};
+      : c.entity === FLAG_CHANGE && !held
+        ? { details: { indexVersion: expect.any(Number) } }
+        : {};
+
+  /** The team index's counter as the database holds it now (0009's team_index_versions). */
+  const teamCounter = async () =>
+    Number(
+      (
+        await h.scratch.owner<{ version: string }[]>`
+          select version::text from sineobex.team_index_versions where team_id = ${t.teamId}`
+      )[0]!.version,
+    );
+
+  /** A first page of the team index as Kim's phone downloads it, and the counter its version names. */
+  const indexPage = async () => {
+    const r = await call(h, '/v1/patients/index', {
+      method: 'POST',
+      token: kim.token,
+      teamId: t.teamId,
+      json: {},
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const entries = r.body.entries as { patientId: string; flags: { primary: string | null } }[];
+    return {
+      counter: Number((r.body.version as string).split('.')[0]),
+      generatedAt: new Date(r.body.generatedAt as string),
+      primaryOf: (patientId: string) => entries.find((e) => e.patientId === patientId)?.flags.primary,
+    };
+  };
 
   const taken = (c: Change, serverVersion = 1) => ({
     changeId: c.changeId,
@@ -489,7 +522,11 @@ describe('phase 5 sync: flag changes', () => {
     const stored = (await row(made.recordId))!;
     expect(first).toEqual({
       ...taken(made),
-      details: { receivedAt: stored.receivedAt.toISOString(), effectiveAt: stored.effectiveAt.toISOString() },
+      details: {
+        receivedAt: stored.receivedAt.toISOString(),
+        effectiveAt: stored.effectiveAt.toISOString(),
+        indexVersion: await teamCounter(),
+      },
     });
     expect(stored.effectiveAt).toEqual(new Date(made.deviceTime));
     // Later, its first answer lost: the stored receipt, with the stored times.
@@ -503,7 +540,8 @@ describe('phase 5 sync: flag changes', () => {
     expect(heldAnswer).toEqual({ ...heldFor(held), details: { receivedAt: item.receivedAt.toISOString() } });
     await new Promise((r) => setTimeout(r, 25));
     expect(await bo.send(held)).toEqual([heldAnswer]);
-    // Accepted from review, the change is received when it was held, and a retry is answered so.
+    // Accepted from review, the change is received when it was held, and a retry is answered so,
+    // with the counter the accept moved the index to.
     expect((await decide(item.id, 'accept')).status).toBe(200);
     const accepted = (await row(held.recordId))!;
     expect(accepted.receivedAt).toEqual(item.receivedAt);
@@ -513,9 +551,91 @@ describe('phase 5 sync: flag changes', () => {
         details: {
           receivedAt: item.receivedAt.toISOString(),
           effectiveAt: accepted.effectiveAt.toISOString(),
+          indexVersion: await teamCounter(),
         },
       },
     ]);
+  });
+
+  // Review finding VR1: only the server knows which team index holds which change. A taken create and
+  // a taken mark answer the index's counter after them, which an index reaches only once the change
+  // has committed.
+  it('answers a taken create and a taken mark with the team index’s counter after it, and a retry with the same', async () => {
+    const patient = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Larch' })).id;
+    const before = (await indexPage()).counter;
+    const made = await flagChange(kim, patient, presetId('flag.high'));
+    const [first] = await kim.send(made);
+    const afterCreate = await teamCounter();
+    expect(afterCreate).toBeGreaterThan(before);
+    expect(first).toEqual(taken(made));
+    expect(first!.details?.indexVersion).toBe(afterCreate);
+    // An index read since is at or above it; a retry later answers the counter it stored.
+    expect((await indexPage()).counter).toBeGreaterThanOrEqual(afterCreate);
+    await new Promise((r) => setTimeout(r, 25));
+    expect(await kim.send(made)).toEqual([first]);
+
+    const mark = await markOf(kim, made.recordId);
+    const [marked] = await kim.send(mark);
+    const afterMark = await teamCounter();
+    expect(afterMark).toBeGreaterThan(afterCreate);
+    expect(marked).toEqual({ ...taken(mark), details: { indexVersion: afterMark } });
+    expect(await kim.send(mark)).toEqual([marked]);
+
+    // A hold moves no index, so its answer names no counter; nor does a mark kept in history.
+    const held = await flagChange(bo, patient, presetId('flag.low'));
+    const [heldAnswer] = await bo.send(held);
+    expect(heldAnswer).toEqual(heldFor(held));
+    expect(await teamCounter()).toBe(afterMark);
+    const second = await markOf(admin, made.recordId, 'Demo: second thoughts');
+    const [kept] = await admin.send(second);
+    expect(kept!.details).toEqual({ outcome: 'history_only' });
+    expect(await teamCounter()).toBe(afterMark);
+  });
+
+  // The first verifier's window (VS1, VR1): a push that waits on the team's write lock is dated when
+  // its transaction began, so its receipt's time is before an index worked out meanwhile, which left
+  // the change out. The counter tells them apart.
+  it('a push waiting on the team’s write lock while an index is read: the index’s counter is below the receipt’s', async () => {
+    const patient = (await createPatient(h, t.teamId, t.adminId, { preferredName: 'Demo Cedar' })).id;
+    const [low] = await kim.send(
+      await flagChange(kim, patient, presetId('flag.low'), { deviceTime: fromNow(-1) }),
+    );
+    expect(low!.status).toBe('accepted');
+    const high = await flagChange(kim, patient, presetId('flag.high'), { deviceTime: fromNow(0) });
+    let indexing: ReturnType<typeof indexPage> | undefined;
+    // Another writer holds the team's write lock (a merge, another phone's push): the push begins and
+    // waits on it. The phone's index refresh runs meanwhile: it reads its counter and its entries, then
+    // waits on the lock to log its download.
+    const { waited, answer } = await whileLocked(
+      h,
+      t.teamId,
+      () => kim.send(high),
+      async () => {
+        indexing = indexPage();
+        for (let i = 0; i < 500; i++) {
+          const [w] = await h.scratch.owner<{ n: number }[]>`
+            select count(*)::int as n from pg_stat_activity
+            where datname = current_database() and wait_event_type = 'Lock' and wait_event = 'advisory'`;
+          if (w!.n >= 2) return;
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        throw new Error('the index never waited on the team’s write lock');
+      },
+    );
+    expect(waited).toBe(true);
+    const [stored] = answer;
+    const page = await indexing!;
+    const receipt = stored!.details as { receivedAt: string; indexVersion: number };
+    // The times can't tell: the receipt's is before the index was worked out, and the index left the
+    // change out.
+    expect(new Date(receipt.receivedAt).getTime()).toBeLessThan(page.generatedAt.getTime());
+    expect(page.primaryOf(patient)).toBe(presetId('flag.low'));
+    // The counter does: the index's, read before its entries, is below the receipt's.
+    expect(page.counter).toBeLessThan(receipt.indexVersion);
+    // The next index holds the change, at or above the receipt's counter.
+    const next = await indexPage();
+    expect(next.counter).toBeGreaterThanOrEqual(receipt.indexVersion);
+    expect(next.primaryOf(patient)).toBe(presetId('flag.high'));
   });
 
   it('dates a receipt and the team index on one clock, the database’s, whatever the API’s says', async () => {
