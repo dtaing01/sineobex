@@ -21,7 +21,7 @@
 | Phone | Every box a note form types in is private (no suggestions, autocorrect or learned words), its selection menu holds only cut, copy, paste and select all, and a copy is said under it as a live region ("Copied. It clears in 60 seconds.", exact on iOS; on Android, from Android 10, the clip clears once the app is back in front if the minute ended in the background, and never if Android ended the app first: lifecycle 10.2); a date is typed in three such boxes (or picked on the calendar), every date the phone takes, a referral's and a problem's onset date included, and a time picked on the dial. A refused date, a refused pick, a number's range, a text's limit and what one-tap Normal did are said once, never per keystroke; a field's label is heard before its help; a section's header is a heading; a chip's state comes from its selected flag, and a picked choose-one chip says that a tap clears it | `apps/mobile/test/features/forms/` |
 | Portal | Each patient page (search, profile, ID card panel, corrections, history, reviews, duplicates queue and pair, merges, problem reversals) passes axe in the three themes and reflows at 320 px; keyboard-only decisions; error summaries take focus | `apps/portal/e2e/{patients,corrections,id-card,duplicates,problems}.spec.ts` |
 | Portal | Each phase 4 page (a visit page in every state it comes back with, the patient page's timeline, the co-sign and attestation queues, Notes not complete) passes axe in the three themes and reflows at 320 px, long typed text in a note's recap, its addenda and a referral included. A refusal, a dropped connection and a failed Show earlier visits take focus each time they come, and a second identical one is said again; the notice a whole load brings back after Co-sign, Attest, Assign or `/reauth` is a status region that takes focus as the page opens; a button stays off, reading Working…, while the next page loads; Assign comes back at its note's form after `/reauth`; link names tell two rows of one note type apart. The one state not drawn end to end, Assign with nobody to offer, is held by a server-render test (`AssignForm.test.ts`), so axe and the 320 px check don't run on it | `apps/portal/e2e/{encounters,attestation,a11y}.spec.ts` |
-| Portal | Each phase 5 page (the presets hub, categories, items, bundles, flags, condition supplies, bag minimums, note types and the note type editor, field supplies, and on the patient page the flag pills, the Flags panel and the search's flag filters) passes axe in the three themes and reflows at 320 px. A heading or a list item breaks a word longer than its line, and only such a word, so a preset named as medications are ("Demo: Medroxyprogesterone 150 mg") never pushes its page sideways, at 320 px or with WCAG 1.4.12 text spacing; a history keeps its words whole. A form keeps focus on its button while it sends and says its done message at each answer; a refusal's summary takes focus; the Flags panel's refusal of a change that changes nothing says what the page knew when it opened, with Reload the page reached by keyboard from the alert; Hide and Show again name what a press does | `apps/portal/e2e/{presets,presets-pages,note-types,patient-flags,a11y}.spec.ts` |
+| Portal | Each phase 5 page (the presets hub, categories, items, bundles, flags, condition supplies, bag minimums, note types and the note type editor, field supplies, and on the patient page the flag pills, the Flags panel and the search's flag filters) passes axe in the three themes and reflows at 320 px. A heading or a list item breaks a word longer than its line, and only such a word, so a preset named as medications are ("Demo: Medroxyprogesterone 150 mg") never pushes its page sideways, at 320 px or with WCAG 1.4.12 text spacing; a history and an update's review keep their words whole, their lists included, and scroll in their own group (phase 5's second verification, VR5). A form keeps focus on its button while it sends and says its done message at each answer; a refusal's summary takes focus; the Flags panel's refusal of a change that changes nothing says what the page knew when it opened, with Reload the page reached by keyboard from the alert; Hide and Show again name what a press does | `apps/portal/e2e/{presets,presets-pages,note-types,patient-flags,a11y}.spec.ts` |
 | Portal | Four pages outside phase 5 (Phones, Team members, a member's page and the owner console), which scrolled sideways at 320 px until phase 5's verification found them, pass axe in the three themes at 320 px and reflow at 320 px, with text spacing there and at 640 px, with no table word split that would fit its line | `apps/portal/e2e/{phones,admin,a11y}.spec.ts` (`expectReflowWithSpacing`, `apps/portal/e2e/helpers.ts`) |
 
 ## Known gaps
@@ -46,16 +46,21 @@
   verification). On the Team members pages a credential's or a custom role's select takes its
   column's width, as the page reflows; at 320 px, and sooner with text spacing, an option longer
   than that is cut in the closed select, as a native select draws it. Its picker shows every option
-  whole, and a screen reader reads the value whole. The other way, the select at its own width, is
-  the page scrolling sideways, which was the failure fixed. A later phase may replace these selects
-  with radio groups.
+  whole, and a screen reader reads the value whole. Measured on the invite form at 320 px with text
+  spacing, "No clinical credential" needs 202 px in a 162 px box, and the longest credential is cut
+  at 320 px without spacing too (the second verification, VR7). The other way, the select at its
+  own width, is the page scrolling sideways, which was the failure fixed. A later phase may replace
+  these selects with radio groups.
 - **The phone's focus look is faint.** It measures 1.16:1 to 1.63:1 against the surface in the
   three themes (phase 5's verification, VX4), where WCAG 1.4.11 asks 3:1 of a focus indicator that
   is the only sign of focus. A focus ring for the whole app is its own unit, before phase 11's
   accessibility pass (`IMPLEMENTATION_PLAN.md`, risk 15).
-- **Stacked tables split short words.** The portal's stacked table pattern breaks a cell's words
-  anywhere, so a long value in one column can split short words in the others: the duplicates
-  queue at 640 to 1024 px, and Notes not complete at 640 px with text spacing. The page never
+- **Table cells split short words.** The portal's stacked table pattern breaks a cell's words
+  anywhere, as do other tables' cells in columns, so a long value in one column can split short
+  words in the others. Phase 5's second verification measured it on seven pages (VR6): the
+  duplicates queue and a duplicate pair at 640 to 1024 px, the attestation and co-sign queues at
+  640 px with text spacing, Patients and a patient's page up to 1280 px with text spacing, and a
+  patient's history; and Notes not complete splits at 640 px with text spacing. The page never
   scrolls sideways. The Flags history's fix (cells wrap at spaces, free text anywhere), which the
   Phones page and a member's history took in phase 5, is the remedy, in phase 6's first unit
   (`IMPLEMENTATION_PLAN.md`, risk 14).
