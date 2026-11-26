@@ -9,6 +9,7 @@ import 'package:sineobex_field/design/tokens.dart' show FieldFonts, FieldTheme;
 import 'package:sineobex_field/features/patients/flag_sheet.dart' show conditionsDoneAction;
 import 'package:sineobex_field/features/patients/patient_row.dart' show PatientRow;
 import 'package:sineobex_field/features/patients/patients_screen.dart';
+import 'package:sineobex_field/patients/team_index.dart' show IndexRemoval;
 import 'package:sineobex_field/sync/entities.dart' show entityAudit, entityFlagChange;
 import 'package:sineobex_field/sync/local_store.dart';
 
@@ -327,8 +328,13 @@ void main() {
     };
 
     /// Three patients on the team's list: Quill with High, Quillon with Medium and Frost risk, and
-    /// Quillan with Pregnancy (sensitive) and Frost risk.
-    Future<AppHarness> listWithFlags(WidgetTester tester, {Run? run, List<String>? permissions}) async {
+    /// Quillan with Pregnancy (sensitive) and Frost risk; and [moreWithFrost] more with Frost risk.
+    Future<AppHarness> listWithFlags(
+      WidgetTester tester, {
+      Run? run,
+      List<String>? permissions,
+      int moreWithFrost = 0,
+    }) async {
       final h = await signIn(
         tester,
         theme: run?.theme,
@@ -359,6 +365,9 @@ void main() {
       set(quillon, frost);
       set(quillan, pregnancy);
       set(quillan, frost);
+      for (var i = 0; i < moreWithFrost; i++) {
+        set(h.server.seedPatient(preferredName: 'Demo Round $i'), frost);
+      }
       await syncAndRefresh(tester, h);
       h.server.offline = true;
       await openPatientsTab(tester);
@@ -811,6 +820,65 @@ void main() {
       expect(find.textContaining('found on this phone', skipOffstage: false), findsNothing);
       await expectScreenOk(tester);
     });
+
+    // Review finding VX1: the list's own read was the first to find the index more than 7 days old,
+    // and the index's going, which cleared the filters and their list inside that read, was undone
+    // by the read putting its list back: the list, or "No one found on this phone.", stayed with no
+    // filter left to clear it.
+    for (final way in ['another level chosen', 'Show more', 'the box cleared under the filter']) {
+      testWidgets('the flag list goes when its own read finds the index expired: $way, offline', (tester) async {
+        final more = way == 'Show more';
+        final h = await listWithFlags(tester, moreWithFrost: more ? 53 : 0);
+        h.patients.patients.saveDraft({'preferredName': 'Demo Wren'});
+        final store = h.sync.store!;
+        if (more) {
+          await chooseInDialog(tester, 'Conditions', ['Blue · Demo: Frost risk'], done: true);
+          await expectShown(tester, find.text('50 patients found on this phone'));
+          final list = find.byType(Scrollable).first;
+          for (var i = 0; i < 40; i++) {
+            await tester.drag(list, const Offset(0, -1000));
+            await tester.pump();
+          }
+          await tester.pumpAndSettle();
+        } else {
+          await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+          await expectShown(tester, find.text('1 patient found on this phone'));
+        }
+        if (way == 'the box cleared under the filter') {
+          await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Demo');
+          await tester.pump(const Duration(milliseconds: 700));
+          await settle(tester);
+          await expectShown(tester, find.text('1 patient found on this phone'));
+        }
+        final before = searchedEntries(store).length;
+        // Eight days on, with nothing else checking the index first.
+        h.wall = h.wall.add(const Duration(days: 8));
+        h.boot.advance(const Duration(days: 8));
+        switch (way) {
+          case 'another level chosen':
+            await tapOn(tester, find.text('Risk level: Yellow · Demo: Medium'));
+            await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text('Red · Demo: High')));
+            await settle(tester);
+          case 'Show more':
+            await enterOn(tester, find.text('Show more'));
+          default:
+            await tester.enterText(find.byKey(const ValueKey('phi.search')), '');
+            await settle(tester);
+        }
+        expect(h.patients.index.state.removed, IndexRemoval.expired);
+        expect(find.textContaining('found on this phone', skipOffstage: false), findsNothing);
+        expect(find.byType(PatientRow, skipOffstage: false), findsNothing);
+        expect(find.byType(ChosenFilterChip, skipOffstage: false), findsNothing);
+        expect(find.text('Show more', skipOffstage: false), findsNothing);
+        // The empty state again, read and logged once, as each showing of it is; the list's read
+        // found no index, so it logged nothing.
+        await expectShown(tester, find.text('Continue the patient you were adding?'));
+        expect([for (final e in searchedEntries(store).sublist(before)) e['source']], ['cache']);
+        // Someone on Show more, which went with the list, is put on the filter row's first control.
+        if (more) expectFocusOn(ActionChip, 'Born');
+        await expectScreenOk(tester);
+      });
+    }
 
     // Note 2 of the second part: an archived flag a patient carries says so beside its pill, as a
     // status chip (flag_pill.dart has no archived state), on the list's row as on the profile.

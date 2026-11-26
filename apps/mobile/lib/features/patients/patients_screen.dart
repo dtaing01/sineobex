@@ -300,7 +300,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   /// Show more under the flag list: the next page of who carries the flags, one list of its own,
   /// audited as what it adds (TeamIndex.withFlags). For someone on the button, which goes at the last
   /// page, focus goes to the first row the page added, or with none added to the last row, where the
-  /// button was.
+  /// button was; with the list gone with the index, to Born, the first of the filter row.
   void _moreFlagged() {
     final follow = focusFollows(context, _moreFocus);
     final before = _flagged?.length ?? 0;
@@ -309,13 +309,20 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
       final shown = _flagged ?? const <FoundPatient>[];
       _focusRow = follow && shown.isNotEmpty ? shown[math.min(before, shown.length - 1)].patientId : null;
     });
-    _focusAfterFrame(follow, [_rowFocus]);
+    _focusAfterFrame(follow, [if (_focusRow != null) _rowFocus, _node('born')]);
   }
 
   void _nextFlagged() {
-    final shown = _flagged ?? const <FoundPatient>[];
     try {
-      final page = _s.index.withFlags(riskLevel: _riskFilter, conditions: _conditionFilter, after: shown.length);
+      final page = _s.index.withFlags(
+        riskLevel: _riskFilter,
+        conditions: _conditionFilter,
+        after: _flagged?.length ?? 0,
+      );
+      // The read itself can find the index expired: its going clears the filters and their list
+      // ([_indexChanged]) before the read returns, and that clearing stands (review finding VX1).
+      if (!_filtering) return;
+      final shown = _flagged ?? const <FoundPatient>[];
       final listed = {for (final p in shown) p.patientId};
       _flagged = [
         ...shown,
