@@ -708,6 +708,37 @@ void main() {
       expect(rowOf('Demo Quill'), findsOneWidget);
     });
 
+    // Review finding X1: once the index went, the list a filter gave from it stayed on the tab, under
+    // "The patient list was removed from this phone", with no filter left to clear it.
+    testWidgets('the flag list goes with the index, its filter with it, and the tab shows its empty state again', (
+      tester,
+    ) async {
+      final h = await listWithFlags(tester);
+      h.patients.patients.saveDraft({'preferredName': 'Demo Wren'});
+      await chooseInDialog(tester, 'Risk level', ['Yellow · Demo: Medium']);
+      await expectShown(tester, find.text('1 patient found on this phone'));
+      expect(find.text('Continue the patient you were adding?'), findsNothing);
+      final store = h.sync.store!;
+      final before = searchedEntries(store).length;
+      h.patients.index.notPermitted();
+      await settle(tester);
+      expect(find.textContaining('found on this phone', skipOffstage: false), findsNothing);
+      expect(find.byType(PatientRow, skipOffstage: false), findsNothing);
+      expect(find.text('Risk level: Yellow · Demo: Medium', skipOffstage: false), findsNothing);
+      // The empty state, read again as each showing of it is: the draft's banner, and the charts
+      // opened on this phone, logged as shown.
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+      expect([for (final e in searchedEntries(store).sublist(before)) e['source']], ['cache']);
+      // Typing and clearing the box keeps it.
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'x');
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), '');
+      await settle(tester);
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+      expect(find.textContaining('found on this phone', skipOffstage: false), findsNothing);
+      await expectScreenOk(tester);
+    });
+
     // Note 2 of the second part: an archived flag a patient carries says so beside its pill, as a
     // status chip (flag_pill.dart has no archived state), on the list's row as on the profile.
     testWidgets('an archived risk level a patient carries says so beside its pill, offline', (tester) async {
