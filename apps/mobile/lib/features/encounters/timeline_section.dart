@@ -289,14 +289,15 @@ class _RowCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.field;
-    // The tap is on this node itself, so Switch Access and Voice Access can activate it.
+    // One node for the row, read as [spoken] alone: the InkWell's tap and focus join it, so Switch
+    // Access and Voice Access can activate it, and a screen reader is told when focus moves to it, as
+    // Show earlier visits moves it (review finding VX2). Its words are excluded, not the InkWell's
+    // semantics.
     return Semantics(
       container: true,
       button: true,
       label: spoken,
       hint: hint,
-      excludeSemantics: true,
-      onTap: onOpen,
       child: Material(
         color: c.surface,
         shape: RoundedRectangleBorder(
@@ -307,11 +308,13 @@ class _RowCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(FieldRadius.md),
           focusNode: focusNode,
           onTap: onOpen,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: FieldTap.large),
-            child: Padding(
-              padding: const EdgeInsets.all(FieldSpace.s3),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+          child: ExcludeSemantics(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: FieldTap.large),
+              child: Padding(
+                padding: const EdgeInsets.all(FieldSpace.s3),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+              ),
             ),
           ),
         ),

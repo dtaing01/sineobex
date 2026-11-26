@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
@@ -563,6 +564,52 @@ void main() {
       final shown = tester.getRect(row);
       expect(shown.top, greaterThanOrEqualTo(0));
       expect(shown.top, lessThan(tester.view.physicalSize.height / tester.view.devicePixelRatio));
+    });
+
+    // Review finding VX2: with a screen reader on, Show more put input focus on the row it named, but
+    // the row's node had none of its InkWell's focus semantics, so the reader was told nothing of it.
+    testWidgets('with a screen reader on, Show more’s first added row is the node marked focused, offline', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final h = await listWithFlags(tester, moreWithFrost: 53);
+      await chooseInDialog(tester, 'Conditions', ['Blue · Demo: Frost risk'], done: true);
+      await expectShown(tester, find.text('50 patients found on this phone'));
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        accessibleNavigation: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final list = find.byType(Scrollable).first;
+      for (var i = 0; i < 40; i++) {
+        await tester.drag(list, const Offset(0, -1000));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      // As a screen reader activates it: its tap action, with keyboard focus nowhere near.
+      tester.semantics.tap(find.semantics.byLabel('Show more'));
+      await settle(tester);
+      expect(find.text('Show more'), findsNothing, reason: 'the last page');
+      final added = searchedEntries(h.sync.store!).last['patientIds']! as List<Object?>;
+      expect(added, hasLength(5));
+      final first = find.byWidgetPredicate((w) => w is PatientRow && w.patient.patientId == added.first);
+      expect(
+        tester.getSemantics(first),
+        isSemantics(isButton: true, hasTapAction: true, isFocusable: true, isFocused: true),
+      );
+      // The one node marked focused, read as the row is.
+      final marked = find.semantics.byPredicate((n) => n.flagsCollection.isFocused == Tristate.isTrue);
+      expect([for (final n in marked.evaluate()) n.label], [tester.getSemantics(first).label]);
+      final rows = find.byType(PatientRow).evaluate().toList();
+      expect(rows, isNotEmpty);
+      for (final row in rows) {
+        expect(
+          tester.getSemantics(find.byWidget(row.widget)),
+          isSemantics(isButton: true, hasTapAction: true, isFocusable: true),
+          reason: 'every row focusable',
+        );
+      }
+      await expectScreenOk(tester);
+      handle.dispose();
     });
 
     // Review finding X2: a filter chosen swapped its chooser for a chip, and focus went with the
