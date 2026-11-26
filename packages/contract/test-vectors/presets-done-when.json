@@ -221,7 +221,7 @@
             "action": "patient_flag.changed",
             "count": 1,
             "inTheWriteTransaction": true,
-            "details": { "action": "set", "tier": "secondary", "flagId": "frostRisk" },
+            "details": { "action": "set", "tier": "secondary" },
             "holdsTheReason": false
           }
         },
