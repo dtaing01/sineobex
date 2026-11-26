@@ -902,7 +902,10 @@ void main() {
       expect(p.store.outbox(), isEmpty, reason: 'the stored receipt, naming the hash the phone sent, confirms it');
     });
 
-    test('a held answer naming another hash lets go of nothing: the change stays on the phone', () async {
+    // Verification finding VS4: it was stored as a refusal no one could fix, so it and what followed it
+    // waited for good, though the server held it.
+    test('a held answer naming another hash confirms nothing: the change waits, and its stored receipt '
+        'confirms it', () async {
       server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('encounters.chart');
       final link = _OtherHash(server.transportFor(alex, team));
       final p = behind(link);
@@ -910,8 +913,12 @@ void main() {
       link.armed = true;
       await p.engine.syncAll();
       expect(server.held, hasLength(1), reason: 'the server held it');
-      expect([for (final e in p.store.outbox()) e.recordId], [id], reason: 'never let go of');
+      expect([for (final e in p.store.outbox()) (e.recordId, e.state)], [(id, ChangeState.pending)]);
+      expect(p.store.needsAttention(), isEmpty, reason: 'nothing for the person to fix');
       expect(p.store.inReviewCount(), 0, reason: 'nor counted as held there');
+      await p.engine.syncAll(force: true);
+      expect(p.store.outbox(), isEmpty, reason: 'the stored receipt, naming the hash the phone sent, confirms it');
+      expect(p.store.inReviewCount(), 1);
     });
   });
 
