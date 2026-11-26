@@ -582,6 +582,25 @@ class LocalStore {
 
   void setKv(String key, String value) => _local.kvSet(key, value);
 
+  // ---- what a receipt hook keeps ----
+
+  /// What a receipt hook ([onConfirmed]) kept of [recordId] under [kind] (IDs and times only), or
+  /// null. It goes with its record, whatever deletes the record (local_db.dart `_v4`).
+  String? receiptKept(String recordId, String kind) =>
+      _db.select('SELECT value FROM receipt_kept WHERE record_id = ? AND kind = ?', [
+            recordId,
+            kind,
+          ]).firstOrNull?['value']
+          as String?;
+
+  /// Keeps [value] of [recordId] under [kind], for as long as the record is here: nothing for a record
+  /// the phone doesn't hold.
+  void keepForReceipt(String recordId, String kind, String value) => _db.execute(
+    'INSERT INTO receipt_kept (record_id, kind, value) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM records WHERE id = ?) '
+    'ON CONFLICT (record_id, kind) DO UPDATE SET value = excluded.value',
+    [recordId, kind, value, recordId],
+  );
+
   int _nextSeq() {
     final next = (int.tryParse(kv('seq') ?? '') ?? 0) + 1;
     setKv('seq', '$next');

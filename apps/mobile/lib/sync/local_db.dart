@@ -18,7 +18,7 @@ class LocalDatabase {
   final Database db;
   final String path;
 
-  static const schemaVersion = 3;
+  static const schemaVersion = 4;
 
   /// The oldest SQLite whose FTS5 has the `secure-delete` option (3.42). Without it a deleted
   /// name's trigrams stay in the search table's segments on disk (D29), so v2 refuses to run.
@@ -110,6 +110,7 @@ class LocalDatabase {
       _step(db, _v2, 2);
     }
     if (version < 3 && target >= 3) _step(db, _v3, 3);
+    if (version < 4 && target >= 4) _step(db, _v4, 4);
   }
 
   static void _step(Database db, String sql, int version) {
@@ -320,4 +321,29 @@ CREATE TABLE presets (
   origin_key TEXT,
   body_json  TEXT NOT NULL
 );
+''';
+
+/// Phase 5, additive: what a receipt hook keeps of a record moves out of `kv` into a table keyed by
+/// the record (review finding S2), so it goes with its record on every path that deletes one.
+const _v4 = '''
+-- What a receipt hook (LocalStore.onConfirmed) keeps of one of the records it confirmed, once the
+-- outbox entry that carried it is gone: a flag change's times and held marks, a problem's last status
+-- check. IDs and times only, never a value. Each row goes with its record, whatever deletes it (the
+-- purge, Log out anyway, a chart's going), so nothing of a chart outlives it (D30).
+CREATE TABLE receipt_kept (
+  record_id TEXT NOT NULL REFERENCES records (id) ON DELETE CASCADE,
+  kind      TEXT NOT NULL,
+  value     TEXT NOT NULL,
+  PRIMARY KEY (record_id, kind)
+);
+
+-- The hooks kept these in kv by record before: a record still here keeps its row, and the rest,
+-- whose records went without them, go.
+INSERT INTO receipt_kept (record_id, kind, value)
+  SELECT substr(key, 12), 'flagChange', value FROM kv
+  WHERE substr(key, 1, 11) = 'flagChange.' AND substr(key, 12) IN (SELECT id FROM records);
+INSERT INTO receipt_kept (record_id, kind, value)
+  SELECT substr(key, 13), 'statusCheck', value FROM kv
+  WHERE substr(key, 1, 12) = 'statusCheck.' AND substr(key, 13) IN (SELECT id FROM records);
+DELETE FROM kv WHERE substr(key, 1, 11) = 'flagChange.' OR substr(key, 1, 12) = 'statusCheck.';
 ''';

@@ -151,7 +151,7 @@ class PatientServices extends ChangeNotifier {
   /// check time reads it). Every status set counts, a confirmation of the same status included, so
   /// **Still ongoing** pressed offline checks it at once (section 11, row 21).
   DateTime? _lastChecked(ProblemView problem) {
-    final kept = int.tryParse(store.kv('$_checkedKvPrefix${problem.id}') ?? '');
+    final kept = int.tryParse(store.receiptKept(problem.id, _checkedKind) ?? '');
     final times = [
       ?problem.statusCheckedAt,
       for (final e in store.outbox())
@@ -165,23 +165,18 @@ class PatientServices extends ChangeNotifier {
   /// A status set or confirmation of this phone's that a receipt confirms, applied on the server (not
   /// held for review, nor kept beside another value): its own time is kept, since its outbox entry goes
   /// now, so the problem stays checked until a chart gives the server's time. In the receipt's
-  /// transaction; what it kept of a problem the phone no longer holds goes too.
+  /// transaction, kept with the problem's record, which takes it when it goes.
   void _keepStatusCheck(OutboxEntry e, AcceptedReceipt receipt) {
     if (e.entity != entityProblem || e.op != 'set' || e.field != 'status') return;
     if (receipt.inReview || receipt.server != null) return;
     final at = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
-    final kept = int.tryParse(store.kv('$_checkedKvPrefix${e.recordId}') ?? '');
-    if (kept == null || at > kept) store.setKv('$_checkedKvPrefix${e.recordId}', '$at');
-    store.database.execute(
-      'DELETE FROM kv WHERE substr(key, 1, ${_checkedKvPrefix.length}) = ? '
-      'AND substr(key, ${_checkedKvPrefix.length + 1}) NOT IN (SELECT id FROM records)',
-      [_checkedKvPrefix],
-    );
+    final kept = int.tryParse(store.receiptKept(e.recordId, _checkedKind) ?? '');
+    if (kept == null || at > kept) store.keepForReceipt(e.recordId, _checkedKind, '$at');
   }
 
-  /// Where [_keepStatusCheck] keeps when this phone last checked a problem's status (IDs and times
-  /// only, `kv` by the problem's ID).
-  static const _checkedKvPrefix = 'statusCheck.';
+  /// What [_keepStatusCheck] keeps of a problem: when this phone last checked its status (a time only,
+  /// LocalStore.keepForReceipt).
+  static const _checkedKind = 'statusCheck';
 }
 
 /// For `SyncController(refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: ...))`: makes

@@ -1086,6 +1086,57 @@ void main() {
     });
   });
 
+  // Review finding S2: what the flag hook and the status check hook keep of a record goes with it,
+  // whichever path deletes the record, so nothing of a chart outlives it (D30, D29).
+  group('what a receipt hook keeps goes with its record', () {
+    List<String> keptFor(String recordId) => [
+      for (final r in store().database.select('SELECT kind FROM receipt_kept WHERE record_id = ?', [recordId]))
+        r['kind']! as String,
+    ];
+
+    /// A flag set and a status check confirmed on this phone, for one patient.
+    Future<({String flagChange, String problem})> confirmedWork() async {
+      final p = await openedPatient();
+      final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      final problem = services.problems.add(p, title: 'Demo: cough', status: 'ongoing');
+      await phone.engine.syncAll(force: true);
+      services.problems.confirmStatus(problem);
+      await phone.engine.syncAll(force: true);
+      expect(store().outbox(), isEmpty, reason: 'every change confirmed');
+      expect(
+        [keptFor(id), keptFor(problem)],
+        [
+          ['flagChange'],
+          ['statusCheck'],
+        ],
+      );
+      return (flagChange: id, problem: problem);
+    }
+
+    void expectNothingKept() {
+      expect(store().database.select('SELECT record_id FROM receipt_kept'), isEmpty);
+      expect(
+        store().database.select("SELECT key FROM kv WHERE key LIKE 'flagChange%' OR key LIKE 'statusCheck%'"),
+        isEmpty,
+      );
+    }
+
+    test('at the purge, once the chart is out of use', () async {
+      final w = await confirmedWork();
+      advance(const Duration(hours: 25));
+      store().purge();
+      expect([store().record(w.flagChange), store().record(w.problem)], [null, null]);
+      expectNothingKept();
+    });
+
+    test('at Log out anyway, which deletes the server’s data and keeps local work', () async {
+      final w = await confirmedWork();
+      store().clearServerData();
+      expect([store().record(w.flagChange), store().record(w.problem)], [null, null]);
+      expectNothingKept();
+    });
+  });
+
   group('a patient whose chart the phone doesn’t hold whole: the index’s word (6.1)', () {
     Future<void> indexRefresh() =>
         TeamIndexRefresher(services.index, phone.engine.api, wallNow: () => phone.wall).refresh(RefreshReason.manual);

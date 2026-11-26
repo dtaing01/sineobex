@@ -105,7 +105,7 @@ void main() {
     const columns = {'kind': 0, 'id': 1, 'version': 0, 'state': 0, 'origin_key': 0, 'body_json': 0};
     int count(Database db, String table) => db.select('SELECT count(*) AS n FROM $table').first['n']! as int;
 
-    test('a version 2 file opens at version 3 with its work kept and an empty presets table', () {
+    test('a version 2 file opens with its work kept and an empty presets table', () {
       const patient = 'c0000000-0000-4000-8000-00000000000c';
       final v2 = openRaw(path);
       LocalDatabase.migrate(v2, target: 2);
@@ -130,8 +130,7 @@ void main() {
 
       final db = LocalDatabase.open(path, key);
       addTearDown(db.close);
-      expect(LocalDatabase.schemaVersion, 3);
-      expect(version(db.db), 3);
+      expect(version(db.db), LocalDatabase.schemaVersion);
       // The work and the server copies it held are as they were.
       expect([count(db.db, 'outbox'), count(db.db, 'records'), count(db.db, 'team_index')], [1, 1, 1]);
       expect([db.kvGet('seq'), db.kvGet('index.version')], ['1', '7.idx1']);
@@ -146,11 +145,79 @@ void main() {
       expect(store.outbox().map((e) => e.changeId), ['c1']);
     });
 
-    test('a new file is made at version 3 with the presets table', () {
+    test('a new file is made with the presets table', () {
       final db = LocalDatabase.open(path, key);
       addTearDown(db.close);
-      expect(version(db.db), 3);
+      expect(version(db.db), LocalDatabase.schemaVersion);
       expect(presetColumns(db.db), columns);
+    });
+  });
+
+  // Review finding S2: what a receipt hook keeps of a record lives in a table keyed by the record,
+  // and goes with it, whichever path deletes the record.
+  group('what a receipt hook keeps (v4)', () {
+    const held = 'f0000000-0000-4000-8000-000000000001';
+    const gone = 'f0000000-0000-4000-8000-000000000002';
+    const problem = 'f0000000-0000-4000-8000-000000000003';
+    const goneProblem = 'f0000000-0000-4000-8000-000000000004';
+
+    void insertRecord(Database db, String id, String entity) => db.execute(
+      'INSERT INTO records (id, entity, status, attributes_json, open, origin, created_at, updated_at) '
+      "VALUES (?, ?, 'active', '{}', 0, 'server', 0, 0)",
+      [id, entity],
+    );
+    List<List<Object?>> keptRows(Database db) => [
+      for (final r in db.select('SELECT record_id, kind, value FROM receipt_kept ORDER BY record_id, kind'))
+        [r['record_id'], r['kind'], r['value']],
+    ];
+
+    test('a version 3 file moves the kept rows of the records it holds, and drops the rest', () {
+      final v3 = openRaw(path);
+      LocalDatabase.migrate(v3, target: 3);
+      expect(version(v3), 3);
+      insertRecord(v3, held, 'patient_flag_change');
+      insertRecord(v3, problem, 'problem');
+      v3.execute('INSERT INTO kv (key, value) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?)', [
+        'flagChange.$held',
+        '{"at":1,"receivedAt":2}',
+        'flagChange.$gone',
+        '{"at":3,"receivedAt":4}',
+        'statusCheck.$problem',
+        '5',
+        'statusCheck.$goneProblem',
+        '6',
+        'seq',
+        '7',
+      ]);
+      v3.close();
+
+      final db = LocalDatabase.open(path, key);
+      addTearDown(db.close);
+      expect(version(db.db), 4);
+      expect(keptRows(db.db), [
+        [held, 'flagChange', '{"at":1,"receivedAt":2}'],
+        [problem, 'statusCheck', '5'],
+      ]);
+      expect([for (final r in db.db.select('SELECT key FROM kv ORDER BY key')) r['key']], ['seq']);
+    });
+
+    test('a kept row goes with its record, by the cascade, and a record can’t gain one it doesn’t hold', () {
+      final db = LocalDatabase.open(path, key);
+      addTearDown(db.close);
+      insertRecord(db.db, held, 'patient_flag_change');
+      insertRecord(db.db, problem, 'problem');
+      db.db
+        ..execute("INSERT INTO receipt_kept (record_id, kind, value) VALUES (?, 'flagChange', '{}')", [held])
+        ..execute("INSERT INTO receipt_kept (record_id, kind, value) VALUES (?, 'statusCheck', '1')", [problem]);
+      db.db.execute('DELETE FROM records WHERE id = ?', [held]);
+      expect(keptRows(db.db), [
+        [problem, 'statusCheck', '1'],
+      ]);
+      expect(
+        () => db.db.execute("INSERT INTO receipt_kept (record_id, kind, value) VALUES (?, 'flagChange', '{}')", [gone]),
+        throwsA(isA<SqliteException>()),
+        reason: 'the record must be here',
+      );
     });
   });
 

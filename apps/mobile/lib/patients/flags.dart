@@ -457,15 +457,14 @@ class PatientFlags {
   void install() => store.onConfirmed.add(_onConfirmed);
 
   /// What the phone keeps of a flag change of its own once a receipt confirms it, in the receipt's
-  /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, in `kv`;
-  /// never a flag or a reason): the change's own time, as the server's `when` reads it (the corrected
+  /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, kept with
+  /// the record, which takes them when it goes; never a flag or a reason): the change's own time, as the server's `when` reads it (the corrected
   /// time, else the device's); when the receipt came, by the corrected clock; the server's times as
   /// it stored them, which its answer carries and a retry answers the same (when it received the
   /// change, a held one's hold time, and the time a taken one is ordered by); for each mark the
   /// server holds for a Program Admin, the mark's change, so it is told from a held create of the
   /// same change; and whether a later mark was taken, which a held one's fate no longer decides.
-  /// [_read] dates a confirmed change by them until a chart gives the server's time. What it kept of
-  /// a change the phone no longer holds goes here too.
+  /// [_read] dates a confirmed change by them until a chart gives the server's time.
   void _onConfirmed(OutboxEntry e, AcceptedReceipt receipt) {
     if (e.entity != entityFlagChange) return;
     final kept = {...?_kept(e.recordId)};
@@ -486,18 +485,13 @@ class PatientFlags {
     } else {
       return;
     }
-    store.setKv('$_keptKvPrefix${e.recordId}', jsonEncode(kept));
-    store.database.execute(
-      'DELETE FROM kv WHERE substr(key, 1, ${_keptKvPrefix.length}) = ? '
-      'AND substr(key, ${_keptKvPrefix.length + 1}) NOT IN (SELECT id FROM records)',
-      [_keptKvPrefix],
-    );
+    store.keepForReceipt(e.recordId, _keptKind, jsonEncode(kept));
   }
 
   /// What [_onConfirmed] kept of the flag change [recordId]; null for none (one not confirmed yet,
   /// one made on another phone, or one confirmed by a version of the app that kept nothing).
   Map<String, Object?>? _kept(String recordId) {
-    final raw = store.kv('$_keptKvPrefix$recordId');
+    final raw = store.receiptKept(recordId, _keptKind);
     if (raw == null) return null;
     final value = jsonDecode(raw);
     return value is Map<String, Object?> ? value : null;
@@ -945,9 +939,9 @@ const flagsClockPaused = 'Flags can be changed once the phone’s clock is right
 
 const _manageUsers = 'team.manage_users';
 
-/// Where [PatientFlags] keeps what a receipt confirms of a flag change of this phone's (IDs and times
-/// only, `kv` by the flag change's ID), and its keys.
-const _keptKvPrefix = 'flagChange.';
+/// What [PatientFlags] keeps of a flag change of this phone's once a receipt confirms it (IDs and
+/// times only, kept with the record, LocalStore.keepForReceipt), and its keys.
+const _keptKind = 'flagChange';
 const _keptAt = 'at';
 const _keptReceivedAt = 'receivedAt';
 const _keptServerReceivedAt = 'serverReceivedAt';
