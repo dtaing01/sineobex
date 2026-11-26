@@ -592,6 +592,14 @@ export const ID_TAKEN = {
 } as const;
 
 /**
+ * A copy refused id_taken of a section an earlier version held and the current one hid: named in
+ * the words of the newest version that had it, which Show again brings back as it was (item 10).
+ */
+export function idTakenHidden(words: string): string {
+  return `This note type held this section before, as “${words}”, so it can’t be copied in again. Show it again instead, under Hidden in a published version.`;
+}
+
+/**
  * A Publish sent again after its connection dropped, refused stale (D115): a version newer than the
  * one the editor opened is live, which may be that Publish, whose answer was lost on the way.
  */

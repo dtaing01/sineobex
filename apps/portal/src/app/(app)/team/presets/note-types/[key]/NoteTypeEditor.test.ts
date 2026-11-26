@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { NoteTypeDefinition, NoteTypeRow } from '@/lib/presets';
-import { ID_TAKEN, liveAfterDrop } from '@/lib/refusals';
+import { ID_TAKEN, idTakenHidden, liveAfterDrop } from '@/lib/refusals';
 import {
   answerKind,
   copyTakenWords,
@@ -71,10 +71,10 @@ const row: NoteTypeRow = {
   copySections: definition.sections.map((s) => ({ id: s.id, title: s.title })),
 };
 
-const draw = () =>
+const draw = (over: Partial<NoteTypeRow> = {}) =>
   renderToStaticMarkup(
     createElement(NoteTypeEditor, {
-      row,
+      row: { ...row, ...over },
       titles: {},
       sources: [
         { key: 'outreach', title: 'Demo: Outreach', sections: [{ id: 'outreach', title: 'Demo: Contact' }] },
@@ -121,6 +121,44 @@ describe('the note type editor, as first drawn', () => {
     const title = html.slice(html.indexOf('id="note-type-title"'), html.indexOf('id="held-heading"'));
     expect(title).toContain('Demo: Evening round');
     expect(title).toMatch(/>Rename<span class="sr-only"> the note type<\/span>/);
+  });
+});
+
+describe('what a published version hid (item 10, design 5.4’s Show again)', () => {
+  const hidden: NoteTypeRow['hidden'] = [
+    { kind: 'section', path: 'water', words: 'Demo: Water', showAgain: true },
+    { kind: 'field', path: 'needs.old_notes', words: 'Demo: Old notes', showAgain: true },
+    // Inside a hidden section: it comes back with it, so it is not offered on its own.
+    { kind: 'field', path: 'water.cups', words: 'Demo: Cups', showAgain: false },
+    // A retired answer: no operation brings one back.
+    { kind: 'option', path: 'needs.given', code: 'water', words: 'Demo: Water bottle', showAgain: false },
+  ];
+
+  it('offers Show again for each part the API says it can copy back, in the words of the newest version that had it', () => {
+    const html = draw({ hidden });
+    const panel = html.slice(html.indexOf('id="hidden-parts"'));
+    expect(panel).toContain('Hidden in a published version');
+    expect(panel).toMatch(/>Show again<span class="sr-only"> the section “Demo: Water”<\/span>/);
+    expect(panel).toMatch(/>Show again<span class="sr-only"> the field “Demo: Old notes”<\/span>/);
+    // A field is named with the section it goes back into.
+    expect(panel).toContain('The field “Demo: Old notes” in “Demo: Needs”');
+    expect(panel).not.toContain('Demo: Cups');
+    expect(panel).not.toContain('Demo: Water bottle');
+  });
+
+  it('draws nothing of it for a note type whose published versions hid nothing it can show again', () => {
+    expect(draw()).not.toContain('Hidden in a published version');
+    expect(draw({ hidden: hidden.slice(2) })).not.toContain('Hidden in a published version');
+  });
+
+  it('says a copy refused id_taken of a section it hid as that section, in its words, and to show it again', () => {
+    expect(copyTakenWords(definition.sections, 'water', hidden)).toBe(idTakenHidden('Demo: Water'));
+    expect(idTakenHidden('Demo: Water')).toBe(
+      'This note type held this section before, as “Demo: Water”, so it can’t be copied in again. Show it again instead, under Hidden in a published version.',
+    );
+    // One it holds now, and one it held but can't show again by itself, as before.
+    expect(copyTakenWords(definition.sections, 'needs', hidden)).toBe(ID_TAKEN.now);
+    expect(copyTakenWords(definition.sections, 'elsewhere', hidden)).toBe(ID_TAKEN.before);
   });
 });
 

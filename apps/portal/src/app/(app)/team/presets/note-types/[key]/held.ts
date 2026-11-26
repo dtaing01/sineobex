@@ -1,5 +1,5 @@
-import type { NoteTypeEdit, NoteTypeField, NoteTypeOption, NoteTypeSection } from '@/lib/presets';
-import { ID_TAKEN } from '@/lib/refusals';
+import type { HiddenPart, NoteTypeEdit, NoteTypeField, NoteTypeOption, NoteTypeSection } from '@/lib/presets';
+import { ID_TAKEN, idTakenHidden } from '@/lib/refusals';
 
 /**
  * What the note type editor holds until Publish (phase 5 design 5.4, 8.1): each change the person
@@ -42,6 +42,13 @@ export function heldRename(held: readonly HeldOp[], path: string): HeldOp | unde
 export function heldHide(held: readonly HeldOp[], path: string): HeldOp | undefined {
   return held.find(
     (h) => is(h, 'set_hidden') && valueOf(h, 'path') === path && valueOf(h, 'hidden') === true,
+  );
+}
+
+/** The held Show again of a part a published version hid, by its path or id, if any. */
+export function heldShow(held: readonly HeldOp[], path: string): HeldOp | undefined {
+  return held.find(
+    (h) => is(h, 'set_hidden') && valueOf(h, 'path') === path && valueOf(h, 'hidden') === false,
   );
 }
 
@@ -144,8 +151,15 @@ export function answerKind(response: {
 
 /**
  * The words for a copy refused id_taken (design 5.4, rule 3): of a section the version opened holds,
- * that it has it already; else that it held it, or a part of it, before.
+ * that it has it already; of one a published version hid and Show again brings back, that section
+ * in its words, to show again; else that it held it, or a part of it, before.
  */
-export function copyTakenWords(sections: readonly Pick<NoteTypeSection, 'id'>[], sectionId: unknown): string {
-  return sections.some((s) => s.id === sectionId) ? ID_TAKEN.now : ID_TAKEN.before;
+export function copyTakenWords(
+  sections: readonly Pick<NoteTypeSection, 'id'>[],
+  sectionId: unknown,
+  hidden: readonly HiddenPart[] = [],
+): string {
+  if (sections.some((s) => s.id === sectionId)) return ID_TAKEN.now;
+  const was = hidden.find((p) => p.kind === 'section' && p.path === sectionId && p.showAgain);
+  return was ? idTakenHidden(was.words) : ID_TAKEN.before;
 }

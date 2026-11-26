@@ -5,7 +5,14 @@ import { AddField, AddSection } from '@/components/presets/AddField';
 import { CopySection, type CopySource } from '@/components/presets/CopySection';
 import { OptionEditor } from '@/components/presets/OptionEditor';
 import styles from '@/components/presets/presets.module.css';
-import type { NoteTypeEdit, NoteTypeField, NoteTypeRow, NoteTypeSection } from '@/lib/presets';
+import type {
+  HiddenPart,
+  NoteTypeDefinition,
+  NoteTypeEdit,
+  NoteTypeField,
+  NoteTypeRow,
+  NoteTypeSection,
+} from '@/lib/presets';
 import { liveAfterDrop, NOTE_TYPE_SENTENCES } from '@/lib/refusals';
 import {
   answerKind,
@@ -13,6 +20,7 @@ import {
   domId,
   heldHide,
   heldRename,
+  heldShow,
   heldTitle,
   kindOf,
   newFieldKind,
@@ -418,6 +426,82 @@ function TitleBlock({ title, acts }: { title: string; acts: PartActs }) {
   );
 }
 
+/** Where a field a published version hid goes back: its section's title and its groups' labels. */
+function placeWords(definition: NoteTypeDefinition, path: string): string {
+  const [sectionId, ...ids] = path.split('.');
+  const section = definition.sections.find((s) => s.id === sectionId);
+  const words = section ? [section.title] : [];
+  let fields: readonly NoteTypeField[] = section?.fields ?? [];
+  for (const id of ids.slice(0, -1)) {
+    const group = fields.find((f) => f.id === id);
+    if (!group) break;
+    words.push(group.label);
+    fields = group.fields ?? [];
+  }
+  return words.join(': ');
+}
+
+/**
+ * What a version already published hid (design 5.4's Show again; item 10): each section or field the
+ * API says set_hidden would copy back now, in the words of the newest version that had it, with Show
+ * again, held until Publish as every change is, and Keep it hidden to take that back. A part inside a
+ * hidden one comes back with it, and a retired answer with nothing, so neither is offered.
+ */
+function HiddenParts({
+  hidden,
+  definition,
+  acts,
+}: {
+  hidden: readonly HiddenPart[];
+  definition: NoteTypeDefinition;
+  acts: PartActs;
+}) {
+  const offered = hidden.filter((p) => p.showAgain && p.kind !== 'option');
+  if (offered.length === 0) return null;
+  return (
+    <section aria-labelledby="hidden-parts" className="px-panel">
+      <h2 id="hidden-parts" className="px-h2">
+        Hidden in a published version
+      </h2>
+      <p className="sx-help">
+        Show one again to bring it back as it last was, with its answers. Notes already started stay on the
+        version they began on.
+      </p>
+      <ul className={editor.fields}>
+        {offered.map((p) => {
+          const what = p.kind === 'section' ? 'the section' : 'the field';
+          const name = `${what} ${quoted(p.words)}`;
+          const shown = heldShow(acts.held, p.path);
+          return (
+            <li key={`${p.kind} ${p.path}`} className={editor.field}>
+              <span className={editor.fieldName}>
+                {p.kind === 'section'
+                  ? `The section ${quoted(p.words)}`
+                  : `The field ${quoted(p.words)} in ${quoted(placeWords(definition, p.path))}`}
+              </span>
+              {shown && <p className={editor.held}>Shown again when you publish.</p>}
+              <div className={styles.moves}>
+                <button
+                  type="button"
+                  className="sx-btn sx-btn--secondary"
+                  onClick={() =>
+                    shown
+                      ? acts.undo(shown, `Kept hidden: ${name}`)
+                      : acts.hold({ op: 'set_hidden', path: p.path, hidden: false }, `Show again ${name}`)
+                  }
+                >
+                  {shown ? 'Keep it hidden' : 'Show again'}
+                  <span className="sr-only"> {name}</span>
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 /** The editor's context for its parts: what is held, and how to hold and undo a change. */
 export interface EditorContext extends PartActs {
   opened: NoteTypeRow;
@@ -571,7 +655,7 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
       setRefused({
         error:
           answer.code === 'id_taken' && op?.op.op === 'copy_section'
-            ? copyTakenWords(definition.sections, valueOf(op, 'sectionId'))
+            ? copyTakenWords(definition.sections, valueOf(op, 'sectionId'), opened.hidden)
             : answer.error,
         ...(op ? { opId: op.id } : {}),
         ...(answer.noteTypeKey ? { reachedTitle: titles[answer.noteTypeKey] ?? answer.noteTypeKey } : {}),
@@ -743,6 +827,7 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
           after={protectedSections.has(section.id) ? null : <AddField section={section} acts={ctx} />}
         />
       ))}
+      <HiddenParts hidden={opened.hidden} definition={definition} acts={ctx} />
       <AddSection sections={definition.sections} acts={ctx} />
       {sources.length > 0 && <CopySection sources={sources} sections={definition.sections} acts={ctx} />}
     </div>
