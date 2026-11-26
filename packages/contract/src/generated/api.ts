@@ -2438,6 +2438,8 @@ export interface components {
         /** @description A section copy_section can name from this note type */
         NoteTypeCopySection: {
             id: string;
+            /** @description Every id and code the team made (`t_` and a number) that the section holds, at any depth, in the order it writes them: what the note type it is copied into may never have used (id_taken) */
+            made: string[];
             title: string;
         };
         NoteTypeDefinition: {

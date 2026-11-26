@@ -3309,13 +3309,21 @@
           "id": {
             "type": "string"
           },
+          "made": {
+            "description": "Every id and code the team made (`t_` and a number) that the section holds, at any depth, in the order it writes them: what the note type it is copied into may never have used (id_taken)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "title": {
             "type": "string"
           }
         },
         "required": [
           "id",
-          "title"
+          "title",
+          "made"
         ],
         "type": "object"
       },

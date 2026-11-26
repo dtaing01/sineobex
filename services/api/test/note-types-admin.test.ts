@@ -138,7 +138,7 @@ interface NoteTypeRow {
     showAgain: boolean;
     part?: Record<string, unknown>;
   }[];
-  copySections: { id: string; title: string }[];
+  copySections: { id: string; title: string; made: string[] }[];
 }
 
 const spy = logSpy();
@@ -387,10 +387,14 @@ describe('GET /v1/admin/note-types', () => {
       expect(row.update, row.key).toBeNull();
       expect([row.updateOnOffer, row.updateChangesFixed], row.key).toEqual([false, false]);
       // What a copy from it reads: the platform's newest released version of a platform note type,
-      // else its current version (copy_section, design 5.4).
+      // else its current version (copy_section, design 5.4). The platform makes no `t_` id (rule 3).
       const platform = [...PRESETS].filter((p) => p.key === row.key).sort((a, b) => b.version - a.version)[0];
       expect(row.copySections, row.key).toEqual(
-        (platform?.definition ?? row.definition).sections.map((x) => ({ id: x.id, title: x.title })),
+        (platform?.definition ?? row.definition).sections.map((x) => ({
+          id: x.id,
+          title: x.title,
+          made: platform ? [] : expect.any(Array),
+        })),
       );
     }
     // The auto note type is protected whole; Red flags, disposition and follow-up (PRD main 409), said
@@ -443,13 +447,57 @@ describe('GET /v1/admin/note-types', () => {
     expect(edit.status, JSON.stringify(edit.body)).toBe(200);
     const after = await rowOf('general_primary_care', theirs);
     expect(after.definition.sections.map((x) => x.id)).not.toContain(hidden.id);
-    expect(after.copySections).toContainEqual({ id: hidden.id, title: hidden.title });
+    expect(after.copySections).toContainEqual({ id: hidden.id, title: hidden.title, made: [] });
     // A copy of it is the team's own: a copy from it reads its current version.
     const key = (await theirs.create({ title: 'Demo: Our clinic', copyOf: 'general_primary_care' })).body
       .key as string;
     const copy = await rowOf(key, theirs);
-    expect(copy.copySections).toEqual(copy.definition.sections.map((x) => ({ id: x.id, title: x.title })));
+    expect(copy.copySections).toEqual(
+      copy.definition.sections.map((x) => ({ id: x.id, title: x.title, made: [] })),
+    );
     expect(copy.copySections.map((x) => x.id)).not.toContain(hidden.id);
+  });
+
+  it('lists with each section a copy reads the ids and codes the team made in it, which a note type copied into may not hold (item 10)', async () => {
+    const t = await presetsTeam(h, 'Note Types Copy Made');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const key = (await theirs.create({ title: 'Demo: Kit round', copyOf: 'outreach' })).body.key as string;
+    const made = await theirs.publish(key, 1, [
+      {
+        op: 'add_section',
+        title: 'Demo: Kit check',
+        afterSectionId: null,
+        fields: [
+          { kind: 'choice', label: 'Demo: Kit given', many: true, options: ['Demo: Socks', 'Demo: Gloves'] },
+          { kind: 'text', label: 'Demo: What else', lines: 'one', maxLength: 100 },
+        ],
+      },
+      { op: 'add_option', path: 'outreach.support', label: 'Demo: Blanket' },
+    ]);
+    expect(made.status, JSON.stringify(made.body)).toBe(200);
+    const v2 = (await storedAs(key, 2, t.teamId)).definition;
+    const kit = v2.sections[0]!;
+    const [given, other] = kit.fields as unknown as [
+      { id: string; options: { code: string }[] },
+      { id: string },
+    ];
+    const blanket = (
+      v2.sections[1]!.fields.find((f) => f.id === 'support') as { options: { code: string }[] }
+    ).options.at(-1)!.code;
+    const row = await rowOf(key, theirs);
+    // Every id and code the team made in each section, in the order the section writes them: in the
+    // section it added, and the answer it added to the one it copied from the platform's.
+    expect(row.copySections).toEqual([
+      {
+        id: kit.id,
+        title: 'Demo: Kit check',
+        made: [kit.id, given.id, ...given.options.map((o) => o.code), other.id],
+      },
+      ...v2.sections
+        .slice(1)
+        .map((x) => ({ id: x.id, title: x.title, made: x.id === 'outreach' ? [blanket] : [] })),
+    ]);
+    expect([kit.id, given.id, blanket].every((id) => /^t_[0-9]+$/.test(id))).toBe(true);
   });
 
   it('counts the active field supply maps that name each note type', async () => {

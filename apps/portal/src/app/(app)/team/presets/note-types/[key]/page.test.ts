@@ -49,7 +49,7 @@ const row = (key: string, over: Partial<NoteTypeRow> = {}): NoteTypeRow => ({
   definition: definition(key),
   protected: { whole: false, sections: [], fields: [], options: [] },
   hidden: [],
-  copySections: [{ id: 'notes', title: 'Demo: Notes' }],
+  copySections: [{ id: 'notes', title: 'Demo: Notes', made: [] }],
   ...over,
 });
 

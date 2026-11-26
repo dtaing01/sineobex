@@ -4631,19 +4631,24 @@ class NoteToFinish {
 class NoteTypeCopySection {
   const NoteTypeCopySection({
     required this.id,
+    required this.made,
     required this.title,
   });
 
   final String id;
+  /// Every id and code the team made (`t_` and a number) that the section holds, at any depth, in the order it writes them: what the note type it is copied into may never have used (id_taken)
+  final List<String> made;
   final String title;
 
   factory NoteTypeCopySection.fromJson(Map<String, dynamic> json) => NoteTypeCopySection(
         id: json['id'] as String,
+        made: (json['made'] as List<dynamic>).map((e) => e as String).toList(),
         title: json['title'] as String,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
+        'made': made.map((e) => e).toList(),
         'title': title,
       };
 }

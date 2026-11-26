@@ -576,15 +576,17 @@ const OPERATION_REFUSALS: Readonly<Record<string, string>> = {
   last_section: 'A note type needs one section at least, so its last one can’t be hidden.',
   too_many_fields: 'This note type holds as many fields of your team’s own as it can.',
   too_many_sections: 'This note type holds as many sections of your team’s own as it can.',
-  // Said of a section it no longer holds; one it holds now is said by the editor (ID_TAKEN.now).
-  id_taken: 'This note type has held this section, or parts of it, before, so it can’t be copied in again.',
+  // Said when the editor finds no part to name (copyTakenWords): true of every copy refused id_taken.
+  id_taken:
+    'This note type has, or had before, a part this section would be confused with, so it can’t be copied in. Add the fields you need instead.',
   invalid: 'This change doesn’t fit the rest of the note type, so it can’t be made.',
 };
 
 /**
  * A copy of a section refused id_taken (design 5.4, rule 3): the note type holds that section now, or
  * held it, or a part of it, in an earlier version. Only the editor knows which, from the version it
- * opened, so it says `now` of a section that version holds; the API's sentence is `before`.
+ * opened and the list's hidden parts, so it says `now` of a section that version holds; `before` is
+ * said where it finds no part to name.
  */
 export const ID_TAKEN = {
   now: 'This note type already has this section, so it can’t be copied in again.',
@@ -597,6 +599,21 @@ export const ID_TAKEN = {
  */
 export function idTakenHidden(words: string): string {
   return `This note type held this section before, as “${words}”, so it can’t be copied in again. Show it again instead, under Hidden in a published version.`;
+}
+
+/**
+ * A copy refused id_taken because the section, or a part of it, carries an id or a code a part of
+ * this note type has, or had before (item 10): the team's own parts are numbered within each note
+ * type, so a section made in another of them can bring a number this one gave a part of its own.
+ * That part is named in its words; `whole` when it is the section's own id that it holds.
+ */
+export function idTakenBy(
+  by: { kind: 'section' | 'field' | 'option'; words: string; before: boolean },
+  whole: boolean,
+) {
+  const part = by.kind === 'option' ? 'answer' : by.kind;
+  const has = by.before ? 'had before' : 'has';
+  return `${whole ? 'This section' : 'A part of this section'} would be confused with the ${part} “${by.words}” this note type ${has}, so it can’t be copied in. Add the fields you need instead.`;
 }
 
 /**

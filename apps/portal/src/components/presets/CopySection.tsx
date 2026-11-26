@@ -15,7 +15,8 @@ import styles from './presets.module.css';
 export interface CopySource {
   key: string;
   title: string;
-  sections: readonly Pick<NoteTypeSection, 'id' | 'title'>[];
+  /** With the ids the team made in each, which a refused copy is named by (the editor's words). */
+  sections: readonly (Pick<NoteTypeSection, 'id' | 'title'> & { made: readonly string[] })[];
 }
 
 /**

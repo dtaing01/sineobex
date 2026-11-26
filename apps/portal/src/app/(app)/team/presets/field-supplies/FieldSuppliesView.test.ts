@@ -55,7 +55,7 @@ const noteTypes: NoteTypeRow[] = [
     definition: wound,
     protected: { whole: false, sections: [], fields: [], options: [] },
     hidden: [],
-    copySections: wound.sections.map((s) => ({ id: s.id, title: s.title })),
+    copySections: wound.sections.map((s) => ({ id: s.id, title: s.title, made: [] })),
   },
 ];
 

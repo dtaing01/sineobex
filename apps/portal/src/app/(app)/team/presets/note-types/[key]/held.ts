@@ -1,5 +1,5 @@
 import type { HiddenPart, NoteTypeEdit, NoteTypeField, NoteTypeOption, NoteTypeSection } from '@/lib/presets';
-import { ID_TAKEN, idTakenHidden } from '@/lib/refusals';
+import { ID_TAKEN, idTakenBy, idTakenHidden } from '@/lib/refusals';
 
 /**
  * What the note type editor holds until Publish (phase 5 design 5.4, 8.1): each change the person
@@ -149,17 +149,70 @@ export function answerKind(response: {
   return response.contentType?.includes('json') ? 'answer' : 'unknown';
 }
 
+/** What a copied section brings, as the list reads it from its note type (`copySections`). */
+export interface CopiedSection {
+  id: string;
+  title: string;
+  /** The ids and codes the team made in it, its own id among them: what rule 3 checks. */
+  made: readonly string[];
+}
+
+/** Each section's and field's id and each answer's code in `sections`, at any depth, with its words. */
+function partsById(sections: readonly NoteTypeSection[]) {
+  const parts = new Map<string, { kind: 'section' | 'field' | 'option'; words: string }>();
+  const walk = (fields: readonly NoteTypeField[]) => {
+    for (const field of fields) {
+      parts.set(field.id, { kind: 'field', words: field.label });
+      for (const option of field.options ?? [])
+        parts.set(option.code, { kind: 'option', words: option.label });
+      walk(field.fields ?? []);
+    }
+  };
+  for (const section of sections) {
+    parts.set(section.id, { kind: 'section', words: section.title });
+    walk(section.fields);
+  }
+  return parts;
+}
+
+/** A made id is the team's own number (`t_` and a number), never one of the platform's ids. */
+const isMade = (id: string) => /^t_[0-9]+$/.test(id);
+
 /**
- * The words for a copy refused id_taken (design 5.4, rule 3): of a section the version opened holds,
- * that it has it already; of one a published version hid and Show again brings back, that section
- * in its words, to show again; else that it held it, or a part of it, before.
+ * The words for a copy refused id_taken (design 5.4, rule 3). Of the same section (a platform
+ * section's id, or a section of the team's by its id and its title): held by the version opened,
+ * that it has it already; hidden by a published version and offered Show again, that section in its
+ * words, to show again. Else the part of this note type, held now or before, whose id or code the
+ * section would bring (`copied`, as the list reads it), in its words; else that some part is.
  */
 export function copyTakenWords(
-  sections: readonly Pick<NoteTypeSection, 'id'>[],
+  sections: readonly NoteTypeSection[],
   sectionId: unknown,
   hidden: readonly HiddenPart[] = [],
+  copied?: CopiedSection,
 ): string {
-  if (sections.some((s) => s.id === sectionId)) return ID_TAKEN.now;
+  const same = (words: string) => !copied || !isMade(copied.id) || words === copied.title;
+  const own = sections.find((s) => s.id === sectionId);
+  if (own && same(own.title)) return ID_TAKEN.now;
   const was = hidden.find((p) => p.kind === 'section' && p.path === sectionId && p.showAgain);
-  return was ? idTakenHidden(was.words) : ID_TAKEN.before;
+  if (was && same(was.words)) return idTakenHidden(was.words);
+  if (!copied) return ID_TAKEN.before;
+  // Only a made id is ever another part's: a platform section's id is that section's alone.
+  const ids = [...new Set([copied.id, ...copied.made])].filter(isMade);
+  const now = partsById(sections);
+  const before = new Map(
+    hidden.map((p) => [
+      p.kind === 'option' ? p.code! : p.path.split('.').at(-1)!,
+      { kind: p.kind, words: p.words },
+    ]),
+  );
+  for (const [held, isBefore] of [
+    [now, false],
+    [before, true],
+  ] as const)
+    for (const id of ids) {
+      const part = held.get(id);
+      if (part) return idTakenBy({ ...part, before: isBefore }, id === copied.id);
+    }
+  return ID_TAKEN.before;
 }

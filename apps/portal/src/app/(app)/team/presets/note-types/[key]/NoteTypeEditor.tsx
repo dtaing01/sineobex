@@ -659,7 +659,14 @@ export function NoteTypeEditor({ row, titles, sources }: EditorProps) {
       setRefused({
         error:
           answer.code === 'id_taken' && op?.op.op === 'copy_section'
-            ? copyTakenWords(definition.sections, valueOf(op, 'sectionId'), opened.hidden)
+            ? copyTakenWords(
+                definition.sections,
+                valueOf(op, 'sectionId'),
+                opened.hidden,
+                sources
+                  .find((s) => s.key === valueOf(op, 'fromKey'))
+                  ?.sections.find((s) => s.id === valueOf(op, 'sectionId')),
+              )
             : answer.error,
         ...(op ? { opId: op.id } : {}),
         ...(answer.noteTypeKey ? { reachedTitle: titles[answer.noteTypeKey] ?? answer.noteTypeKey } : {}),

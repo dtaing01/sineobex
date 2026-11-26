@@ -2,6 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import {
   hiddenParts,
   isNoteTypeTitle,
+  madeIn,
   protectedParts,
   typeProtected,
   type ResolvedNoteType,
@@ -107,7 +108,14 @@ const NoteTypeHiddenPart = z
   });
 
 const NoteTypeCopySection = z
-  .object({ id: z.string(), title: z.string() })
+  .object({
+    id: z.string(),
+    title: z.string(),
+    made: z.array(z.string()).openapi({
+      description:
+        'Every id and code the team made (`t_` and a number) that the section holds, at any depth, in the order it writes them: what the note type it is copied into may never have used (id_taken)',
+    }),
+  })
   .openapi('NoteTypeCopySection', { description: 'A section copy_section can name from this note type' });
 
 const NoteTypeView = z
@@ -555,7 +563,12 @@ function viewOf(
         ? { ...p, showAgain: false }
         : { ...p, part: p.part as unknown as Record<string, unknown> },
     ),
-    copySections: copySourceOf(held).sections.map(({ id, title }) => ({ id, title })),
+    // With what rule 3 checks of it, so a page can name the part a refused copy would be confused with.
+    copySections: copySourceOf(held).sections.map((s) => ({
+      id: s.id,
+      title: s.title,
+      made: [...madeIn(s)],
+    })),
   };
 }
 

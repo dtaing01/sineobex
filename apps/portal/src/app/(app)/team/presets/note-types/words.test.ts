@@ -51,7 +51,7 @@ describe('what a section can be copied from (design 5.4’s copy_section)', () =
     definition: definition(title, 'Demo: Wound'),
     protected: { whole: false, sections: [], fields: [], options: [] },
     hidden: [],
-    copySections: [{ id: 'wound', title: 'Demo: Wound' }],
+    copySections: [{ id: 'wound', title: 'Demo: Wound', made: [] }],
     ...over,
   });
 
@@ -60,11 +60,15 @@ describe('what a section can be copied from (design 5.4’s copy_section)', () =
       row('general_primary_care', 'Demo: Clinic', {
         // The team hid Eyes; a copy from the platform's note type reads the platform's version still.
         copySections: [
-          { id: 'eyes', title: 'Demo: Eyes' },
-          { id: 'ears', title: 'Demo: Ears' },
+          { id: 'eyes', title: 'Demo: Eyes', made: [] },
+          { id: 'ears', title: 'Demo: Ears', made: [] },
         ],
       }),
-      row('t_00000000000e', 'Demo: Round', { state: 'archived' }),
+      // With the ids the team made in each, which a refused copy is named by (item 10).
+      row('t_00000000000e', 'Demo: Round', {
+        state: 'archived',
+        copySections: [{ id: 't_1', title: 'Demo: Kit check', made: ['t_1', 't_2'] }],
+      }),
       row('t_00000000000f', 'Demo: This one'),
     ];
     expect(copySources(rows, 't_00000000000f')).toEqual([
@@ -72,14 +76,14 @@ describe('what a section can be copied from (design 5.4’s copy_section)', () =
         key: 'general_primary_care',
         title: 'Demo: Clinic',
         sections: [
-          { id: 'eyes', title: 'Demo: Eyes' },
-          { id: 'ears', title: 'Demo: Ears' },
+          { id: 'eyes', title: 'Demo: Eyes', made: [] },
+          { id: 'ears', title: 'Demo: Ears', made: [] },
         ],
       },
       {
         key: 't_00000000000e',
         title: 'Demo: Round (removed)',
-        sections: [{ id: 'wound', title: 'Demo: Wound' }],
+        sections: [{ id: 't_1', title: 'Demo: Kit check', made: ['t_1', 't_2'] }],
       },
     ]);
   });

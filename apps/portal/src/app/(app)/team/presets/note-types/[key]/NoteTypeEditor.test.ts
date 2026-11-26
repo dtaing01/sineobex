@@ -68,7 +68,7 @@ const row: NoteTypeRow = {
     options: [{ path: 'needs.given', code: 'none' }],
   },
   hidden: [],
-  copySections: definition.sections.map((s) => ({ id: s.id, title: s.title })),
+  copySections: definition.sections.map((s) => ({ id: s.id, title: s.title, made: [] })),
 };
 
 const draw = (over: Partial<NoteTypeRow> = {}) =>
@@ -77,7 +77,11 @@ const draw = (over: Partial<NoteTypeRow> = {}) =>
       row: { ...row, ...over },
       titles: {},
       sources: [
-        { key: 'outreach', title: 'Demo: Outreach', sections: [{ id: 'outreach', title: 'Demo: Contact' }] },
+        {
+          key: 'outreach',
+          title: 'Demo: Outreach',
+          sections: [{ id: 'outreach', title: 'Demo: Contact', made: [] }],
+        },
       ],
     }),
   );
@@ -159,6 +163,65 @@ describe('what a published version hid (item 10, design 5.4’s Show again)', ()
     // One it holds now, and one it held but can't show again by itself, as before.
     expect(copyTakenWords(definition.sections, 'needs', hidden)).toBe(ID_TAKEN.now);
     expect(copyTakenWords(definition.sections, 'elsewhere', hidden)).toBe(ID_TAKEN.before);
+  });
+
+  it('names the part of this note type a refused copy would be confused with, in its words, held now or before (item 10)', () => {
+    // The team's own parts are numbered within each note type (`t_` and a number), so a section made
+    // in another of them can bring a number this one gave a part of its own (rule 3).
+    const sections: NoteTypeDefinition['sections'] = [
+      ...definition.sections,
+      {
+        id: 't_1',
+        title: 'Demo: Kit check',
+        fields: [
+          {
+            id: 't_2',
+            kind: 'choice',
+            label: 'Demo: Kit given',
+            many: true,
+            options: [{ code: 't_3', label: 'Demo: Blanket' }],
+          },
+        ],
+      },
+    ];
+    const before: NoteTypeRow['hidden'] = [
+      { kind: 'field', path: 'needs.t_7', words: 'Demo: Old shoes', showAgain: true },
+      { kind: 'option', path: 'needs.given', code: 't_8', words: 'Demo: Wool socks', showAgain: false },
+      { kind: 'section', path: 't_9', words: 'Demo: Feet', showAgain: true },
+    ];
+    const words = (sectionId: string, title: string, made: string[]) =>
+      copyTakenWords(sections, sectionId, before, { id: sectionId, title, made });
+    // A field, an answer and the section's own id, each held now.
+    expect(words('t_5', 'Demo: Shoes', ['t_5', 't_2'])).toBe(
+      'A part of this section would be confused with the field “Demo: Kit given” this note type has, so it can’t be copied in. Add the fields you need instead.',
+    );
+    expect(words('t_5', 'Demo: Shoes', ['t_5', 't_6', 't_3'])).toBe(
+      'A part of this section would be confused with the answer “Demo: Blanket” this note type has, so it can’t be copied in. Add the fields you need instead.',
+    );
+    expect(words('t_1', 'Demo: Shoes', ['t_1', 't_6'])).toBe(
+      'This section would be confused with the section “Demo: Kit check” this note type has, so it can’t be copied in. Add the fields you need instead.',
+    );
+    // Held before: a field, an answer, and a section under another title.
+    expect(words('t_5', 'Demo: Shoes', ['t_5', 't_7'])).toBe(
+      'A part of this section would be confused with the field “Demo: Old shoes” this note type had before, so it can’t be copied in. Add the fields you need instead.',
+    );
+    expect(words('t_5', 'Demo: Shoes', ['t_5', 't_8'])).toBe(
+      'A part of this section would be confused with the answer “Demo: Wool socks” this note type had before, so it can’t be copied in. Add the fields you need instead.',
+    );
+    expect(words('t_9', 'Demo: Shoes', ['t_9'])).toBe(
+      'This section would be confused with the section “Demo: Feet” this note type had before, so it can’t be copied in. Add the fields you need instead.',
+    );
+    // A part held now is named before one held before.
+    expect(words('t_5', 'Demo: Shoes', ['t_5', 't_7', 't_2'])).toContain(
+      '“Demo: Kit given” this note type has,',
+    );
+    // The same section, by its id and its title: held now, or hidden and offered Show again.
+    expect(words('t_1', 'Demo: Kit check', ['t_1', 't_2', 't_3'])).toBe(ID_TAKEN.now);
+    expect(words('t_9', 'Demo: Feet', ['t_9'])).toBe(idTakenHidden('Demo: Feet'));
+    // A platform section's id is its own, whatever either note type calls it.
+    expect(words('needs', 'Demo: Wants', [])).toBe(ID_TAKEN.now);
+    // A number found in no part this page knows (one a change held before the copy makes, say).
+    expect(words('t_5', 'Demo: Shoes', ['t_5', 't_4'])).toBe(ID_TAKEN.before);
   });
 });
 
@@ -256,7 +319,7 @@ describe('what the editor makes of a Publish’s answer', () => {
     expect(copyTakenWords(sections, 'water')).toBe(ID_TAKEN.before);
     expect(ID_TAKEN.now).toBe('This note type already has this section, so it can’t be copied in again.');
     expect(ID_TAKEN.before).toBe(
-      'This note type has held this section, or parts of it, before, so it can’t be copied in again.',
+      'This note type has, or had before, a part this section would be confused with, so it can’t be copied in. Add the fields you need instead.',
     );
     for (const words of Object.values(ID_TAKEN)) expect(words).not.toMatch(/Show the old one again/);
   });

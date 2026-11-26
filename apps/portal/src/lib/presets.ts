@@ -643,8 +643,11 @@ export interface NoteTypeRow {
   protected: ProtectedParts;
   /** What earlier versions had and the current one lacks, newest first (design 5.4, 8.1). */
   hidden: HiddenPart[];
-  /** The sections a copy from it reads: the platform's newest for a platform note type, else its current. */
-  copySections: { id: string; title: string }[];
+  /**
+   * The sections a copy from it reads: the platform's newest for a platform note type, else its
+   * current; each with the ids and codes the team made in it (`t_` and a number), its own among them.
+   */
+  copySections: { id: string; title: string; made: string[] }[];
 }
 
 /**
