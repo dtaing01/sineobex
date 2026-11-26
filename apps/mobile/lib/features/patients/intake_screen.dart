@@ -26,7 +26,6 @@ import '../../presets/models.dart' show FlagTier;
 import '../../sync/local_store.dart' show ChartingPaused, LocalValidationError;
 import '../../sync/sync_controller.dart' show SyncController;
 import '../forms/text_field.dart' show limitCodePoints;
-import '../presets/team_setup_screen.dart' show setupNotDownloaded;
 import 'duplicate_panel.dart';
 import 'flag_sheet.dart';
 import 'patient_labels.dart';
@@ -589,9 +588,11 @@ class _IntakeFormState extends ConsumerState<_IntakeForm> {
   // ---------------------------------------------------------------------------------------------
 
   /// Where intake can't set a risk level, why, in the design's words; null where it can. The patient
-  /// saves without one either way.
+  /// saves without one either way, so intake says so in words of its own: Team setup's "Connect to
+  /// finish." would read as this registration not finishing offline (review finding W5).
   String? _riskLevelBlocked(bool paused) => !_s.flags.presetsHeld
-      ? setupNotDownloaded
+      ? 'Your team’s setup hasn’t downloaded yet, so a risk level can’t be set here. You can still create the '
+            'patient, and set a risk level from their profile once the phone has connected.'
       : paused
       ? 'A risk level can be set once the phone’s clock is right.'
       : null;
