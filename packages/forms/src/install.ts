@@ -8,9 +8,12 @@
  * never edited, when its kinds, group, sensitivity, quick and auto stay as they are; every other
  * newer version is offered, which moves only the head's platform_latest; an older or the same
  * version is skipped. So a team's own version is never overtaken by a platform one (PRD main 387).
- * Every version it writes is the team's next and names its own row (4.3): a platform version
- * installed or taken as the team's version N has its definition's `version` set to N, so where N is
- * not the platform's number its hash is not the bundled preset's and a phone downloads it.
+ * A platform key is decided on the head that names it as its origin (0025): its own, or the `t_`
+ * key an update of it was taken as, so the platform's later versions reach the new note type and
+ * never the one it replaced. Every version it writes is the team's next and names its own row
+ * (4.3): a platform version installed or taken as the team's version N of a key has its
+ * definition's `key` and `version` set to them, so where they are not the platform's its hash is not
+ * the bundled preset's and a phone downloads it.
  *
  * It runs inside a transaction its caller already holds (team creation, the seed, and the note
  * types list), so it takes that transaction and never opens one: this package imports no database
@@ -184,6 +187,12 @@ export type NoteTypeHead = {
   platformLatest: number | null;
   /** The team edited, archived or restored it: a platform version is then only offered. */
   customized: boolean;
+  /**
+   * The platform note type it came from (0025), on which the installer decides the platform's
+   * versions: its own key for one an installer wrote, the old key's for an update taken as a new
+   * one; null for the team's own, and for a key an update was taken from as a new one.
+   */
+  originKey: string | null;
 };
 
 /** One row of note_type_versions as the installer reads it: never its definition. */
@@ -236,8 +245,10 @@ export type NoteTypePlan = {
 
 /**
  * What one run of the note type installer writes (design 5.2), from what the team holds: for each
- * key the presets name, its newest platform version, decided by platformUpdateEffect with `exists`
- * whether the team holds any version of the key, `originVersion` the newest preset row's
+ * key the presets name, its newest platform version, decided on the head that names the key as its
+ * origin (an update taken as a new note type is a `t_` key, 0025), else on the key's own: by
+ * platformUpdateEffect with `exists` whether the team holds any version of that head's key, or a
+ * head names the platform's key, `originVersion` the newest preset row's
  * `presetVersion`, `state` and `customized` the head's (a key whose newest row is the team's own is
  * customized whatever its head says: forms 3.2's rule), and `changesFixed` whether the platform's
  * kinds, group, sensitivity, quick or auto differ from those of the platform version last taken
@@ -247,7 +258,8 @@ export type NoteTypePlan = {
  * the head's `platformLatest` is below the platform version. A key the team holds without a head
  * gets one, as 0023 fills it: the newest version's title (the key where it has none), that version
  * current, `platformLatest` the newest preset row's, customized when any version is the team's own,
- * active. Pure, as planTeamPresets is: no database, and what it is given is not changed.
+ * active, the key its origin. Every version it writes is named as a row of the head's key. Pure, as
+ * planTeamPresets is: no database, and what it is given is not changed.
  */
 export async function planNoteTypes(input: {
   heads: readonly NoteTypeHead[];
@@ -257,6 +269,7 @@ export async function planNoteTypes(input: {
   maps?: readonly MappedAnswers[];
 }): Promise<NoteTypePlan> {
   const heads = new Map(input.heads.map((h) => [h.key, h]));
+  const origins = new Set(input.heads.flatMap((h) => (h.originKey === null ? [] : [h.originKey])));
   const rowsOf = byKey(input.versions);
   const platformOf = byKey(input.presets);
   const keys = [...new Set([...rowsOf.keys(), ...platformOf.keys()])].sort((a, b) =>
@@ -267,13 +280,18 @@ export async function planNoteTypes(input: {
   const differing: KeyVersion[] = [];
   for (const key of keys) {
     const rows = [...(rowsOf.get(key) ?? [])].sort((a, b) => a.version - b.version);
-    const platform = platformOf.get(key) ?? [];
+    const held = heads.get(key);
+    // A key the team holds without a head names its own key, unless another head holds that origin.
+    const head =
+      held ?? (rows.length > 0 ? filledHead(key, rows, isTeamKey(key) || origins.has(key)) : undefined);
+    // The platform's versions this key is decided on: those its head names, or, for a key the team
+    // holds nothing of, its own, unless another head names it (an update taken as a new one).
+    const origin = head ? head.originKey : origins.has(key) ? null : key;
+    const platform = origin === null ? [] : (platformOf.get(origin) ?? []);
     const newest = platform.reduce<Preset | undefined>(
       (n, p) => (n && n.version >= p.version ? n : p),
       undefined,
     );
-    const held = heads.get(key);
-    const head = held ?? (rows.length > 0 ? filledHead(key, rows) : undefined);
     const headOnly = (): NoteTypeStep => ({
       key,
       effect: null,
@@ -289,7 +307,7 @@ export async function planNoteTypes(input: {
     for (const row of rows) {
       if (row.origin !== 'preset' || row.presetVersion === null) continue;
       const preset = platform.find((p) => p.version === row.presetVersion);
-      if (preset && row.hash !== (await hashAs(preset, row.version))) {
+      if (preset && row.hash !== (await hashAs(preset, key, row.version))) {
         differing.push({ key, version: row.version });
         differs = true;
       }
@@ -318,7 +336,7 @@ export async function planNoteTypes(input: {
     // never taken in place: the map stays as the admin made it, and a take in place is refused
     // while it is active (presets/note-types.ts in the API).
     const effect =
-      decided === 'update' && mapsExposedBy(newest.definition, input.maps ?? []).length > 0
+      decided === 'update' && mapsExposedBy({ ...newest.definition, key }, input.maps ?? []).length > 0
         ? 'offer'
         : decided;
 
@@ -336,13 +354,14 @@ export async function planNoteTypes(input: {
           currentVersion: version,
           platformLatest: newest.version,
           customized: false,
+          originKey: origin,
         },
         headMissing: !held,
         write: {
           version,
           presetVersion: newest.version,
-          definition: { ...copyPart(newest.definition), version },
-          hash: await hashAs(newest, version),
+          definition: { ...copyPart(newest.definition), key, version },
+          hash: await hashAs(newest, key, version),
         },
       });
     } else if (effect === 'offer' && (head!.platformLatest ?? 0) < newest.version) {
@@ -441,8 +460,15 @@ function byKey<T extends { key: string }>(list: readonly T[]): Map<string, T[]> 
   return map;
 }
 
-/** The head 0023 gives a key the team holds: what its versions say, read as 0023 reads them. */
-function filledHead(key: string, rows: readonly HeldNoteTypeVersion[]): NoteTypeHead {
+/** A key the team made: `t_` and 12 hex characters, made by the API (design 4.3), from no platform note type. */
+const isTeamKey = (key: string) => /^t_[0-9a-f]{12}$/.test(key);
+
+/**
+ * The head 0023 gives a key the team holds: what its versions say, read as 0023 reads them, and its
+ * own key as its origin, as 0025 fills it, unless it has none (`noOrigin`: a key the team made, or
+ * one whose origin another head holds).
+ */
+function filledHead(key: string, rows: readonly HeldNoteTypeVersion[], noOrigin: boolean): NoteTypeHead {
   const newest = rows.at(-1)!;
   // btrim's default: spaces only.
   const title = newest.title !== null && /[^ ]/.test(newest.title) ? newest.title : key;
@@ -453,6 +479,7 @@ function filledHead(key: string, rows: readonly HeldNoteTypeVersion[]): NoteType
     currentVersion: newest.version,
     platformLatest: rows.findLast((r) => r.origin === 'preset')?.presetVersion ?? null,
     customized: rows.some((r) => r.origin === 'team'),
+    originKey: noOrigin ? null : key,
   };
 }
 
@@ -470,15 +497,18 @@ const fixedOf = (d: ResolvedNoteType): string =>
 const RENAMED_MAX = 1024;
 const renamed = new Map<string, Promise<string>>();
 
-/** The hash of `preset`'s definition with its `version` set to `version`: the bundled hash at its own number. */
-function hashAs(preset: Preset, version: number): Promise<string> {
-  if (version === preset.version) return Promise.resolve(preset.hash);
-  const key = `${preset.hash}\u0000${version}`;
-  let hash = renamed.get(key);
+/**
+ * The hash of `preset`'s definition named as the team's row `key` and `version` (4.3): the bundled
+ * hash at its own key and number.
+ */
+function hashAs(preset: Preset, key: string, version: number): Promise<string> {
+  if (key === preset.key && version === preset.version) return Promise.resolve(preset.hash);
+  const id = `${preset.hash}\u0000${key}\u0000${version}`;
+  let hash = renamed.get(id);
   if (hash === undefined) {
-    hash = sha256Hex(canonicalJson({ ...preset.definition, version }));
+    hash = sha256Hex(canonicalJson({ ...preset.definition, key, version }));
     if (renamed.size >= RENAMED_MAX) renamed.delete(renamed.keys().next().value!);
-    renamed.set(key, hash);
+    renamed.set(id, hash);
   }
   return hash;
 }
@@ -491,7 +521,7 @@ function hashAs(preset: Preset, version: number): Promise<string> {
 async function heldBy(sql: InstallSql, teamId: string) {
   const heads = await sql<NoteTypeHead[]>`
     select key, title, state, current_version as "currentVersion", platform_latest as "platformLatest",
-           customized
+           customized, origin_key as "originKey"
     from sineobex.note_types where team_id = ${teamId}::uuid`;
   const versions = await sql<HeldNoteTypeVersion[]>`
     select v.key, v.version, v.origin, v.preset_version as "presetVersion", v.hash,
@@ -534,10 +564,10 @@ async function writeVersions(sql: InstallSql, teamId: string, steps: readonly No
 
 /**
  * Every head the run writes, as the plan leaves it, at the run's revision: a missing head is
- * inserted whole; an existing one takes the title, current version and platform_latest the plan
- * gives it, its state and customized being the installer's to read, never to change. An update
- * gives the copy back to the platform's version, by nobody; an offer, which leaves the current
- * version, leaves who last changed it.
+ * inserted whole, its origin among it; an existing one takes the title, current version and
+ * platform_latest the plan gives it, its state, customized and origin being the installer's to
+ * read, never to change. An update gives the copy back to the platform's version, by nobody; an
+ * offer, which leaves the current version, leaves who last changed it.
  */
 async function writeHeads(sql: InstallSql, teamId: string, revision: number, steps: readonly NoteTypeStep[]) {
   const rows = steps.map(({ head }) => ({
@@ -547,13 +577,16 @@ async function writeHeads(sql: InstallSql, teamId: string, revision: number, ste
     version: head.currentVersion,
     latest: head.platformLatest,
     customized: head.customized,
+    origin: head.originKey,
   }));
   await sql`
     insert into sineobex.note_types as t
-      (team_id, key, title, state, current_version, platform_latest, customized, revision)
-    select ${teamId}::uuid, h.key, h.title, h.state, h.version, h.latest, h.customized, ${revision}::bigint
+      (team_id, key, title, state, current_version, platform_latest, customized, origin_key, revision)
+    select ${teamId}::uuid, h.key, h.title, h.state, h.version, h.latest, h.customized, h.origin,
+           ${revision}::bigint
     from jsonb_to_recordset(${JSON.stringify(rows)}::text::jsonb)
-      as h (key text, title text, state text, version integer, latest integer, customized boolean)
+      as h (key text, title text, state text, version integer, latest integer, customized boolean,
+            origin text)
     on conflict (team_id, key) do update
       set title = excluded.title, current_version = excluded.current_version,
           platform_latest = excluded.platform_latest, revision = excluded.revision,

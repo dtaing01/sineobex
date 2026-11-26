@@ -100,7 +100,7 @@ const heldOwn = async (definition: ResolvedNoteType): Promise<HeldNoteTypeVersio
   title: definition.title,
 });
 
-/** A head as a write leaves it. */
+/** A head as a write leaves it: the platform note type of its own key's, as the installer writes one. */
 const headOf = (key: string, over: Partial<NoteTypeHead> = {}): NoteTypeHead => ({
   key,
   title: `Demo: ${key} version 1`,
@@ -108,6 +108,7 @@ const headOf = (key: string, over: Partial<NoteTypeHead> = {}): NoteTypeHead => 
   currentVersion: 1,
   platformLatest: 1,
   customized: false,
+  originKey: key,
   ...over,
 });
 
@@ -146,6 +147,7 @@ describe('the note type installer’s plan, key by key', () => {
         currentVersion: 1,
         platformLatest: 3,
         customized: false,
+        originKey: 'demo_outreach',
       },
       write: { version: 1, presetVersion: 3, definition, hash: await hashOf(definition) },
     });
@@ -558,6 +560,7 @@ describe('the note type installer’s plan, key by key', () => {
           effect: null,
           platformVersion: null,
           headMissing: true,
+          // A key the team made came from no platform note type.
           head: {
             key: 't_000000000005',
             title: 'Demo: Night outreach, reworded',
@@ -565,6 +568,7 @@ describe('the note type installer’s plan, key by key', () => {
             currentVersion: 2,
             platformLatest: null,
             customized: true,
+            originKey: null,
           },
           write: null,
         },
@@ -579,6 +583,111 @@ describe('the note type installer’s plan, key by key', () => {
         const plan = await planNoteTypes({ heads: [], versions: [version], presets: [v1] });
         expect(stepOf(plan, 'demo_outreach').head.title).toBe('demo_outreach');
       }
+    });
+  });
+
+  // A platform version taken as a new note type (design 5.1) is a `t_` key whose head names the
+  // platform's key as its origin (0025), the old one giving it up: the platform's later versions are
+  // decided on the new one, named as its own rows, and never on the old one.
+  describe('a platform note type taken as a new one: decided by its origin key', () => {
+    const taken = 't_00000000000a';
+    /** The team's rows of `preset` taken as new: its definition named as the new key's version 1. */
+    const takenAs = async (preset: Preset): Promise<HeldNoteTypeVersion> => ({
+      key: taken,
+      version: 1,
+      origin: 'preset',
+      presetVersion: preset.version,
+      hash: await hashOf({ ...preset.definition, key: taken, version: 1 }),
+      title: preset.definition.title,
+    });
+    const heads = (over: Partial<NoteTypeHead> = {}) => [
+      headOf('demo_outreach', { state: 'archived', customized: true, platformLatest: 2, originKey: null }),
+      headOf(taken, { platformLatest: 2, originKey: 'demo_outreach', ...over }),
+    ];
+
+    it('updates the new one in place, as its own next version, and leaves the old one alone', async () => {
+      const v1 = await presetOf(typeOf('demo_outreach', 1));
+      const v2 = await presetOf(typeOf('demo_outreach', 2));
+      const v3 = await presetOf(typeOf('demo_outreach', 3, { title: 'Demo: Outreach, third' }));
+      const plan = await planNoteTypes({
+        heads: heads(),
+        versions: [await heldPreset(v1), await takenAs(v2)],
+        presets: [v1, v2, v3],
+      });
+      const definition = { ...v3.definition, key: taken, version: 2 };
+      expect(plan).toEqual({
+        steps: [
+          {
+            key: taken,
+            effect: 'update',
+            platformVersion: 3,
+            headMissing: false,
+            head: headOf(taken, {
+              title: 'Demo: Outreach, third',
+              currentVersion: 2,
+              platformLatest: 3,
+              originKey: 'demo_outreach',
+            }),
+            write: { version: 2, presetVersion: 3, definition, hash: await hashOf(definition) },
+          },
+        ],
+        differing: [],
+      });
+    });
+
+    it('only offers to the new one once the team edited it, and nothing at all to the old one', async () => {
+      const v1 = await presetOf(typeOf('demo_outreach', 1));
+      const v2 = await presetOf(typeOf('demo_outreach', 2));
+      const v3 = await presetOf(typeOf('demo_outreach', 3));
+      const own2 = typeOf(taken, 2, { title: 'Demo: Outreach, ours' });
+      const plan = await planNoteTypes({
+        heads: heads({ title: own2.title, currentVersion: 2, customized: true }),
+        versions: [await heldPreset(v1), await takenAs(v2), await heldOwn(own2)],
+        presets: [v1, v2, v3],
+      });
+      expect(effects(plan)).toEqual([`${taken} offer`]);
+      expect(stepOf(plan, taken).head).toMatchObject({ platformLatest: 3, originKey: 'demo_outreach' });
+    });
+
+    it('has nothing to do while the platform has no version above the one taken', async () => {
+      const v1 = await presetOf(typeOf('demo_outreach', 1));
+      const v2 = await presetOf(typeOf('demo_outreach', 2));
+      const plan = await planNoteTypes({
+        heads: heads(),
+        versions: [await heldPreset(v1), await takenAs(v2)],
+        presets: [v1, v2],
+      });
+      expect(plan).toEqual({ steps: [], differing: [] });
+    });
+
+    it('compares the version taken as the platform wrote it, named as the new key’s row', async () => {
+      const v1 = await presetOf(typeOf('demo_outreach', 1));
+      const v2 = await presetOf(typeOf('demo_outreach', 2));
+      const v3 = await presetOf(typeOf('demo_outreach', 3));
+      const edited = {
+        ...(await takenAs(v2)),
+        hash: await hashOf({ ...v2.definition, title: 'Demo: Edited' }),
+      };
+      const plan = await planNoteTypes({
+        heads: heads(),
+        versions: [await heldPreset(v1), edited],
+        presets: [v1, v2, v3],
+      });
+      expect(plan).toEqual({ steps: [], differing: [{ key: taken, version: 1 }] });
+    });
+
+    it('installs a platform key no head names, under its own key, and gives a missing head its own key as origin', async () => {
+      const outreach = await presetOf(typeOf('demo_outreach', 1));
+      const social = await presetOf(typeOf('demo_social', 1));
+      const plan = await planNoteTypes({
+        heads: [],
+        versions: [await heldPreset(outreach)],
+        presets: [outreach, social],
+      });
+      expect(plan.steps.map((s) => [s.key, s.effect, s.head.originKey])).toEqual([
+        ['demo_outreach', null, 'demo_outreach'],
+        ['demo_social', 'install', 'demo_social'],
+      ]);
     });
   });
 

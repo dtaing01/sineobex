@@ -209,6 +209,12 @@ const headOf = async (teamId: string, key: string): Promise<Head | undefined> =>
              customized, revision::int as revision, updated_by as "updatedBy"
       from sineobex.note_types where team_id = ${teamId} and key = ${key}`
   )[0];
+/** The platform note type a head names as its origin (0025): its own key's, a taken one's, or none. */
+const originOf = async (teamId: string, key: string) =>
+  (
+    await h.scratch.owner<{ originKey: string | null }[]>`
+      select origin_key as "originKey" from sineobex.note_types where team_id = ${teamId} and key = ${key}`
+  )[0]?.originKey;
 const versionsOf = (teamId: string, key: string) =>
   h.scratch.owner<
     {
@@ -1688,6 +1694,68 @@ describe('adding, removing, restoring and taking an update: what each checks', (
       );
       await storedAs(key, 1, t.teamId);
     } finally {
+      unrelease();
+    }
+  });
+
+  it('offers the platform’s later versions on the note type an update was taken as, never on the one it replaced', async () => {
+    const { t, theirs, next, unrelease, row } = await teamWithOffer(
+      'Note Types Taken Then Later',
+      'social_needs',
+    );
+    let unreleaseLater: (() => void) | undefined;
+    try {
+      const r = await theirs.takeUpdate('social_needs', {
+        baseVersion: row.version,
+        platformVersion: next.version,
+        asNew: true,
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      const key = r.body.key as string;
+      // The new one names the platform's note type it came from; the old one gave it up.
+      expect([await originOf(t.teamId, key), await originOf(t.teamId, 'social_needs')]).toEqual([
+        'social_needs',
+        null,
+      ]);
+      // Edited by the team, the new one is only offered the platform's next version.
+      const edited = await theirs.publish(key, 1, [
+        { op: 'rename_type', title: 'Demo: Social needs, the night round' },
+      ]);
+      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+      const later = await platformNext('social_needs', (d) => ({ ...d, title: 'Social needs, third' }));
+      unreleaseLater = release(later);
+      const listed = await call(h, '/v1/forms/note-types', {
+        token: await tokenOf(h, t.admin),
+        teamId: t.teamId,
+      });
+      expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+      const made = await rowOf(key, theirs);
+      expect([made.updateOnOffer, made.update]).toEqual([
+        true,
+        {
+          platformVersion: later.version,
+          definition: { ...later.definition, key, version: 3 },
+          changesFixed: [],
+        },
+      ]);
+      const old = await rowOf('social_needs', theirs);
+      expect([old.update, old.updateOnOffer]).toEqual([null, false]);
+      // Taken in place, the new one is the platform's again, at the version on offer.
+      const take = await theirs.takeUpdate(key, {
+        baseVersion: made.version,
+        platformVersion: later.version,
+        asNew: false,
+      });
+      expect(take.status, JSON.stringify(take.body)).toBe(200);
+      expect((await versionsOf(t.teamId, key)).at(-1)).toMatchObject({
+        version: 3,
+        origin: 'preset',
+        presetVersion: later.version,
+      });
+      expect(await headOf(t.teamId, key)).toMatchObject({ title: 'Social needs, third', customized: false });
+      await storedAs(key, 3, t.teamId);
+    } finally {
+      unreleaseLater?.();
       unrelease();
     }
   });

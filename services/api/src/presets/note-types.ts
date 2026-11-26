@@ -57,9 +57,12 @@ export interface HeldNoteType {
   /** The team edited, archived or restored it: a platform version is then only offered. */
   readonly customized: boolean;
   /**
-   * The platform version it last took: its newest platform row's, or a newer one taken from its
-   * offer as a new note type (lastTakenOf); null with none.
+   * The platform note type it came from (0025): its own key for one the installer wrote, the old
+   * key's for an update taken as a new one; null for the team's own, and for the one an update was
+   * taken from as new, which the new one replaced. Only a note type with one is offered an update.
    */
+  readonly originKey: string | null;
+  /** The platform version it last took: its newest platform row's; null with none. */
   readonly lastTaken: number | null;
   /** Its current version's definition, checked as definitionFor checks it, and frozen. */
   readonly definition: ResolvedNoteType;
@@ -83,8 +86,8 @@ export async function loadTeamNoteTypes(tx: Tx, teamId: string): Promise<TeamNot
   const rows = await tx<
     (Omit<HeldNoteType, 'definition'> & { hash: string | null; definition: ResolvedNoteType | null })[]
   >`
-    select h.key, h.title, h.state, h.current_version, h.platform_latest, h.customized, v.hash,
-           v.definition,
+    select h.key, h.title, h.state, h.current_version, h.platform_latest, h.customized, h.origin_key,
+           v.hash, v.definition,
            (select n.preset_version from sineobex.note_type_versions n
             where n.team_id = h.team_id and n.key = h.key and n.origin = 'preset'
             order by n.version desc limit 1) as last_taken
@@ -92,7 +95,6 @@ export async function loadTeamNoteTypes(tx: Tx, teamId: string): Promise<TeamNot
     left join sineobex.note_type_versions v
       on v.team_id = h.team_id and v.key = h.key and v.version = h.current_version
     where h.team_id = ${teamId}`;
-  const takenAsNew = await takenAsNewRows(tx, teamId);
   const all: HeldNoteType[] = [];
   for (const { hash, definition, ...head } of rows) {
     // Every writer writes a head with its version (the installer, this module); 0023 cannot hold it.
@@ -103,8 +105,7 @@ export async function loadTeamNoteTypes(tx: Tx, teamId: string): Promise<TeamNot
       hash,
       definition,
     });
-    const lastTaken = await lastTakenOf(head, takenAsNew);
-    all.push({ ...head, lastTaken, definition: stored.definition });
+    all.push({ ...head, definition: stored.definition });
   }
   const byKey = new Map(all.map((n) => [n.key, n]));
   const maps = await tx<{ key: string; n: number }[]>`
@@ -119,49 +120,6 @@ export async function loadTeamNoteTypes(tx: Tx, teamId: string): Promise<TeamNot
     get: (key) => byKey.get(key),
     maps: new Map(maps.map((m) => [m.key, m.n])),
   };
-}
-
-/** A team's own key's first version, written from a platform version: an update taken as new. */
-interface TakenAsNew {
-  key: string;
-  presetVersion: number;
-  hash: string;
-}
-
-/**
- * The first version of each of the team's own keys that is a platform version (`origin = 'preset'`):
- * only a take as new writes one (createNoteType writes the team's own), naming the platform's
- * definition as that key's version 1 (4.3).
- */
-function takenAsNewRows(tx: Tx, teamId: string): Promise<TakenAsNew[]> {
-  return tx<TakenAsNew[]>`
-    select key, preset_version, hash from sineobex.note_type_versions
-    where team_id = ${teamId} and version = 1 and origin = 'preset' and left(key, 2) = 't_'`;
-}
-
-/**
- * The platform version a note type last took (5.1, 5.2): its newest platform row's, or a newer one
- * the team took from its offer as a new note type, which leaves no row of its own. A take as new
- * names the platform's definition as the new key's version 1, so that row's hash is the hash of
- * this key's platform version named so, and of no other (the hash names its definition). Without
- * it, the old one would offer again the very update taken as new, and Add as new again would be
- * refused for the name the first one holds. A later platform version of the key is still offered on
- * the old one, never on the new one: nothing stored names the key a note type was taken from.
- */
-async function lastTakenOf(
-  head: { key: string; platformLatest: number | null; lastTaken: number | null },
-  takenAsNew: readonly TakenAsNew[],
-): Promise<number | null> {
-  let last = head.lastTaken;
-  if (head.platformLatest === null || head.platformLatest <= (last ?? 0)) return last;
-  for (const row of takenAsNew) {
-    if (row.presetVersion <= (last ?? 0) || row.presetVersion > head.platformLatest) continue;
-    const preset = PRESETS.find((p) => p.key === head.key && p.version === row.presetVersion);
-    if (!preset) continue;
-    const named = { ...copyPart(preset.definition), key: row.key, version: 1 };
-    if ((await sha256Hex(canonicalJson(named))) === row.hash) last = row.presetVersion;
-  }
-  return last;
 }
 
 /**
@@ -203,17 +161,21 @@ export interface NoteTypeUpdate {
 }
 
 /**
- * The update on offer to a note type (5.1, 5.2): the platform's version at platform_latest, once that
- * is above the platform version last taken; null when none is, or when the release no longer holds
- * that version. Read from the release at each call, so what is offered is what the installer saw.
+ * The update on offer to a note type (5.1, 5.2): the version at platform_latest of the platform note
+ * type it came from (its origin key, 0025), once that is above the platform version last taken; null
+ * when none is, when it came from none (the team's own, or one an update was taken from as new), or
+ * when the release no longer holds that version. Read from the release at each call, so what is
+ * offered is what the installer saw.
  */
 export function noteTypeUpdateOf(held: HeldNoteType): NoteTypeUpdate | null {
-  if (held.platformLatest === null || held.platformLatest <= (held.lastTaken ?? 0)) return null;
-  const preset = PRESETS.find((p) => p.key === held.key && p.version === held.platformLatest);
+  const { originKey } = held;
+  if (originKey === null || held.platformLatest === null || held.platformLatest <= (held.lastTaken ?? 0))
+    return null;
+  const preset = PRESETS.find((p) => p.key === originKey && p.version === held.platformLatest);
   if (!preset) return null;
   return {
     preset,
-    definition: { ...copyPart(preset.definition), version: held.currentVersion + 1 },
+    definition: { ...copyPart(preset.definition), key: held.key, version: held.currentVersion + 1 },
     changesFixed: changedFixed(held.definition, preset.definition),
   };
 }
@@ -248,15 +210,25 @@ interface NewVersion {
 interface Changes {
   /** Versions, each named as its own row already (its definition's key and version). */
   versions: NewVersion[];
-  /** New heads: a note type added, or an update taken as a new one. */
-  made: { key: string; title: string; platformLatest: number | null; customized: boolean }[];
-  /** Heads changed; a column left out keeps its value. */
+  /** New heads: a note type added, or an update taken as a new one, which names its origin. */
+  made: {
+    key: string;
+    title: string;
+    platformLatest: number | null;
+    customized: boolean;
+    originKey: string | null;
+  }[];
+  /**
+   * Heads changed; a column left out keeps its value. `dropOrigin` gives the origin up, for a new
+   * head of the same write to take: written before the new heads.
+   */
   changed: {
     key: string;
     title?: string;
     state?: 'active' | 'archived';
     version?: number;
     customized?: boolean;
+    dropOrigin?: boolean;
   }[];
   /** One act on each note type the write changes, with the write's reason and person. */
   events: {
@@ -336,6 +308,7 @@ async function commit(w: Write, changes: Changes, reason: string): Promise<numbe
       set title = coalesce(u.title, t.title), state = coalesce(u.state, t.state),
           current_version = coalesce(u.version, t.current_version),
           customized = coalesce(u.customized, t.customized),
+          origin_key = case when u.drop_origin then null else t.origin_key end,
           revision = ${revision}::bigint, updated_by = ${userId}::uuid
       from jsonb_to_recordset(${rows(
         changes.changed.map((c) => ({
@@ -344,8 +317,10 @@ async function commit(w: Write, changes: Changes, reason: string): Promise<numbe
           state: c.state ?? null,
           version: c.version ?? null,
           customized: c.customized ?? null,
+          drop_origin: c.dropOrigin ?? null,
         })),
-      )}::text::jsonb) as u (key text, title text, state text, version integer, customized boolean)
+      )}::text::jsonb) as u (key text, title text, state text, version integer, customized boolean,
+                             drop_origin boolean)
       where t.team_id = ${teamId}::uuid and t.key = u.key
       returning t.key`;
     // Read under the lock, so every head is there; one missing is a fault, never half a write.
@@ -355,8 +330,9 @@ async function commit(w: Write, changes: Changes, reason: string): Promise<numbe
   if (changes.made.length > 0)
     await tx`
       insert into sineobex.note_types
-        (team_id, key, title, state, current_version, platform_latest, customized, revision, updated_by)
-      select ${teamId}::uuid, h.key, h.title, 'active', 1, h.platform_latest, h.customized,
+        (team_id, key, title, state, current_version, platform_latest, customized, origin_key, revision,
+         updated_by)
+      select ${teamId}::uuid, h.key, h.title, 'active', 1, h.platform_latest, h.customized, h.origin_key,
              ${revision}::bigint, ${userId}::uuid
       from jsonb_to_recordset(${rows(
         changes.made.map((m) => ({
@@ -364,8 +340,10 @@ async function commit(w: Write, changes: Changes, reason: string): Promise<numbe
           title: m.title,
           platform_latest: m.platformLatest,
           customized: m.customized,
+          origin_key: m.originKey,
         })),
-      )}::text::jsonb) as h (key text, title text, platform_latest integer, customized boolean)`;
+      )}::text::jsonb) as h (key text, title text, platform_latest integer, customized boolean,
+                             origin_key text)`;
   await tx`
     insert into sineobex.team_preset_events (team_id, note_type_key, act, version, reason, created_by)
     select ${teamId}::uuid, e.key, e.act, e.version, ${reason}, ${userId}::uuid
@@ -724,7 +702,7 @@ export function createNoteType(
     return {
       changes: {
         versions: [{ key, definition, origin: 'team', presetVersion: null }],
-        made: [{ key, title, platformLatest: null, customized: true }],
+        made: [{ key, title, platformLatest: null, customized: true, originKey: null }],
         changed: [],
         events: [{ key, act: 'created', version: 1 }],
         audits: () => [noteTypeAudit('note_type.created', key, { version: 1 })],
@@ -826,7 +804,7 @@ export function takeNoteTypeUpdate(
       // PLAN-OPEN (BM-77): may a supply mapping read a sensitive answer? No: a version under which an
       // active field supply map would fire on what some readers may not see is not taken in place
       // while the map is active, as the installer only offers it (packages/forms install.ts).
-      const exposed = mapsExposedBy(update.preset.definition, await activeMaps(w.tx, w.teamId));
+      const exposed = mapsExposedBy(update.definition, await activeMaps(w.tx, w.teamId));
       if (exposed.length > 0)
         throw refusal('sensitive_path', { referencedBy: { field_supply_map: exposed.length } });
       const versions = await versionsOf(w, held);
@@ -857,8 +835,22 @@ export function takeNoteTypeUpdate(
     return {
       changes: {
         versions: [{ key, definition, origin: 'preset', presetVersion: preset.version }],
-        made: [{ key, title: definition.title, platformLatest: preset.version, customized: false }],
-        changed: wasActive ? [{ key: held.key, state: 'archived', customized: true }] : [],
+        // The new one names the platform note type it came from, and the old one gives it up, so the
+        // platform's later versions are decided, and offered, on the new one (0025), as a preset's.
+        made: [
+          {
+            key,
+            title: definition.title,
+            platformLatest: preset.version,
+            customized: false,
+            originKey: held.originKey,
+          },
+        ],
+        changed: [
+          wasActive
+            ? { key: held.key, state: 'archived', customized: true, dropOrigin: true }
+            : { key: held.key, dropOrigin: true },
+        ],
         events: [
           ...(wasActive ? [{ key: held.key, act: 'archived' as const, version: held.currentVersion }] : []),
           { key, act: 'update_taken', version: 1 },

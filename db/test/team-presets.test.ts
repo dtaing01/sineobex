@@ -902,6 +902,8 @@ describe('0023 team presets', () => {
           platform_latest: 2,
           customized: true,
           updated_by: admin,
+          // The platform note type it came from (0025): an update taken as new moves it.
+          origin_key: 'demo_another',
         }),
       },
     ];
@@ -1297,6 +1299,8 @@ describe('0023 team presets', () => {
         'revision bigint',
         'updated_by uuid',
         'updated_at timestamp with time zone',
+        // 0025's.
+        'origin_key text',
       ]);
     });
 
