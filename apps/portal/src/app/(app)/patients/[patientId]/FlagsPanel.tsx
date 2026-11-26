@@ -86,6 +86,13 @@ export function flagAnswerOf(json: unknown): FlagAnswer | null {
 }
 
 /**
+ * The line under each reason box of the panel. A flag change's reason, and an entered-in-error one,
+ * is detail of this patient's chart (design 9), so the preset pages' line, not to put patient names
+ * there, would tell the person not to write about the patient whose chart it is.
+ */
+const KEPT_IN_CHART = 'It’s kept in this patient’s chart, so don’t name other people here.';
+
+/**
  * Posts [body] to a flag route handler and reads its answer: the handler's own ([flagAnswerOf]),
  * `session_ended` for a redirect the browser was not let follow (the session ended on the way), or
  * null for anything else (a dropped connection, a gateway's page or its JSON), which can't say
@@ -427,7 +434,7 @@ export function FlagsPanel({
                 />
               </div>
               <p id="flags-mark-reason-warning" className="sx-help">
-                Don’t put patient names here.
+                {KEPT_IN_CHART}
               </p>
             </div>
             <div className="px-actions">
@@ -541,7 +548,7 @@ export function FlagsPanel({
                   />
                 </div>
                 <p id="flags-reason-warning" className="sx-help">
-                  Don’t put patient names here.
+                  {KEPT_IN_CHART}
                 </p>
               </div>
               <div className="px-actions">

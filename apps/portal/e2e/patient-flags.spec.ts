@@ -41,6 +41,8 @@ const DROPPED_MARK =
   'The connection dropped, so we can’t tell whether the change was marked. Press Mark entered in error again: if it was, nothing changes.';
 const ARCHIVED = 'This flag is no longer on your team’s list, so it can only be cleared.';
 const KEPT_BACK = 'Only the person who made it and Program Admins see why.';
+/** The line under each of the panel's reason boxes (item 26): the reason is this chart's own. */
+const KEPT_IN_CHART = 'It’s kept in this patient’s chart, so don’t name other people here.';
 
 /** The patient page's addresses, by ID only, with the panel's word for what it just did. */
 function expectOnlyIds(addresses: string[]) {
@@ -540,6 +542,9 @@ test('Entered in error on a clear says the flag it cleared can come back, and th
   );
   await expect(parts.panel.locator('#flags-mark')).not.toContainText('leaves the patient’s flags');
   const mark = page.getByRole('form', { name: 'Mark entered in error' });
+  // Each reason is this chart's own detail, so each box says not to name other people (item 26).
+  await besideIt(mark.getByLabel('Why it was entered in error'), KEPT_IN_CHART);
+  await besideIt(parts.reason, KEPT_IN_CHART);
   await mark.getByLabel('Why it was entered in error').fill('Demo: cleared the wrong flag');
   await mark.getByRole('button', { name: 'Mark entered in error' }).click();
   await expect(page).toHaveURL(new RegExp(`/patients/${patient.id}\\?flag=marked$`));

@@ -175,6 +175,17 @@ describe('the Flags panel’s form', () => {
     expect(html).not.toContain(`?${FORM_ID}`);
   });
 
+  it('says under the reason that it is kept in this patient’s chart, not to name other people (item 26)', () => {
+    // The reason is patient detail of this chart (design 9): the preset pages' line, not to put
+    // patient names there, would tell the person not to write about the patient whose chart it is.
+    const html = draw();
+    expect(html).toContain(
+      '<p id="flags-reason-warning" class="sx-help">It’s kept in this patient’s chart, so don’t name other people here.</p>',
+    );
+    expect(hasTag(html, 'textarea', ['id="flags-reason"', 'flags-reason-warning'])).toBe(true);
+    expect(html).not.toContain('patient names');
+  });
+
   it('offers no form, and no Entered in error, without patients.edit', () => {
     const html = draw({ canEdit: false, markable: [] });
     expect(html).not.toContain('<form');
