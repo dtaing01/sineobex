@@ -85,7 +85,7 @@ that look like bugs.
 | Run a card with the small local model | `CARD_MODEL=<name> node tools/card-run.mjs <card>`; `--dry-run` shows what the model is sent (`docs/plan/README.md`, "Running a card") |
 | **Everything CI runs** (all but the Android build) | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres PORTAL_ENV=test PW_CHROMIUM_PATH=/opt/pw-browsers/chromium tools/ci-local.sh` |
 
-`tools/ci-local.sh` takes about 15 minutes. It must end with "All local CI checks passed" before
+`tools/ci-local.sh` takes about 50 minutes. It must end with "All local CI checks passed" before
 anything is pushed. Without `PW_CHROMIUM_PATH` the portal tests can't start a browser.
 Local Postgres is 16; CI also runs 17, so don't rely on version-specific behaviour (the
 `unaccent` dictionary differs between them: that is why `normalize_name` is pinned, migration
