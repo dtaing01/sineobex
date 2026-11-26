@@ -465,10 +465,13 @@ class PatientFlags {
   }
 
   /// What the `flag_change_not_applied` notice about the flag change [recordId] was for, as this phone
-  /// holds the change (design 6.2; review finding W1): its create, held here, a set or a clear; else an
-  /// Entered in error mark of it held here. Null where the phone holds neither, or no longer the change
-  /// a held create made (the phone lets go of what the server holds), or the store is frozen: the
-  /// notice then names no act.
+  /// holds the change (design 6.2; review findings W1, VS3): its create, held here, a set or a clear;
+  /// else an Entered in error mark of it held here. A held create stays held here once a Program Admin
+  /// takes it, so where a chart this phone holds whole lists the change, its create was taken and a held
+  /// mark is what wasn't applied; where the phone holds both a held create and a held mark and no whole
+  /// chart lists the change, either could be, and the notice names no act. Null where the phone holds
+  /// neither, or no longer the change a held create made (the phone lets go of what the server holds),
+  /// or the store is frozen: the notice then names no act.
   NotAppliedFlagChange? notAppliedOf(String recordId) {
     if (store.frozen) return null;
     final marks = _heldMarksOf(_kept(recordId));
@@ -479,14 +482,26 @@ class PatientFlags {
       ]))
         r['change_id']! as String,
     ];
-    if (held.any((id) => !marks.contains(id))) {
-      return switch (store.record(recordId)?.attributes['action']) {
+    final heldMark = held.any(marks.contains);
+    final record = store.record(recordId);
+    if (held.any((id) => !marks.contains(id)) && !_onWholeChart(record)) {
+      if (heldMark) return null;
+      return switch (record?.attributes['action']) {
         'set' => NotAppliedFlagChange.set,
         'clear' => NotAppliedFlagChange.clear,
         _ => null,
       };
     }
-    return held.isNotEmpty ? NotAppliedFlagChange.mark : null;
+    return heldMark ? NotAppliedFlagChange.mark : null;
+  }
+
+  /// A chart this phone holds whole, of the flag change [record]'s patient as the phone knows them
+  /// now, lists the change: the server holds it on the chart.
+  bool _onWholeChart(LocalRecord? record) {
+    final patientId = record?.patientId;
+    if (patientId == null) return false;
+    final meta = chartMetaOf(store, store.canonicalPatient(patientId));
+    return meta != null && !meta.partial && meta.flagChangeIds.contains(record!.id);
   }
 
   // ---- receipts ----
