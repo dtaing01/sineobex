@@ -114,11 +114,34 @@ class FakeSyncServer {
   /// The server's own clock.
   DateTime Function() now;
 
-  /// When the server received the change it is storing now: the API stores each change of a push in
-  /// a transaction of its own, dated when it began, so here the push's clock reading plus 1 ms for
-  /// each change before it (review finding VS6); outside a push (a seed, an admin's accept), [now].
-  DateTime _receiptNow() => (_pushReceipt ?? now()).toUtc();
-  DateTime? _pushReceipt;
+  /// When the server received the change it is storing now: the API stores each change in a
+  /// transaction of its own, dated when it began, so no change is dated before one the server stored
+  /// earlier. Here a change of a push, or an admin's accept, that stores something is received at the
+  /// later of the clock and 1 ms after the last receipt, kept across pushes, holds and accepts
+  /// (review findings VS6, VR4), since most tests hold the clock still; a retry answered from its
+  /// receipt takes none. Outside a change (a seed), [now].
+  DateTime _receiptNow() => (_inChange ? _receipt ??= _nextReceipt() : now()).toUtc();
+  bool _inChange = false;
+  DateTime? _receipt;
+  DateTime? _lastReceipt;
+
+  /// The next receipt: never at or before the last.
+  DateTime _nextReceipt() {
+    final clock = now().toUtc();
+    final last = _lastReceipt;
+    return _lastReceipt = last != null && !clock.isAfter(last) ? last.add(const Duration(milliseconds: 1)) : clock;
+  }
+
+  /// Runs [apply] as one change the server receives ([_receiptNow]).
+  T _asOneChange<T>(T Function() apply) {
+    _inChange = true;
+    try {
+      return apply();
+    } finally {
+      _inChange = false;
+      _receipt = null;
+    }
+  }
 
   /// The test's own team: the first a request named. A patient seeded without a team of its own
   /// belongs to it ([seedPatient]), as every patient the API holds belongs to one, so another team's
@@ -521,9 +544,11 @@ class FakeSyncServer {
   Map<String, Object?> acceptHeld(String changeId, {String by = 'admin-user'}) {
     final c = quarantine[changeId]!;
     final h = held[changeId]!;
-    final outcome = _decide(
-      _Actor(h.userId, 'admin', _allPermissions, holdForReview: false, approvedBy: by, teamId: heldInTeam[changeId]),
-      c,
+    final outcome = _asOneChange(
+      () => _decide(
+        _Actor(h.userId, 'admin', _allPermissions, holdForReview: false, approvedBy: by, teamId: heldInTeam[changeId]),
+        c,
+      ),
     );
     if (outcome['status'] != 'accepted') {
       // Refused, the change stays held; a sign-off the note no longer matches tells its sender, and
@@ -785,17 +810,12 @@ class FakeSyncServer {
     _validatePush(changes);
     changes.sort((x, y) => (x['seq']! as int).compareTo(y['seq']! as int));
     final results = <Map<String, Object?>>[];
-    final pushedAt = now().toUtc();
-    for (final (i, c) in changes.indexed) {
+    for (final c in changes) {
       if (stopAfter != null && results.length >= stopAfter!) break;
-      _pushReceipt = pushedAt.add(Duration(milliseconds: i));
-      try {
-        // A time the server just measured as more than 5 minutes off is never stored as verified,
-        // whatever the phone claims (push.ts, review finding P8).
-        results.add(_one(userId, b['deviceId']! as String, teamId, flagged ? {...c, 'clockVerified': false} : c));
-      } finally {
-        _pushReceipt = null;
-      }
+      // A time the server just measured as more than 5 minutes off is never stored as verified,
+      // whatever the phone claims (push.ts, review finding P8).
+      final sent = flagged ? {...c, 'clockVerified': false} : c;
+      results.add(_asOneChange(() => _one(userId, b['deviceId']! as String, teamId, sent)));
     }
     return {...base, 'results': results};
   }

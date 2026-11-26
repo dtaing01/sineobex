@@ -6262,6 +6262,28 @@ void main() {
       );
     });
 
+    // Review finding VR4: the test server dated each push from its own clock reading again, so with the
+    // clock held still, as most tests hold it, a later push's change was dated before or with an
+    // earlier push's later ones. The API dates every change after those it stored before it.
+    test('a second push at the same clock reading is dated after the first push’s changes, and its capped change '
+        'is the current flag', () async {
+      final ahead = {'deviceTime': now.add(const Duration(minutes: 10)).toIso8601String()};
+      final low = flagChange(patientB, flags['flag.low']!, more: ahead);
+      final high = flagChange(patientB, flags['flag.high']!, more: ahead);
+      expect(await send(alex, [low, high]), [taken(low), taken(high)]);
+      final medium = flagChange(patientB, flags['flag.medium']!, more: ahead);
+      expect(await send(dana, [medium]), [taken(medium)]);
+      DateTime at(Map<String, Object?> c) =>
+          DateTime.parse(server.records[idOf(c)]!.attributes['effectiveAt']! as String);
+      expect([at(low).isBefore(at(high)), at(high).isBefore(at(medium))], [true, true]);
+      final index =
+          (await server.handle(alex, team, 'POST', '/v1/patients/index', <String, Object?>{}))! as Map<String, Object?>;
+      final entry = (index['entries']! as List<Object?>).cast<Map<String, Object?>>().singleWhere(
+        (e) => e['patientId'] == patientB,
+      );
+      expect((entry['flags']! as Map<String, Object?>)['primary'], flags['flag.medium']);
+    });
+
     test('held for review, it takes its time from when the server first received it, not from its accept', () async {
       final ahead = flagChange(
         patientA,
