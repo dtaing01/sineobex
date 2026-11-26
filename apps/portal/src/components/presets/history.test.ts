@@ -80,10 +80,12 @@ describe('the update offer', () => {
     );
   });
 
-  it('sends back the version shown and the platform version offered, so only what was reviewed is taken', () => {
+  it('sends back the version shown, the platform version offered and the state shown, so only what was reviewed is taken', () => {
     const html = offer(flag());
     expect(hidden(html, 'baseVersion')).toContain('value="3"');
     expect(hidden(html, 'platformVersion')).toContain('value="2"');
+    // Another admin's Restore or Remove keeps the version: the state tells the copy reviewed (item 5).
+    expect(hidden(html, 'baseState')).toContain('value="active"');
     expect(hidden(html, 'asNew')).toContain('value="false"');
     expect(hidden(html, 'kind')).toContain('value="flag"');
     expect(hidden(html, 'id')).toContain(`value="${FLAG}"`);
@@ -154,6 +156,7 @@ describe('the update offer', () => {
     expect(hidden(html, 'asNew')).toContain('value="true"');
     expect(hidden(html, 'platformVersion')).toContain('value="2"');
     expect(hidden(html, 'baseVersion')).toContain('value="3"');
+    expect(hidden(html, 'baseState')).toContain('value="archived"');
   });
 });
 

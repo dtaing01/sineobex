@@ -91,6 +91,10 @@ const TakePresetUpdate = z
       description:
         'The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale',
     }),
+    baseState: z.enum(['active', 'archived']).openapi({
+      description:
+        'The state you reviewed the preset in, as the list gave it: another by then (restored or archived meanwhile) is refused as stale',
+    }),
     reason: PresetReason,
     asNew: z.boolean().openapi({
       description:
@@ -479,10 +483,10 @@ export function registerPresetAdminRoutes(app: App, deps: Deps): void {
   // place, such an update is refused fixed_field.
   app.openapi(takeUpdateRoute, async (c) => {
     const { kind, id } = presetIn(c.req.valid('param'));
-    const { baseVersion, platformVersion, asNew, reason } = c.req.valid('json');
+    const { baseVersion, platformVersion, baseState, asNew, reason } = c.req.valid('json');
     const scope = await presetWriteScope(c, deps);
     return c.json(
-      await takePlatformUpdate(scope, { kind, id, baseVersion, platformVersion, asNew, reason }),
+      await takePlatformUpdate(scope, { kind, id, baseVersion, platformVersion, baseState, asNew, reason }),
       200,
     );
   });

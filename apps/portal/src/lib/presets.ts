@@ -245,8 +245,8 @@ export async function restorePreset(kind: PresetKind, id: string, reason: string
 
 /**
  * Takes the platform update on offer, in place or as a new preset. `platformVersion` is the list
- * row's `update.platformVersion` and `baseVersion` the version shown beside it: any other answers
- * stale, so only what the person reviewed is taken (5.1).
+ * row's `update.platformVersion`, `baseVersion` the version shown beside it and `baseState` the
+ * row's state: any other answers stale, so only what the person reviewed is taken (5.1).
  */
 export async function takePresetUpdate(kind: PresetKind, id: string, take: Schemas['TakePresetUpdate']) {
   return unwrap(
@@ -524,6 +524,18 @@ export function donePath(page: string, done: string, id: string): string {
  */
 const MEANWHILE: ReadonlySet<string> = new Set(['archived', 'not_archived']);
 
+/**
+ * The notice of another admin's act meanwhile that a refusal answers: a MEANWHILE code, or a take
+ * refused stale because the copy is no longer in the state it was reviewed in (5.1), which the page
+ * now draws in its new place, said as the Remove or Restore that moved it. Null for any other.
+ */
+export function meanwhileNotice(code: string, details: unknown, sent: string | undefined): string | null {
+  if (MEANWHILE.has(code)) return code;
+  const state = (details as { state?: unknown } | undefined)?.state;
+  if (code !== 'stale' || sent === undefined || state === sent) return null;
+  return state === 'archived' ? 'archived' : state === 'active' ? 'not_archived' : null;
+}
+
 /** The page again, saying another admin's act refused one on a preset: a code and an ID, nothing else. */
 export function refusedPath(page: string, refused: string, id: string): string {
   return `${page}?${new URLSearchParams({ refused, preset: id })}`;
@@ -558,10 +570,11 @@ export async function presetFailure(
 ): Promise<ActionState> {
   if (!(err instanceof PortalApiError)) throw err;
   const id = values.id ?? '';
-  if (MEANWHILE.has(err.code) && UUID.test(id)) {
+  const notice = meanwhileNotice(err.code, err.details, values.baseState);
+  if (notice !== null && UUID.test(id)) {
     const page = presetPage((await headers()).get('x-pathname'));
     revalidatePath(page);
-    redirect(refusedPath(page, err.code, id.toLowerCase()));
+    redirect(refusedPath(page, notice, id.toLowerCase()));
   }
   return presetRefusalState(err, values, context);
 }

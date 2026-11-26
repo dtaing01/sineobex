@@ -1471,6 +1471,23 @@ enum SyncResultStatus {
   String toJson() => wire;
 }
 
+/// The state you reviewed the preset in, as the list gave it: another by then (restored or archived meanwhile) is refused as stale
+enum TakePresetUpdateBaseState {
+  active('active'),
+  archived('archived'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const TakePresetUpdateBaseState(this.wire);
+  final String wire;
+
+  static TakePresetUpdateBaseState fromJson(String value) =>
+      TakePresetUpdateBaseState.values.firstWhere((e) => e.wire == value, orElse: () => TakePresetUpdateBaseState.unknown);
+
+  String toJson() => wire;
+}
+
 enum TeamIndexPageStatus {
   unchanged('unchanged'),
   page('page'),
@@ -7450,6 +7467,7 @@ class TakeNoteTypeUpdateResult {
 class TakePresetUpdate {
   const TakePresetUpdate({
     required this.asNew,
+    required this.baseState,
     required this.baseVersion,
     required this.platformVersion,
     required this.reason,
@@ -7457,6 +7475,8 @@ class TakePresetUpdate {
 
   /// Take it as a new preset: this one is archived and kept in the history. The only way to take an update that changes a field fixed at creation
   final bool asNew;
+  /// The state you reviewed the preset in, as the list gave it: another by then (restored or archived meanwhile) is refused as stale
+  final TakePresetUpdateBaseState baseState;
   /// The version you opened: any other is refused as stale, with the current one
   final int baseVersion;
   /// The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale
@@ -7466,6 +7486,7 @@ class TakePresetUpdate {
 
   factory TakePresetUpdate.fromJson(Map<String, dynamic> json) => TakePresetUpdate(
         asNew: json['asNew'] as bool,
+        baseState: TakePresetUpdateBaseState.fromJson(json['baseState'] as String),
         baseVersion: (json['baseVersion'] as num).toInt(),
         platformVersion: (json['platformVersion'] as num).toInt(),
         reason: json['reason'] as String,
@@ -7473,6 +7494,7 @@ class TakePresetUpdate {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'asNew': asNew,
+        'baseState': baseState.toJson(),
         'baseVersion': baseVersion,
         'platformVersion': platformVersion,
         'reason': reason,

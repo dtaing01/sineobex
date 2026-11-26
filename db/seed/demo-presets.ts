@@ -161,6 +161,7 @@ export async function seedDemoPresets(
       act: 'create',
       kind: p.kind,
       state: null,
+      baseState: null,
       baseVersion: null,
       currentVersion: null,
       changedFixed: false,

@@ -157,11 +157,12 @@ describe('taking Sineobex’s update', () => {
     id: FLAG,
     baseVersion: '3',
     platformVersion: '2',
+    baseState: 'active',
     asNew: 'false',
     reason: 'Demo: take theirs',
   };
 
-  it('sends back the version shown and the platform version reviewed, and comes back saying so', async () => {
+  it('sends back the version shown, the platform version reviewed and the state shown, and comes back saying so', async () => {
     answer = { status: 200, body: { id: FLAG, version: 4, revision: 9 } };
     const r = await run(takePresetUpdateAction, fields);
     expect(requests).toEqual([
@@ -170,7 +171,13 @@ describe('taking Sineobex’s update', () => {
         path: '/v1/admin/presets/{kind}/{id}/take-update',
         init: {
           params: { path: { kind: 'flag', id: FLAG } },
-          body: { baseVersion: 3, platformVersion: 2, asNew: false, reason: 'Demo: take theirs' },
+          body: {
+            baseVersion: 3,
+            platformVersion: 2,
+            baseState: 'active',
+            asNew: false,
+            reason: 'Demo: take theirs',
+          },
         },
       },
     ]);
@@ -186,10 +193,10 @@ describe('taking Sineobex’s update', () => {
   });
 
   it('reads the page again when refused stale, and lets the form send what the review shows now', async () => {
-    answer = refusal(409, 'stale', { currentVersion: 3, platformVersion: 3 });
+    answer = refusal(409, 'stale', { currentVersion: 3, platformVersion: 3, state: 'active' });
     const r = await run(takePresetUpdateAction, fields);
-    // The two versions are left out of what the form keeps, so it takes the page's again.
-    const { baseVersion: _shown, platformVersion: _offered, ...kept } = fields;
+    // What the review was opened at is left out of what the form keeps, so it takes the page's again.
+    const { baseVersion: _shown, platformVersion: _offered, baseState: _state, ...kept } = fields;
     expect(r.state).toEqual({
       error:
         'Sineobex offered a newer version while you were reviewing this one. Review it below before you take it.',
@@ -228,6 +235,19 @@ describe('taking Sineobex’s update', () => {
     expect(r.to).toBe(`/team/presets/flags/${FLAG}?refused=archived&preset=${FLAG}`);
   });
 
+  it('comes back to the page, saying so, when another admin restored or removed the copy after its review (item 5)', async () => {
+    // The take is stale and names the copy's state now: the page draws the copy there, so the form
+    // that was refused has gone with its old place, and the page's notice says what happened.
+    pathname = `/team/presets/flags/${FLAG}`;
+    answer = refusal(409, 'stale', { currentVersion: 3, platformVersion: 2, state: 'active' });
+    const restored = await run(takePresetUpdateAction, { ...fields, baseState: 'archived', asNew: 'true' });
+    expect(restored.to).toBe(`/team/presets/flags/${FLAG}?refused=not_archived&preset=${FLAG}`);
+    answer = refusal(409, 'stale', { currentVersion: 3, platformVersion: 2, state: 'archived' });
+    const removed = await run(takePresetUpdateAction, { ...fields, asNew: 'true' });
+    expect(removed.to).toBe(`/team/presets/flags/${FLAG}?refused=archived&preset=${FLAG}`);
+    expect(revalidated).toEqual([`/team/presets/flags/${FLAG}`, `/team/presets/flags/${FLAG}`]);
+  });
+
   it('says in 8.1’s words that Non-Medical bundles hold an item an update taken in place would move', async () => {
     answer = refusal(409, 'bundle_not_medical', { bundles: 2 });
     const r = await run(takePresetUpdateAction, { ...fields, kind: 'item' });
@@ -242,6 +262,8 @@ describe('taking Sineobex’s update', () => {
       { ...fields, asNew: 'yes' },
       { ...fields, platformVersion: '0' },
       { ...fields, baseVersion: 'x' },
+      { ...fields, baseState: 'removed' },
+      { ...fields, baseState: '' },
     ])
       expect((await run(takePresetUpdateAction, bad)).state?.error).toBe(
         'This can’t be found. Reload the page.',

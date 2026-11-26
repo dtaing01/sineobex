@@ -515,6 +515,7 @@ describe('a request that is not well formed (design 7)', () => {
           api.send('POST', `/v1/admin/presets/flag/${id}/take-update`, {
             baseVersion: 1,
             platformVersion: 1,
+            baseState: 'active',
             reason: REASON,
             asNew: 'yes',
           }),
@@ -2055,6 +2056,7 @@ describe('taking a platform update (design 5.1, 5.2, 7)', () => {
       const r = await a.send('POST', `/v1/admin/presets/flag/${ids('flag.high')}/take-update`, {
         baseVersion: 2,
         platformVersion: 2,
+        baseState: 'active',
         reason: REASON,
         asNew,
       });
@@ -2179,7 +2181,11 @@ describe('taking a platform update: what was reviewed, what it names and what it
           'stale',
           v.teamId,
         );
-        expect(details).toEqual({ currentVersion: version, platformVersion: unseen.platformVersion });
+        expect(details).toEqual({
+          currentVersion: version,
+          platformVersion: unseen.platformVersion,
+          state: 'active',
+        });
         // Reloaded, the person is shown the newer one, and takes that.
         expect(((await rowOf('flag', frost))!.update as Offered)!.platformVersion).toBe(
           unseen.platformVersion,
@@ -2215,7 +2221,11 @@ describe('taking a platform update: what was reviewed, what it names and what it
           'stale',
           v.teamId,
         );
-        expect(details).toEqual({ currentVersion: version, platformVersion: unseen.platformVersion });
+        expect(details).toEqual({
+          currentVersion: version,
+          platformVersion: unseen.platformVersion,
+          state: 'active',
+        });
         // What the person is shown now says the field it changes.
         expect(await rowOf('flag', pregnancy)).toMatchObject({
           updateChangesFixed: true,
@@ -2226,6 +2236,106 @@ describe('taking a platform update: what was reviewed, what it names and what it
       }
     } finally {
       undoReviewed();
+    }
+  });
+
+  it('refuses as stale a take reviewed in another state than the copy is in now, as new and in place: another admin’s Restore or Remove is never undone unseen (PL-20)', async () => {
+    // Restore and Remove keep the copy's version, and a take as new archives an active copy: so a
+    // take sent from a removed copy's offer after another admin restored it would remove it again,
+    // and one reviewed on an active copy another admin removed since would add what they removed.
+    const medium = idOf(v, 'flag.medium');
+    const low = idOf(v, 'flag.low');
+    const mediumVersion = await edited('flag', medium, (b) => ({ ...b, criteria: 'Demo: our medium words' }));
+    const lowVersion = await edited('flag', low, (b) => ({ ...b, criteria: 'Demo: our low words' }));
+    const [mediumUpdate, lowUpdate] = [
+      nextVersion('flag.medium', (b) => ({ ...b, criteria: 'Demo: the platform’s medium words' })),
+      nextVersion('flag.low', (b) => ({ ...b, criteria: 'Demo: the platform’s low words' })),
+    ] as const;
+    const undo = releasePlatform([mediumUpdate, lowUpdate]);
+    try {
+      await runInstaller(h, v.teamId);
+      // Reviewed in the Removed list, then restored by another admin before the take.
+      expect((await a.archive('flag', medium, mediumVersion)).status).toBe(200);
+      expect(await rowOf('flag', medium)).toMatchObject({ state: 'archived', updateOnOffer: true });
+      expect((await a.restore('flag', medium)).status).toBe(200);
+      for (const asNew of [true, false]) {
+        const details = await refusedUnwritten(
+          () =>
+            a.takeUpdate(
+              'flag',
+              medium,
+              mediumVersion,
+              asNew,
+              REASON,
+              mediumUpdate.platformVersion,
+              'archived',
+            ),
+          409,
+          'stale',
+          v.teamId,
+        );
+        expect(details, `as new: ${asNew}`).toEqual({
+          currentVersion: mediumVersion,
+          platformVersion: mediumUpdate.platformVersion,
+          state: 'active',
+        });
+      }
+      expect(await headOf(h, medium)).toMatchObject({ state: 'active', originKey: 'flag.medium' });
+      // Reviewed while active, then removed by another admin: as new it is stale, in place archived.
+      expect(await rowOf('flag', low)).toMatchObject({ state: 'active', updateOnOffer: true });
+      expect((await a.archive('flag', low, lowVersion)).status).toBe(200);
+      const details = await refusedUnwritten(
+        () => a.takeUpdate('flag', low, lowVersion, true, REASON, lowUpdate.platformVersion, 'active'),
+        409,
+        'stale',
+        v.teamId,
+      );
+      expect(details).toEqual({
+        currentVersion: lowVersion,
+        platformVersion: lowUpdate.platformVersion,
+        state: 'archived',
+      });
+      await refusedUnwritten(
+        () => a.takeUpdate('flag', low, lowVersion, false, REASON, lowUpdate.platformVersion, 'active'),
+        409,
+        'archived',
+        v.teamId,
+      );
+      // Reviewed again in the state each is in now, each is taken as new: the restored one archived
+      // by the take, the removed one left removed.
+      const taken = await a.takeUpdate('flag', medium, mediumVersion, true, REASON, undefined, 'active');
+      expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+      expect(await headOf(h, medium)).toMatchObject({ state: 'archived', originKey: null });
+      const added = await a.takeUpdate('flag', low, lowVersion, true, REASON, undefined, 'archived');
+      expect(added.status, JSON.stringify(added.body)).toBe(200);
+      expect(await headOf(h, low)).toMatchObject({ state: 'archived', originKey: null });
+    } finally {
+      undo();
+    }
+  });
+
+  it('refuses a state reviewed that is not active or archived, or left out, as malformed, naming it', async () => {
+    const high = idOf(v, 'flag.high');
+    for (const [label, sent] of [
+      ['another word', { baseState: 'removed' }],
+      ['null', { baseState: null }],
+      ['left out', {}],
+    ] as const) {
+      const before = await footprint(h, v.teamId);
+      const r = await a.send('POST', `/v1/admin/presets/flag/${high}/take-update`, {
+        baseVersion: 1,
+        platformVersion: 1,
+        ...sent,
+        reason: REASON,
+        asNew: false,
+      });
+      expect(r.status, `${label}: ${JSON.stringify(r.body)}`).toBe(422);
+      expect(errorOf(r).code, label).toBe('validation_failed');
+      expect(
+        (errorOf(r).details!.fields as { path: string }[]).map((f) => f.path),
+        label,
+      ).toEqual(['baseState']);
+      await expectNothingWritten(h, v.teamId, before);
     }
   });
 
@@ -2242,6 +2352,7 @@ describe('taking a platform update: what was reviewed, what it names and what it
       const r = await a.send('POST', `/v1/admin/presets/flag/${high}/take-update`, {
         baseVersion: 1,
         ...sent,
+        baseState: 'active',
         reason: REASON,
         asNew: false,
       });

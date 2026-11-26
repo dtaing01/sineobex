@@ -221,7 +221,13 @@ describe('openapi.json, patient data in requests and refusals', () => {
     expect(required('EditPreset')).toEqual(['baseVersion', 'body', 'reason']);
     expect(required('ArchivePreset')).toEqual(['baseVersion', 'reason']);
     expect(required('RestorePreset')).toEqual(['reason']);
-    expect(required('TakePresetUpdate')).toEqual(['asNew', 'baseVersion', 'platformVersion', 'reason']);
+    expect(required('TakePresetUpdate')).toEqual([
+      'asNew',
+      'baseState',
+      'baseVersion',
+      'platformVersion',
+      'reason',
+    ]);
     expect(required('ReorderFlags')).toEqual(['flags', 'reason', 'tier']);
     // Each flag with the version its list showed: an order from a list changed since is stale.
     expect(required('ReorderedFlag')).toEqual(['baseVersion', 'id']);

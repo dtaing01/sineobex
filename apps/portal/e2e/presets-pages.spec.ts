@@ -3835,6 +3835,7 @@ async function noOfferLeft() {
       {
         baseVersion: row.version,
         platformVersion: row.update.platformVersion,
+        baseState: row.state,
         asNew: row.state === 'archived',
         reason: 'Demo: nothing left on offer',
       },
@@ -4025,7 +4026,13 @@ test.describe('Sineobex’s update, on an item’s page', () => {
       await staffToken('admin@example.com'),
       'POST',
       `/v1/admin/presets/item/${aquacel.id}/take-update`,
-      { baseVersion: version, platformVersion: 1, asNew: false, reason: 'Demo: another admin’s take' },
+      {
+        baseVersion: version,
+        platformVersion: 1,
+        baseState: 'active',
+        asNew: false,
+        reason: 'Demo: another admin’s take',
+      },
     );
     expect(other.status).toBe(200);
     await take('Demo: Aquacel ribbon').getByLabel('Reason').fill('Demo: Sineobex’s ribbon');
@@ -4077,6 +4084,40 @@ test.describe('Sineobex’s update, on an item’s page', () => {
     expectOnlyIds(traffic.addresses);
     // Restored, so the offer the case left is taken back in place after it (noOfferLeft).
     await actedMeanwhile('item', kit.id, 'restore');
+  });
+
+  test('a take as new sent from a removed item’s offer after another admin restored it comes back to its page, which says so, and removes nothing (item 5)', async ({
+    page,
+  }) => {
+    // Restore keeps the version, so only the state the offer was reviewed in tells this take from one
+    // reviewed on the item as it is now: taken as new, it would have removed the item again.
+    const kit = await named<ItemBody>('item', 'Glucose test');
+    offerPlatformVersion('item', kit.id);
+    await actedMeanwhile('item', kit.id, 'archive');
+    await signIn(page, 'admin@example.com');
+    const traffic = watchTraffic(page);
+    const here = `${LIST}/${kit.id}`;
+    await page.goto(here);
+    const take = page.getByRole('form', { name: 'Take Sineobex’s update to Glucose test' });
+    await expect(take.getByRole('button')).toHaveText(['Add as new from Sineobex’s update to Glucose test']);
+    await take.getByLabel('Reason').fill('Demo: Sineobex’s glucose test again');
+    await actedMeanwhile('item', kit.id, 'restore');
+    await take.getByRole('button', { name: 'Add as new from Sineobex’s update to Glucose test' }).click();
+    await expect(page).toHaveURL(new RegExp(`${here}\\?refused=not_archived&preset=${kit.id}$`));
+    await expect(
+      page.getByRole('heading', { name: 'Restored by another admin: Glucose test' }),
+    ).toBeFocused();
+    await expect(page.getByRole('main')).toContainText(MEANWHILE.not_archived);
+    // Drawn restored, its update now offered in place; nothing was taken, and nothing removed.
+    await expect(take.getByRole('button')).toHaveText(['Replace with the new version of Glucose test']);
+    const items = await listed<ItemBody>('item');
+    expect(items.find((p) => p.id === kit.id)).toMatchObject({ state: 'active', updateOnOffer: true });
+    expect(items.filter((p) => p.name === 'Glucose test')).toHaveLength(1);
+    expect((await historyOf('item', kit.id)).filter((e) => e.act === 'update_taken')).toEqual([]);
+    await expectAccessible(page, 'A take as new refused, the item restored meanwhile');
+    await expectReflow(page, 'A take as new refused, the item restored meanwhile');
+    await expectNothingStored(page, 'A take as new refused, the item restored meanwhile');
+    expectOnlyIds(traffic.addresses);
   });
 
   test('a take refused for its reason keeps the versions it was opened at, so another admin’s change meanwhile is refused stale, never taken unseen', async ({

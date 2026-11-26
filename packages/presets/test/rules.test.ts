@@ -17,6 +17,7 @@ import type { PresetWriteInput } from '../src/index.ts';
 //     act: PresetAct;
 //     kind: PresetKind;
 //     state: 'active' | 'archived' | null;
+//     baseState: 'active' | 'archived' | null;
 //     baseVersion: number | null;
 //     currentVersion: number | null;
 //     changedFixed: boolean;

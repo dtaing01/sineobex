@@ -302,6 +302,7 @@ describe('the preset installer', () => {
         act: 'reorder',
         kind: 'flag',
         state: 'active',
+        baseState: null,
         // The version the admin's list showed it at.
         baseVersion: 1,
         currentVersion: 1,

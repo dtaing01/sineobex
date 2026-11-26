@@ -1,330 +1,350 @@
 {
-  "note": "Hand-written (phase 5 design 4.4, 5.1, 5.3; D131, D132). What each act on a preset does, and what it refuses: the functions of packages/presets/src/rules.ts, which the admin routes refuse by (P1) and the installer and the platform data's check read. The reader is packages/presets/test/rules.test.ts; the phone does not read this file. Each function is called with a case's input (presetWriteEffect with the input as its one argument, reorderRanks(current, ordered), changedFixedFields(kind, before, after)) and must give `expected`. presetWriteEffect: act is create, edit, archive (Remove), restore, take_update, take_update_as_new or reorder (each flag of the tier a reorder sends, moved or not: one refused refuses the whole order, and each flag reorderRanks moves is written as it answers); kind the preset's; state active or archived, null for a create; baseVersion the version the admin's form was loaded at, or for a reorder the version the admin's list showed the flag at (null for a create and a restore, which take none), currentVersion the head's (null for a create); changedFixed and sameBody what the edit's body does against the current one; referencedBy the active presets that point at this one, counted by kind; archivedRefs how many archived presets the new body points at; nameTaken whether another active preset of the kind holds the name the act would give it; updateOnOffer whether platform_latest is above origin_version; updateChangesFixed whether the newest platform body changes a fixed field. It answers {refuse: code} or the head after the act: {stateAfter, versionAfter, customizedAfter}, and for take_update_as_new also `created`, the new preset. A stale base is any base other than the current version. Each act reads only what it needs, and refuses in this order, the first that holds: create: name_taken, reference_archived. edit: archived, stale, no_change, fixed_field, name_taken, reference_archived. archive: not_removable (the settings preset), archived, stale, referenced (any count above 0). restore: not_archived, name_taken, reference_archived. take_update: archived, stale, no_update, fixed_field, name_taken, reference_archived. take_update_as_new: not_removable, stale, no_update, referenced (only while the old one is active), name_taken (the new one's name, the old one's freed), reference_archived. reorder: archived, stale (any flag of the order, whether the order moves it or not, so an order never puts back a rank another write set since). After the act: create, active at version 1, not customized; edit, active at the next version, customized; archive, archived at the same version, customized; restore, active at the same version, customized; take_update, active at the next version, not customized (origin_version becomes platform_latest); take_update_as_new, the old one archived at the same version and customized (its origin_key goes), the new one active at version 1, not customized; reorder, active at the next version, customized, since its rank is now the team's and a platform update must not put it back (PRD main 387). A flag patients carry is archived all the same (D131): patients are not presets. reorderRanks: current is the tier's active flags [{id, rank}], in any order; ordered the ids the admin put in order. Unless ordered holds every id of current exactly once and nothing else ({refuse: 'ids_mismatch'}), each flag's new rank is its place in ordered, counting from 1, times 10, and the answer lists, in ordered's order, the flags whose rank that changes. A reorder asks it before presetWriteEffect, so a list that has gained or lost a flag is ids_mismatch whatever versions it sends. changedFixedFields: the fields fixed at creation that `after` changes from `before`, in this order: order_category behaviour; item unit, then result.type (no result is a type of its own, so gaining or losing a result changes it, which is why an item never moves into or out of a lab category); flag tier, then sensitive; field_supply_map noteTypeKey, then path (a map with no path differs from one with any); none for bundle, condition_supply_map, bag and settings. Bodies are made up.",
+  "note": "Hand-written (phase 5 design 4.4, 5.1, 5.3; D131, D132). What each act on a preset does, and what it refuses: the functions of packages/presets/src/rules.ts, which the admin routes refuse by (P1) and the installer and the platform data's check read. The reader is packages/presets/test/rules.test.ts; the phone does not read this file. Each function is called with a case's input (presetWriteEffect with the input as its one argument, reorderRanks(current, ordered), changedFixedFields(kind, before, after)) and must give `expected`. presetWriteEffect: act is create, edit, archive (Remove), restore, take_update, take_update_as_new or reorder (each flag of the tier a reorder sends, moved or not: one refused refuses the whole order, and each flag reorderRanks moves is written as it answers); kind the preset's; state active or archived, null for a create; baseState, for a take, the state the admin reviewed it in, as the list row gave it (null for every other act, whose refusals read the head’s state); baseVersion the version the admin's form was loaded at, or for a reorder the version the admin's list showed the flag at (null for a create and a restore, which take none), currentVersion the head's (null for a create); changedFixed and sameBody what the edit's body does against the current one; referencedBy the active presets that point at this one, counted by kind; archivedRefs how many archived presets the new body points at; nameTaken whether another active preset of the kind holds the name the act would give it; updateOnOffer whether platform_latest is above origin_version; updateChangesFixed whether the newest platform body changes a fixed field. It answers {refuse: code} or the head after the act: {stateAfter, versionAfter, customizedAfter}, and for take_update_as_new also `created`, the new preset. A stale base is any base other than the current version; a take is stale too when it was reviewed in a state other than the head’s now, since a Remove and a Restore keep the version and a take as new archives an active copy, so a take sent from a removed copy’s offer after another admin restored it would remove it again. Each act reads only what it needs, and refuses in this order, the first that holds: create: name_taken, reference_archived. edit: archived, stale, no_change, fixed_field, name_taken, reference_archived. archive: not_removable (the settings preset), archived, stale, referenced (any count above 0). restore: not_archived, name_taken, reference_archived. take_update: archived, stale (a base or a state other than the head’s), no_update, fixed_field, name_taken, reference_archived. take_update_as_new: not_removable, stale (as in place), no_update, referenced (only while the old one is active), name_taken (the new one's name, the old one's freed), reference_archived. reorder: archived, stale (any flag of the order, whether the order moves it or not, so an order never puts back a rank another write set since). After the act: create, active at version 1, not customized; edit, active at the next version, customized; archive, archived at the same version, customized; restore, active at the same version, customized; take_update, active at the next version, not customized (origin_version becomes platform_latest); take_update_as_new, the old one archived at the same version and customized (its origin_key goes), the new one active at version 1, not customized; reorder, active at the next version, customized, since its rank is now the team's and a platform update must not put it back (PRD main 387). A flag patients carry is archived all the same (D131): patients are not presets. reorderRanks: current is the tier's active flags [{id, rank}], in any order; ordered the ids the admin put in order. Unless ordered holds every id of current exactly once and nothing else ({refuse: 'ids_mismatch'}), each flag's new rank is its place in ordered, counting from 1, times 10, and the answer lists, in ordered's order, the flags whose rank that changes. A reorder asks it before presetWriteEffect, so a list that has gained or lost a flag is ids_mismatch whatever versions it sends. changedFixedFields: the fields fixed at creation that `after` changes from `before`, in this order: order_category behaviour; item unit, then result.type (no result is a type of its own, so gaining or losing a result changes it, which is why an item never moves into or out of a lab category); flag tier, then sensitive; field_supply_map noteTypeKey, then path (a map with no path differs from one with any); none for bundle, condition_supply_map, bag and settings. Bodies are made up.",
   "cases": {
     "presetWriteEffect": [
       {
         "name": "a new preset starts active at version 1, not customized",
-        "input": {"act": "create", "kind": "item", "state": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "create", "kind": "item", "state": null, "baseState": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}
       },
       {
         "name": "a new flag starts the same way",
-        "input": {"act": "create", "kind": "flag", "state": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "create", "kind": "flag", "state": null, "baseState": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}
       },
       {
         "name": "a new settings preset is created here; one settings row is validatePreset’s rule",
-        "input": {"act": "create", "kind": "settings", "state": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "create", "kind": "settings", "state": null, "baseState": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}
       },
       {
         "name": "a create whose name an active preset of the kind holds is refused",
-        "input": {"act": "create", "kind": "item", "state": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "create", "kind": "item", "state": null, "baseState": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "name_taken"}
       },
       {
         "name": "a create that points at an archived preset is refused",
-        "input": {"act": "create", "kind": "bundle", "state": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "create", "kind": "bundle", "state": null, "baseState": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "reference_archived"}
       },
       {
         "name": "a create with a taken name and an archived reference: the name first",
-        "input": {"act": "create", "kind": "bundle", "state": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 2, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "create", "kind": "bundle", "state": null, "baseState": null, "baseVersion": null, "currentVersion": null, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 2, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "name_taken"}
       },
       {
         "name": "a create reads none of what an edit or an update reads",
-        "input": {"act": "create", "kind": "item", "state": null, "baseVersion": null, "currentVersion": null, "changedFixed": true, "sameBody": true, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
+        "input": {"act": "create", "kind": "item", "state": null, "baseState": null, "baseVersion": null, "currentVersion": null, "changedFixed": true, "sameBody": true, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
         "expected": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}
       },
       {
         "name": "an edit at the current version makes the next one and marks the preset customized",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 4, "customizedAfter": true}
       },
       {
         "name": "an edit from an older version is refused as stale",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "an edit from a version not yet made is refused as stale",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 4, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 4, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "an edit of an archived preset is refused",
-        "input": {"act": "edit", "kind": "item", "state": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "archived", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "archived"}
       },
       {
         "name": "an archived preset is said to be archived before it is said to be stale",
-        "input": {"act": "edit", "kind": "item", "state": "archived", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "archived", "baseState": null, "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "archived"}
       },
       {
         "name": "an edit that changes nothing is refused",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": true, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": true, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "no_change"}
       },
       {
         "name": "a stale edit is stale even when it changes nothing",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": true, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": true, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "an edit that changes a field fixed at creation is refused",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": true, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": true, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "fixed_field"}
       },
       {
         "name": "an edit to a name an active preset of the kind holds is refused",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "name_taken"}
       },
       {
         "name": "an edit that points at an archived preset is refused",
-        "input": {"act": "edit", "kind": "bundle", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "bundle", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "reference_archived"}
       },
       {
         "name": "a fixed field changed comes before a taken name",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": true, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": true, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "fixed_field"}
       },
       {
         "name": "a taken name comes before an archived reference",
-        "input": {"act": "edit", "kind": "bundle", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "bundle", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "name_taken"}
       },
       {
         "name": "an edit of a preset others point at is allowed: only removing it is refused",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 2, "field_supply_map": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 2, "field_supply_map": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 4, "customizedAfter": true}
       },
       {
         "name": "the settings preset is edited as any other",
-        "input": {"act": "edit", "kind": "settings", "state": "active", "baseVersion": 7, "currentVersion": 7, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "edit", "kind": "settings", "state": "active", "baseState": null, "baseVersion": 7, "currentVersion": 7, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 8, "customizedAfter": true}
       },
       {
         "name": "an edit while a platform update is on offer is allowed, and the copy stays edited",
-        "input": {"act": "edit", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
+        "input": {"act": "edit", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
         "expected": {"stateAfter": "active", "versionAfter": 4, "customizedAfter": true}
       },
       {
         "name": "a remove archives the preset at the version it is at",
-        "input": {"act": "archive", "kind": "item", "state": "active", "baseVersion": 2, "currentVersion": 2, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "item", "state": "active", "baseState": null, "baseVersion": 2, "currentVersion": 2, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "archived", "versionAfter": 2, "customizedAfter": true}
       },
       {
         "name": "a remove of a preset an active one points at is refused",
-        "input": {"act": "archive", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 2, "field_supply_map": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 2, "field_supply_map": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "referenced"}
       },
       {
         "name": "one active preset pointing at it is enough to refuse",
-        "input": {"act": "archive", "kind": "bag", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"settings": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "bag", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"settings": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "referenced"}
       },
       {
         "name": "a remove from an older version is refused as stale",
-        "input": {"act": "archive", "kind": "item", "state": "active", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "item", "state": "active", "baseState": null, "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "a stale remove is stale before it is referenced",
-        "input": {"act": "archive", "kind": "item", "state": "active", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "item", "state": "active", "baseState": null, "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "the settings preset is never removed",
-        "input": {"act": "archive", "kind": "settings", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "settings", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "not_removable"}
       },
       {
         "name": "the settings preset is never removed, at whatever version",
-        "input": {"act": "archive", "kind": "settings", "state": "active", "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "settings", "state": "active", "baseState": null, "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "not_removable"}
       },
       {
         "name": "a remove of an archived preset is refused",
-        "input": {"act": "archive", "kind": "item", "state": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "item", "state": "archived", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "archived"}
       },
       {
         "name": "a flag is archived whoever carries it: patients are not presets",
-        "input": {"act": "archive", "kind": "flag", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "flag", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "archived", "versionAfter": 3, "customizedAfter": true}
       },
       {
         "name": "a preset that points at an archived one can still be removed",
-        "input": {"act": "archive", "kind": "bundle", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "bundle", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "archived", "versionAfter": 3, "customizedAfter": true}
       },
       {
         "name": "zero counts are not references",
-        "input": {"act": "archive", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 0}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "archive", "kind": "item", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 0}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "archived", "versionAfter": 3, "customizedAfter": true}
       },
       {
         "name": "a restore makes an archived preset active at the version it is at",
-        "input": {"act": "restore", "kind": "item", "state": "archived", "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "restore", "kind": "item", "state": "archived", "baseState": null, "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 3, "customizedAfter": true}
       },
       {
         "name": "a restore whose name an active preset of the kind now holds is refused",
-        "input": {"act": "restore", "kind": "item", "state": "archived", "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "restore", "kind": "item", "state": "archived", "baseState": null, "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "name_taken"}
       },
       {
         "name": "a restore of a preset that points at an archived one is refused",
-        "input": {"act": "restore", "kind": "bundle", "state": "archived", "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "restore", "kind": "bundle", "state": "archived", "baseState": null, "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "reference_archived"}
       },
       {
         "name": "a restore of an active preset is refused",
-        "input": {"act": "restore", "kind": "item", "state": "active", "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "restore", "kind": "item", "state": "active", "baseState": null, "baseVersion": null, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "not_archived"}
       },
       {
         "name": "a restore takes no version, so it is never stale",
-        "input": {"act": "restore", "kind": "item", "state": "archived", "baseVersion": null, "currentVersion": 5, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "restore", "kind": "item", "state": "archived", "baseState": null, "baseVersion": null, "currentVersion": 5, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 5, "customizedAfter": true}
       },
       {
         "name": "taking the update makes the next version, not customized any more",
-        "input": {"act": "take_update", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 4, "customizedAfter": false}
       },
       {
         "name": "taking the update from an older version is refused as stale",
-        "input": {"act": "take_update", "kind": "item", "state": "active", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "taking an update when none is on offer is refused",
-        "input": {"act": "take_update", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "no_update"}
       },
       {
         "name": "an update that changes a fixed field is taken only as a new preset",
-        "input": {"act": "take_update", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
         "expected": {"refuse": "fixed_field"}
       },
       {
         "name": "an archived preset takes its update only as a new one",
-        "input": {"act": "take_update", "kind": "item", "state": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "item", "state": "archived", "baseState": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "archived"}
       },
       {
         "name": "stale comes before no update",
-        "input": {"act": "take_update", "kind": "item", "state": "active", "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "no update comes before a fixed field",
-        "input": {"act": "take_update", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": true},
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": true},
         "expected": {"refuse": "no_update"}
       },
       {
         "name": "an update whose name an active preset of the kind holds is refused",
-        "input": {"act": "take_update", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "name_taken"}
       },
       {
         "name": "an update that points at an archived preset is refused",
-        "input": {"act": "take_update", "kind": "bundle", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "bundle", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "reference_archived"}
       },
       {
         "name": "the settings preset takes its update in place",
-        "input": {"act": "take_update", "kind": "settings", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update", "kind": "settings", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 4, "customizedAfter": false}
       },
       {
         "name": "taking the update as new archives the old one and makes a new one at version 1",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
         "expected": {"stateAfter": "archived", "versionAfter": 3, "customizedAfter": true, "created": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}}
       },
       {
         "name": "an archived preset takes its update as a new one, and stays archived",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "archived", "baseState": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"stateAfter": "archived", "versionAfter": 3, "customizedAfter": true, "created": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}}
       },
       {
         "name": "as new, an update that changes no fixed field is taken all the same",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"stateAfter": "archived", "versionAfter": 3, "customizedAfter": true, "created": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}}
       },
       {
         "name": "as new, with no update on offer, is refused",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": true},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": true},
         "expected": {"refuse": "no_update"}
       },
       {
         "name": "as new, from an older version, is refused as stale",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 2, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "as new is refused while an active preset points at the active old one",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
         "expected": {"refuse": "referenced"}
       },
       {
         "name": "an archived old one has nothing to free: what points at it does not refuse",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "archived", "baseState": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"stateAfter": "archived", "versionAfter": 3, "customizedAfter": true, "created": {"stateAfter": "active", "versionAfter": 1, "customizedAfter": false}}
       },
       {
         "name": "as new, a name an active preset of the kind holds is refused",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": true, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "name_taken"}
       },
       {
         "name": "as new, a body that points at an archived preset is refused",
-        "input": {"act": "take_update_as_new", "kind": "bundle", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "bundle", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 1, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "reference_archived"}
       },
       {
         "name": "the settings preset is never taken as new: the old one would be removed",
-        "input": {"act": "take_update_as_new", "kind": "settings", "state": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "settings", "state": "active", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "not_removable"}
       },
       {
         "name": "stale comes before referenced, as new",
-        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "active", "baseVersion": 1, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {"bundle": 1}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
+        "name": "as new, reviewed while it was removed and restored since, is refused as stale: it would be removed again",
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "active", "baseState": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "expected": {"refuse": "stale"}
+      },
+      {
+        "name": "as new, reviewed while it was active and removed since, is refused as stale: what another admin removed gains no new preset unseen",
+        "input": {"act": "take_update_as_new", "kind": "item", "state": "archived", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": true},
+        "expected": {"refuse": "stale"}
+      },
+      {
+        "name": "in place, reviewed while it was removed and restored since, is refused as stale",
+        "input": {"act": "take_update", "kind": "item", "state": "active", "baseState": "archived", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "expected": {"refuse": "stale"}
+      },
+      {
+        "name": "in place, reviewed while it was active and removed since, is refused archived, before stale",
+        "input": {"act": "take_update", "kind": "item", "state": "archived", "baseState": "active", "baseVersion": 3, "currentVersion": 3, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "expected": {"refuse": "archived"}
+      },
+      {
         "name": "a flag a reorder moves is at its next version and the team's own, so a platform update is only offered",
-        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseVersion": 1, "currentVersion": 1, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseState": null, "baseVersion": 1, "currentVersion": 1, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 2, "customizedAfter": true}
       },
       {
         "name": "a reorder moves an edited flag on to its next version",
-        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseVersion": 4, "currentVersion": 4, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
+        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseState": null, "baseVersion": 4, "currentVersion": 4, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": true, "updateChangesFixed": false},
         "expected": {"stateAfter": "active", "versionAfter": 5, "customizedAfter": true}
       },
       {
         "name": "a reorder from a list that showed the flag at an older version is refused as stale",
-        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseVersion": 3, "currentVersion": 4, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseState": null, "baseVersion": 3, "currentVersion": 4, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "a reorder that sends no version for a flag is refused as stale",
-        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseVersion": null, "currentVersion": 1, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "reorder", "kind": "flag", "state": "active", "baseState": null, "baseVersion": null, "currentVersion": 1, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "stale"}
       },
       {
         "name": "an archived flag is never reordered",
-        "input": {"act": "reorder", "kind": "flag", "state": "archived", "baseVersion": 2, "currentVersion": 2, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "reorder", "kind": "flag", "state": "archived", "baseState": null, "baseVersion": 2, "currentVersion": 2, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "archived"}
       },
       {
         "name": "an archived flag is said to be archived before it is said to be stale, in a reorder too",
-        "input": {"act": "reorder", "kind": "flag", "state": "archived", "baseVersion": 1, "currentVersion": 2, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
+        "input": {"act": "reorder", "kind": "flag", "state": "archived", "baseState": null, "baseVersion": 1, "currentVersion": 2, "changedFixed": false, "sameBody": false, "referencedBy": {}, "archivedRefs": 0, "nameTaken": false, "updateOnOffer": false, "updateChangesFixed": false},
         "expected": {"refuse": "archived"}
       }
     ],

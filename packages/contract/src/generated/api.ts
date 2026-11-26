@@ -3473,6 +3473,11 @@ export interface components {
         TakePresetUpdate: {
             /** @description Take it as a new preset: this one is archived and kept in the history. The only way to take an update that changes a field fixed at creation */
             asNew: boolean;
+            /**
+             * @description The state you reviewed the preset in, as the list gave it: another by then (restored or archived meanwhile) is refused as stale
+             * @enum {string}
+             */
+            baseState: "active" | "archived";
             /** @description The version you opened: any other is refused as stale, with the current one */
             baseVersion: number;
             /** @description The platform version you reviewed, as the list’s update gave it: a newer one on offer by then is refused as stale */

@@ -158,6 +158,7 @@ describe('the demo team’s own presets in the seed', () => {
       act: 'create',
       kind: 'item',
       state: null,
+      baseState: null,
       baseVersion: null,
       currentVersion: null,
       changedFixed: false,

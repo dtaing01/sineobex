@@ -178,11 +178,14 @@ export function presetsApi(h: Harness, teamId: string, who: Person, options: { t
       asNew: boolean,
       reason: unknown = REASON,
       platformVersion?: number,
+      baseState?: 'active' | 'archived',
     ) =>
       send('POST', at(kind, id, 'take-update'), {
         baseVersion,
-        // Unless a case names another, the person reviewed the version on offer when they send.
+        // Unless a case names another, the person reviewed the version on offer when they send, and
+        // the copy in the state it is in.
         platformVersion: platformVersion ?? (await offeredTo(h, id)),
+        baseState: baseState ?? (await presetStateOf(h, id)),
         reason,
         asNew,
       }),
@@ -229,6 +232,16 @@ async function offeredTo(h: Harness, id: string): Promise<number> {
   const [row] = await h.scratch.owner<{ latest: number | null }[]>`
     select platform_latest as latest from sineobex.team_presets where id::text = lower(${id})`;
   return row?.latest ?? 1;
+}
+
+/**
+ * The state a preset is in, as its head records it: what the list showed a person who takes its
+ * update. Active for an ID that names none.
+ */
+async function presetStateOf(h: Harness, id: string): Promise<'active' | 'archived'> {
+  const [row] = await h.scratch.owner<{ state: 'active' | 'archived' }[]>`
+    select state from sineobex.team_presets where id::text = lower(${id})`;
+  return row?.state ?? 'active';
 }
 
 /** A preset made through the create route, which must answer 201. */

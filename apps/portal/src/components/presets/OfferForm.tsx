@@ -56,20 +56,22 @@ function Review({ name, children }: { name: string; children: ReactNode }) {
 }
 
 /**
- * A version the take sends back: the one a refused take sent, else the page's. The page is read
- * again after every answer, so a take refused for its reason, or for anything but stale, would
- * otherwise send the copy and the offer as they are now, and take what nobody reviewed without
- * being refused stale (5.1). Refused stale, the action sends neither back, so the form follows
- * the page and its review (8.1).
+ * What the take sends back of what was reviewed, a version or the copy's state: what a refused take
+ * sent, else the page's. The page is read again after every answer, so a take refused for its
+ * reason, or for anything but stale, would otherwise send the copy and the offer as they are now,
+ * and take what nobody reviewed without being refused stale (5.1). Refused stale, the action sends
+ * none of them back, so the form follows the page and its review (8.1).
  */
-function SentVersion({ name, version }: { name: 'baseVersion' | 'platformVersion'; version: number }) {
+function Sent({ name, value }: { name: 'baseVersion' | 'platformVersion' | 'baseState'; value: string }) {
   const sent = useFormState().values?.[name];
-  return <input type="hidden" name={name} value={sent ?? String(version)} />;
+  return <input type="hidden" name={name} value={sent ?? value} />;
 }
 
 /**
- * The update offer's form (phase 5 design 5.1, 8.1). It sends back the version shown and the
- * platform version it offered, so only what was reviewed is taken. A take that is done sends the
+ * The update offer's form (phase 5 design 5.1, 8.1). It sends back the version shown, the platform
+ * version it offered and the state the copy was shown in, so only what was reviewed is taken: a
+ * Remove or a Restore keeps the version, and taken as new from a copy another admin restored since,
+ * the update would remove it again. A take that is done sends the
  * browser back to the page, which says so (PresetNotice), and the offer has gone. A refused one
  * stays to say why, though the offer has gone by the time the page is read again (another admin
  * took it).
@@ -128,9 +130,10 @@ export function OfferForm({
             <Review name={name}>{review}</Review>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={id} />
-            {/* The version shown and the version offered, as the review was opened. */}
-            <SentVersion name="baseVersion" version={version} />
-            <SentVersion name="platformVersion" version={offer.platformVersion} />
+            {/* The version shown, the version offered and the copy's state, as the review was opened. */}
+            <Sent name="baseVersion" value={String(version)} />
+            <Sent name="platformVersion" value={String(offer.platformVersion)} />
+            <Sent name="baseState" value={offer.removed ? 'archived' : 'active'} />
             <input type="hidden" name="asNew" value={offer.asNew ? 'true' : 'false'} />
             {back && <input type="hidden" name="back" value={back} />}
             <ReasonBox />

@@ -469,6 +469,7 @@ const effectInput = (
   input: Partial<PresetWriteInput> & Pick<PresetWriteInput, 'act' | 'kind'>,
 ): PresetWriteInput => ({
   state: null,
+  baseState: null,
   baseVersion: null,
   currentVersion: null,
   changedFixed: false,
@@ -513,6 +514,8 @@ function refusal(
     act?: PresetAct;
     /** A take-update's: the platform version on offer now, null when none is. */
     platformVersion?: number | null;
+    /** A take-update's: the state the copy is in now, which the person may have reviewed in another. */
+    state?: 'active' | 'archived';
     /** A reorder's: each flag it refused stale, in the order sent, at the version it is at now. */
     flags?: { id: string; currentVersion: number }[];
   } = {},
@@ -525,6 +528,7 @@ function refusal(
         : {
             currentVersion: context.preset?.currentVersion,
             ...(context.platformVersion === undefined ? {} : { platformVersion: context.platformVersion }),
+            ...(context.state === undefined ? {} : { state: context.state }),
           }
       : code === 'fixed_field'
         ? { fields: context.fields ?? [] }
@@ -755,7 +759,9 @@ function stateChange(
  * copy is archived, if it was active, and is no longer the platform's; a field fixed at creation
  * may change that way, since the old preset keeps its meaning. Either way the version is the
  * platform's, by nobody (0023), while the event names the person and the reason. Only the
- * platform version the person reviewed is taken: any pull may offer a newer one meanwhile.
+ * platform version the person reviewed is taken: any pull may offer a newer one meanwhile. So is it
+ * only from the state they reviewed the copy in: another admin's Restore or Remove meanwhile keeps
+ * the version, and a take as new would undo the one or add what the other removed.
  */
 export function takePlatformUpdate(
   scope: PresetWriteScope,
@@ -765,6 +771,8 @@ export function takePlatformUpdate(
     baseVersion: number;
     /** The platform version the person was shown on offer (the list's `update`). */
     platformVersion: number;
+    /** The state the person was shown the copy in (the list's `state`). */
+    baseState: 'active' | 'archived';
     asNew: boolean;
     reason: string;
   },
@@ -785,6 +793,7 @@ export function takePlatformUpdate(
         act,
         kind,
         state: preset.state,
+        baseState: input.baseState,
         baseVersion: reviewed ? input.baseVersion : null,
         currentVersion: preset.currentVersion,
         referencedBy: referenced,
@@ -803,6 +812,7 @@ export function takePlatformUpdate(
         referencedBy: referenced,
         archived: checked?.archived,
         platformVersion: update?.entry.platformVersion ?? null,
+        state: preset.state,
       });
     // An update the team's presets refuse for anything else is not written either.
     if (checked!.others.length > 0) throw refusedBody(checked!.problems);

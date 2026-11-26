@@ -62,12 +62,14 @@ export async function restorePresetAction(_: ActionState, form: FormData): Promi
 }
 
 /**
- * Takes the update on offer, in place or as a new preset (5.1), sending back the version shown and
- * the platform version offered, so only what was reviewed is taken. A take refused stale means the
- * copy changed, or a newer version came on offer, since the page was read: the page is read again,
- * so the review shows what is on offer now (8.1), and the form says why. Only then are the two
- * versions left out of what the form keeps, so its next take sends the ones the review now shows;
- * any other refusal keeps the versions sent, so a change made meanwhile is still refused stale.
+ * Takes the update on offer, in place or as a new preset (5.1), sending back the version shown, the
+ * platform version offered and the state the copy was shown in, so only what was reviewed is taken.
+ * A take refused stale means the copy changed, or a newer version came on offer, since the page was
+ * read: the page is read again, so the review shows what is on offer now (8.1), and the form says
+ * why. Only then is what the review was opened at left out of what the form keeps, so its next take
+ * sends what the review now shows; any other refusal keeps what was sent, so a change made meanwhile
+ * is still refused stale. A copy another admin removed or restored meanwhile is drawn in its new
+ * place, so that take comes back to the page, which says so (presetFailure).
  */
 export async function takePresetUpdateAction(_: ActionState, form: FormData): Promise<ActionState> {
   const values = sentValues(form);
@@ -77,6 +79,7 @@ export async function takePresetUpdateAction(_: ActionState, form: FormData): Pr
     !preset ||
     preset.baseVersion === null ||
     !(Number.isSafeInteger(platformVersion) && platformVersion >= 1) ||
+    (values.baseState !== 'active' && values.baseState !== 'archived') ||
     (values.asNew !== 'true' && values.asNew !== 'false')
   )
     return { error: LOST, values };
@@ -86,6 +89,7 @@ export async function takePresetUpdateAction(_: ActionState, form: FormData): Pr
     taken = await takePresetUpdate(preset.kind, preset.id, {
       baseVersion: preset.baseVersion,
       platformVersion,
+      baseState: values.baseState,
       asNew,
       reason: values.reason ?? '',
     });
@@ -93,7 +97,7 @@ export async function takePresetUpdateAction(_: ActionState, form: FormData): Pr
     const refused = await presetFailure(err, values, { kind: preset.kind, act: 'take' });
     if (!(err instanceof PortalApiError && err.code === 'stale')) return refused;
     revalidatePath(await landing(values));
-    const { baseVersion: _shown, platformVersion: _offered, ...kept } = values;
+    const { baseVersion: _shown, platformVersion: _offered, baseState: _state, ...kept } = values;
     return { ...refused, values: kept };
   }
   const page = await landing(values);

@@ -28,6 +28,11 @@ export type PresetWriteInput = {
   /** The head's; null for a create. */
   state: 'active' | 'archived' | null;
   /**
+   * A take's: the state the admin reviewed the update in, as the list row gave it. Null for every
+   * other act, whose own refusals (archived, not_archived) read the head's state.
+   */
+  baseState: 'active' | 'archived' | null;
+  /**
    * The version the admin's form was loaded at, or a reorder's list showed the flag at; null for a
    * create and a restore.
    */
@@ -75,6 +80,11 @@ type Check = readonly [PresetRefusal, (input: PresetWriteInput) => boolean];
 const archived: Check = ['archived', (i) => i.state === 'archived'];
 // Any base but the current version: the admin's form was loaded before another write.
 const stale: Check = ['stale', (i) => i.baseVersion !== i.currentVersion];
+// A take reviewed in another state is stale too: a Remove and a Restore keep the version, and a take
+// as new archives an active copy, so one sent from a removed copy's offer after another admin
+// restored it would remove it again, and one reviewed on an active copy removed since would add
+// what they removed.
+const staleTake: Check = ['stale', (i) => i.baseVersion !== i.currentVersion || i.baseState !== i.state];
 const nameTaken: Check = ['name_taken', (i) => i.nameTaken];
 const pointsAtArchived: Check = ['reference_archived', (i) => i.archivedRefs > 0];
 const referenced = (i: PresetWriteInput) => Object.values(i.referencedBy).some((count) => count > 0);
@@ -103,7 +113,7 @@ const REFUSALS: { readonly [A in PresetAct]: readonly Check[] } = {
   // as a new preset, the old one archived.
   take_update: [
     archived,
-    stale,
+    staleTake,
     noUpdate,
     ['fixed_field', (i) => i.updateChangesFixed],
     nameTaken,
@@ -112,7 +122,7 @@ const REFUSALS: { readonly [A in PresetAct]: readonly Check[] } = {
   // The old one is archived, which no active preset may point at; one archived already stays as it is.
   take_update_as_new: [
     settings,
-    stale,
+    staleTake,
     noUpdate,
     ['referenced', (i) => i.state === 'active' && referenced(i)],
     nameTaken,
