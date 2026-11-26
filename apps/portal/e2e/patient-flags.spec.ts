@@ -43,6 +43,11 @@ const ARCHIVED = 'This flag is no longer on your team’s list, so it can only b
 const KEPT_BACK = 'Only the person who made it and Program Admins see why.';
 /** The line under each of the panel's reason boxes (item 26): the reason is this chart's own. */
 const KEPT_IN_CHART = 'It’s kept in this patient’s chart, so don’t name other people here.';
+/** A change refused for changing nothing, in the page's words: what it knew when it opened (W4). */
+const HAD_ALREADY =
+  'When this page opened, this patient had this flag already. Reload the page to see their flags now.';
+const NOTHING_TO_CLEAR =
+  'When this page opened, this patient didn’t have this flag, so there was nothing to clear. Reload the page to see their flags now.';
 
 /** The patient page's addresses, by ID only, with the panel's word for what it just did. */
 function expectOnlyIds(addresses: string[]) {
@@ -596,11 +601,11 @@ test('a Set of a flag the patient has, or a Clear of one they don’t, is said b
   await fill(parts, pill(medium), 'Clear', 'Demo: pressed Clear by mistake');
   await parts.save.click();
   await expect(parts.alert).toBeFocused();
-  await besideIt(action, 'This patient doesn’t have this flag, so there’s nothing to clear.');
+  await besideIt(action, NOTHING_TO_CLEAR);
   await fill(parts, `${pill(frost)} (on this patient)`, 'Set', 'Demo: still by the river');
   await parts.save.click();
   await expect(parts.alert).toBeFocused();
-  await besideIt(action, 'This patient has this flag already.');
+  await besideIt(action, HAD_ALREADY);
   await expectAccessible(page, 'a change that changes nothing', { inPlace: true });
   expect(posted).toEqual([]);
   expect((await chartFor(ADMIN, patient.id)).flags!.history).toHaveLength(1);
@@ -610,6 +615,77 @@ test('a Set of a flag the patient has, or a Clear of one they don’t, is said b
   await parts.save.click();
   await expect(page).toHaveURL(/\?flag=saved$/);
   expect(posted).toHaveLength(1);
+});
+
+// Review finding W4: the panel refused a Clear of a flag a teammate had set after the page opened
+// with "This patient doesn’t have this flag", and a Set of one they had cleared with "This patient has
+// this flag already", of a chart that said otherwise by then. It says what the page knew when it
+// opened, and offers a reload, after which the change is sent and saved.
+test('a change refused by the page as it opened says so and offers a reload, after which it saves, both ways', async ({
+  page,
+}) => {
+  const patient = await freshPatient();
+  const frost = await flagNamed('Frost risk');
+  await signIn(page, ADMIN);
+  const posted: string[] = [];
+  page.on('request', (r) => {
+    if (r.method() === 'POST' && r.url().endsWith(`/patients/${patient.id}/flags`)) posted.push(r.url());
+  });
+  const parts = partsOf(page);
+  const action = parts.form.getByRole('group', { name: 'Set or clear' });
+  const reload = parts.alert.getByRole('link', { name: 'Reload the page', exact: true });
+
+  // A Clear of a flag a teammate set after the page opened.
+  await page.goto(`/patients/${patient.id}`);
+  await expect(parts.pills).toHaveCount(0);
+  await changeFlag(CASEY, patient.id, frost.flagId, 'set', 'Demo: seen at the made-up river');
+  await fill(parts, pill(frost), 'Clear', 'Demo: no longer at risk');
+  await parts.save.click();
+  await expect(parts.alert).toBeFocused();
+  await besideIt(action, NOTHING_TO_CLEAR);
+  await expect(parts.alert).toContainText(NOTHING_TO_CLEAR);
+  // The reload is the alert's next stop by keyboard, after the field's link.
+  await page.keyboard.press('Tab');
+  await expect(parts.alert.getByRole('link', { name: NOTHING_TO_CLEAR })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(reload).toBeFocused();
+  await expectAccessible(page, 'a Clear the page refused as it opened', { inPlace: true });
+  await expectReflow(page, 'a Clear the page refused as it opened');
+  expect(posted).toEqual([]);
+  await page.keyboard.press('Enter');
+  // The page read again: the teammate's set in the header and the history, the choice carried.
+  await expect(parts.pills.getByRole('listitem')).toHaveText([pill(frost)]);
+  await expect(page).toHaveURL(new RegExp(`/patients/${patient.id}$`));
+  await expect(parts.alert).toHaveCount(0);
+  await expect(parts.rows).toHaveCount(1);
+  await fill(parts, `${pill(frost)} (on this patient)`, 'Clear', 'Demo: no longer at risk');
+  await parts.save.click();
+  await expect(page).toHaveURL(/\?flag=saved$/);
+  expect(posted).toHaveLength(1);
+  expect((await chartFor(ADMIN, patient.id)).flags!.secondary).toEqual([]);
+
+  // A Set of a flag a teammate cleared after the page opened.
+  await changeFlag(CASEY, patient.id, frost.flagId, 'set', 'Demo: back by the made-up river');
+  await page.goto(`/patients/${patient.id}`);
+  await expect(parts.pills.getByRole('listitem')).toHaveText([pill(frost)]);
+  await changeFlag(CASEY, patient.id, frost.flagId, 'clear', 'Demo: moved on');
+  await fill(parts, `${pill(frost)} (on this patient)`, 'Set', 'Demo: seen there again');
+  await parts.save.click();
+  await expect(parts.alert).toBeFocused();
+  await besideIt(action, HAD_ALREADY);
+  await expect(reload).toHaveAttribute('href', `/patients/${patient.id}`);
+  expect(posted).toHaveLength(1);
+  await reload.click();
+  // The page read again: no flag on the patient now, the choice not carried.
+  await expect(parts.pills).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/patients/${patient.id}$`));
+  await expect(parts.alert).toHaveCount(0);
+  await fill(parts, pill(frost), 'Set', 'Demo: seen there again');
+  await parts.save.click();
+  await expect(page).toHaveURL(/\?flag=saved$/);
+  expect(posted).toHaveLength(2);
+  expect((await chartFor(ADMIN, patient.id)).flags!.secondary.map((f) => f.flagId)).toEqual([frost.flagId]);
+  await expectNothingStored(page, 'a change refused by the page as it opened');
 });
 
 // Review finding R1: an answer is the route handler's only in its shape; JSON from a gateway or a

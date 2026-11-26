@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { FlagChoice } from '@/lib/flags';
-import { FlagsPanel, flagAnswerOf, type FlagsPanelProps } from './FlagsPanel';
+import { checkFlagForm, FlagsPanel, flagAnswerOf, type FlagsPanelProps } from './FlagsPanel';
 
 // The patient page's Flags panel as it first draws (phase 5 design 8.1; card P5-portal-panel),
 // written ahead of its code: it fails until that card lands. The history as the API worked it out
@@ -190,6 +190,39 @@ describe('the Flags panel’s form', () => {
     const html = draw({ canEdit: false, markable: [] });
     expect(html).not.toContain('<form');
     expect(text(html)).toContain('Demo: High');
+  });
+
+  // Review finding W4: the page knows the patient's flags as they were when it opened, and a teammate
+  // may have changed them since, so a change it refuses for changing nothing says so as the page's,
+  // with a reload offered, never as what the patient has now.
+  it('refuses a change that changes nothing in the page’s words, as of when it opened, and offers a reload', () => {
+    const carried = choice(FROST, 'Demo: Frost risk', 'secondary', { carried: true });
+    const notCarried = choice(HEAT, 'Demo: Heat risk', 'secondary');
+    expect(checkFlagForm(carried, 'set', 'Demo: still by the river')).toEqual({
+      problems: {
+        action:
+          'When this page opened, this patient had this flag already. Reload the page to see their flags now.',
+      },
+      stale: true,
+    });
+    expect(checkFlagForm(notCarried, 'clear', 'Demo: no longer at risk')).toEqual({
+      problems: {
+        action:
+          'When this page opened, this patient didn’t have this flag, so there was nothing to clear. Reload the page to see their flags now.',
+      },
+      stale: true,
+    });
+    // A change that changes something is sent; another refusal offers no reload.
+    expect(checkFlagForm(carried, 'clear', 'Demo: moved on')).toEqual({ problems: {}, stale: false });
+    expect(checkFlagForm(notCarried, 'set', 'Demo: by the river')).toEqual({ problems: {}, stale: false });
+    expect(checkFlagForm(undefined, 'set', ' ')).toEqual({
+      problems: { flagId: 'Choose a flag.', reason: 'Give a reason.' },
+      stale: false,
+    });
+    expect(checkFlagForm(notCarried, '', 'Demo: by the river')).toEqual({
+      problems: { action: 'Choose Set or Clear.' },
+      stale: false,
+    });
   });
 });
 

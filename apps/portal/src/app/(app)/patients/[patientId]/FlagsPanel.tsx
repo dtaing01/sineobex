@@ -86,6 +86,40 @@ export function flagAnswerOf(json: unknown): FlagAnswer | null {
 }
 
 /**
+ * What the form refuses before anything is sent, by field, and whether the page's own knowledge was
+ * why ([stale]). A change that would change nothing is not one to record: as the phone's sheet
+ * writes only what differs, the panel sends neither a set of a flag the patient has nor a clear of
+ * one they don't (design 8.1). The page knows the chart as it was when it opened, and a teammate may
+ * have changed it since, so these two are said as the page's, with a reload offered (review W4).
+ */
+export function checkFlagForm(
+  choice: FlagChoice | undefined,
+  action: string,
+  reason: string,
+): { problems: Partial<Record<Field, string>>; stale: boolean } {
+  const problems: Partial<Record<Field, string>> = {};
+  let stale = false;
+  if (!choice) problems.flagId = 'Choose a flag.';
+  // PLAN-OPEN (BM-78): what happens to the patients who carry a flag when it is archived? It stays
+  // on them until cleared, and is never set again, so the panel refuses a Set of it before anything
+  // is sent, in the words the API would answer.
+  else if (choice.clearOnly && action === 'set')
+    problems.flagId = flagRefusalSentence('change', 409, 'archived');
+  if (action !== 'set' && action !== 'clear') problems.action = 'Choose Set or Clear.';
+  else if (choice && !choice.clearOnly && action === 'set' && choice.carried) {
+    problems.action =
+      'When this page opened, this patient had this flag already. Reload the page to see their flags now.';
+    stale = true;
+  } else if (choice && action === 'clear' && !choice.carried) {
+    problems.action =
+      'When this page opened, this patient didn’t have this flag, so there was nothing to clear. Reload the page to see their flags now.';
+    stale = true;
+  }
+  if (blank(reason)) problems.reason = 'Give a reason.';
+  return { problems, stale };
+}
+
+/**
  * The line under each reason box of the panel. A flag change's reason, and an entered-in-error one,
  * is detail of this patient's chart (design 9), so the preset pages' line, not to put patient names
  * there, would tell the person not to write about the patient whose chart it is.
@@ -129,6 +163,8 @@ export function FlagsPanel({
   const [formId] = useState(changeId);
   const [problem, setProblem] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
+  // The refusal was the page's knowledge, as it opened: the alert offers a reload.
+  const [stale, setStale] = useState(false);
   const [tries, setTries] = useState(0);
   // The change whose Entered in error is open, its problem and its reason's own refusal.
   const [marking, setMarking] = useState<string | null>(null);
@@ -187,23 +223,8 @@ export function FlagsPanel({
     const action = String(form.get('action') ?? '');
     const reason = String(form.get('reason') ?? '');
     const choice = choices.find((c) => c.flagId === flagId);
-    const problems: Partial<Record<Field, string>> = {};
-    if (!choice) problems.flagId = 'Choose a flag.';
-    // PLAN-OPEN (BM-78): what happens to the patients who carry a flag when it is archived? It stays
-    // on them until cleared, and is never set again, so the panel refuses a Set of it before anything
-    // is sent, in the words the API would answer.
-    else if (choice.clearOnly && action === 'set')
-      problems.flagId = flagRefusalSentence('change', 409, 'archived');
-    if (action !== 'set' && action !== 'clear') problems.action = 'Choose Set or Clear.';
-    // A change that would change nothing is not one to record: as the phone's sheet writes only what
-    // differs, the panel sends neither a clear of a flag the patient doesn't have nor a set of one
-    // they have (design 8.1). The page is read again after every save, so what it says they carry is
-    // the chart as it was then.
-    else if (choice && !choice.clearOnly && action === 'set' && choice.carried)
-      problems.action = 'This patient has this flag already.';
-    else if (choice && action === 'clear' && !choice.carried)
-      problems.action = 'This patient doesn’t have this flag, so there’s nothing to clear.';
-    if (blank(reason)) problems.reason = 'Give a reason.';
+    const { problems, stale: pageWas } = checkFlagForm(choice, action, reason);
+    setStale(pageWas);
     if (Object.keys(problems).length > 0) {
       setFieldErrors(problems);
       setProblem('The flag wasn’t changed. Check each field below.');
@@ -469,6 +490,13 @@ export function FlagsPanel({
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {/* A full load of the patient as it is now, as the note type editor offers its own
+                      page again: no fragment, which from this address would only scroll. */}
+                  {stale && (
+                    <p>
+                      <a href={`/patients/${patientId}`}>Reload the page</a>
+                    </p>
                   )}
                 </div>
               )}
