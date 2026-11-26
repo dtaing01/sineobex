@@ -453,11 +453,17 @@ class SyncEngine {
         case SyncResultStatus.rejected:
           if (r.reason == RejectReason.hashMismatch) {
             unanswered++;
-          } else if (r.quarantined == true && r.hash == e.valueHash) {
+          } else if (r.quarantined == true) {
             // Held by the server for a Program Admin: stored there, so it can leave the phone. Its
-            // details say what the server kept of it (a flag change's hold time).
-            store.confirm(e, serverVersion: r.serverVersion ?? 0, details: r.details, inReview: true);
-            confirmed++;
+            // details say what the server kept of it (a flag change's hold time). Held under another
+            // hash, it confirms nothing and waits, as an accepted one does: the stored receipt, naming
+            // the hash the phone sent, confirms it at a later push.
+            if (r.hash == e.valueHash) {
+              store.confirm(e, serverVersion: r.serverVersion ?? 0, details: r.details, inReview: true);
+              confirmed++;
+            } else {
+              unanswered++;
+            }
           } else {
             store.reject(e, reason: r.reason?.wire ?? 'validation', message: r.message, details: r.details);
             rejected++;
