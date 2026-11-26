@@ -596,7 +596,8 @@ class LocalStore {
   /// Keeps [value] of [recordId] under [kind], for as long as the record is here: nothing for a record
   /// the phone doesn't hold.
   void keepForReceipt(String recordId, String kind, String value) => _db.execute(
-    'INSERT INTO receipt_kept (record_id, kind, value) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM records WHERE id = ?) '
+    'INSERT INTO receipt_kept (record_id, kind, value) SELECT ?, ?, ? '
+    'WHERE EXISTS (SELECT 1 FROM records WHERE id = ?) '
     'ON CONFLICT (record_id, kind) DO UPDATE SET value = excluded.value',
     [recordId, kind, value, recordId],
   );

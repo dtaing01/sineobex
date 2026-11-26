@@ -496,13 +496,14 @@ class PatientFlags {
 
   /// What the phone keeps of a flag change of its own once a receipt confirms it, in the receipt's
   /// transaction, since its outbox entry, and the times on it, go then (IDs and times only, kept with
-  /// the record, which takes them when it goes; never a flag or a reason): the change's own time, as the server's `when` reads it (the corrected
-  /// time, else the device's); when the receipt came, by the corrected clock; the server's times as
-  /// it stored them, which its answer carries and a retry answers the same (when it received the
-  /// change, a held one's hold time, and the time a taken one is ordered by); for each mark the
-  /// server holds for a Program Admin, the mark's change, so it is told from a held create of the
-  /// same change; and whether a later mark was taken, which a held one's fate no longer decides.
-  /// [_read] dates a confirmed change by them until a chart gives the server's time.
+  /// the record, which takes them when it goes; never a flag or a reason): the change's own time, as
+  /// the server's `when` reads it (the corrected time, else the device's); when the receipt came, by
+  /// the corrected clock; the server's times as it stored them, which its answer carries and a retry
+  /// answers the same (when it received the change, a held one's hold time, and the time a taken one
+  /// is ordered by); for each mark the server holds for a Program Admin, the mark's change, so it is
+  /// told from a held create of the same change; and whether a later mark was taken, which a held
+  /// one's fate no longer decides. [_read] dates a confirmed change by them until a chart gives the
+  /// server's time.
   void _onConfirmed(OutboxEntry e, AcceptedReceipt receipt) {
     if (e.entity != entityFlagChange) return;
     final kept = {...?_kept(e.recordId)};
