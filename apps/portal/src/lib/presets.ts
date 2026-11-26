@@ -641,6 +641,25 @@ export interface NoteTypeRow {
   referencedBy: Record<string, number>;
   definition: NoteTypeDefinition;
   protected: ProtectedParts;
+  /** What earlier versions had and the current one lacks, newest first (design 5.4, 8.1). */
+  hidden: HiddenPart[];
+  /** The sections a copy from it reads: the platform's newest for a platform note type, else its current. */
+  copySections: { id: string; title: string }[];
+}
+
+/**
+ * A part an earlier version had and the current one lacks, in the words of the newest version that
+ * had it: a section by its id, a field by its path, an answer by its field's path and its code.
+ * Show again is offered where the API says it copies one back (`showAgain`); `part` is a section or a
+ * field as that version held it, so what is inside it can be named.
+ */
+export interface HiddenPart {
+  kind: 'section' | 'field' | 'option';
+  path: string;
+  code?: string;
+  words: string;
+  showAgain: boolean;
+  part?: NoteTypeSection | NoteTypeField;
 }
 
 /** One operation of a publish (design 5.4), as packages/forms writes it. */

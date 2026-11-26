@@ -1,8 +1,16 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { isNoteTypeTitle, protectedParts, typeProtected } from '@sineobex/forms';
+import {
+  hiddenParts,
+  isNoteTypeTitle,
+  protectedParts,
+  typeProtected,
+  type ResolvedNoteType,
+} from '@sineobex/forms';
 import type { TeamScope } from '../auth/context.ts';
+import { versionsFor } from '../forms/definitions.ts';
 import {
   archiveNoteType,
+  copySourceOf,
   createNoteType,
   FIXED_NOTE_TYPE_FIELDS,
   loadTeamNoteTypes,
@@ -74,6 +82,34 @@ const NoteTypePlatformUpdate = z
   })
   .openapi('NoteTypePlatformUpdate');
 
+const NoteTypeHiddenPart = z
+  .object({
+    kind: z.enum(['section', 'field', 'option']).openapi({
+      description:
+        'A section, a field (at any depth) or an answer of a choice field the current version lacks',
+    }),
+    path: z.string().openapi({
+      description:
+        'A section’s id; a field’s path, the entry part of a repeating section left out; for an answer, its field’s path',
+    }),
+    code: z.string().optional().openapi({ description: 'An answer’s code' }),
+    words: z.string().openapi({ description: 'Its title, label or words in the newest version that had it' }),
+    showAgain: z.boolean().openapi({
+      description:
+        'set_hidden with hidden false copies it back now, unchanged: the editor offers Show again. A part inside a hidden one comes back with it',
+    }),
+    part: z.record(z.string(), z.unknown()).optional().openapi({
+      description: 'A section or a field as that version held it, so what is inside it can be named',
+    }),
+  })
+  .openapi('NoteTypeHiddenPart', {
+    description: 'A part an earlier version had and the current version lacks (design 5.4, 8.1)',
+  });
+
+const NoteTypeCopySection = z
+  .object({ id: z.string(), title: z.string() })
+  .openapi('NoteTypeCopySection', { description: 'A section copy_section can name from this note type' });
+
 const NoteTypeView = z
   .object({
     key: z.string(),
@@ -101,6 +137,14 @@ const NoteTypeView = z
     }),
     definition: Definition.openapi({ description: 'Its current version’s resolved definition' }),
     protected: ProtectedParts,
+    hidden: z.array(NoteTypeHiddenPart).openapi({
+      description:
+        'What earlier versions had and the current one lacks, newest first: none for a type never hidden from',
+    }),
+    copySections: z.array(NoteTypeCopySection).openapi({
+      description:
+        'The sections a copy from it reads, in order: the platform’s newest released version of a platform note type, whatever the team’s copy holds, else its current version',
+    }),
   })
   .openapi('NoteTypeView');
 
@@ -475,8 +519,15 @@ const historyRoute = createRoute({
 // PostgreSQL versions), the key settling two titles a reader would sort alike.
 const byTitle = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 
-/** A note type as Team setup's pages show it. */
-function viewOf(team: TeamNoteTypes, held: HeldNoteType): z.infer<typeof NoteTypeView> {
+/**
+ * A note type as Team setup's pages show it. `versions` are every version it holds, oldest first:
+ * what it showed before and lacks now (Show again, and the words of the pages, design 8.1).
+ */
+function viewOf(
+  team: TeamNoteTypes,
+  held: HeldNoteType,
+  versions: readonly ResolvedNoteType[],
+): z.infer<typeof NoteTypeView> {
   const update = noteTypeUpdateOf(held);
   return {
     key: held.key,
@@ -499,6 +550,12 @@ function viewOf(team: TeamNoteTypes, held: HeldNoteType): z.infer<typeof NoteTyp
     definition: held.definition as Record<string, unknown>,
     // The whole note type said once, so the page offers no edit the API would refuse (D114).
     protected: { whole: typeProtected(held.definition), ...protectedParts(held.definition) },
+    hidden: hiddenParts(versions).map((p) =>
+      p.kind === 'option'
+        ? { ...p, showAgain: false }
+        : { ...p, part: p.part as unknown as Record<string, unknown> },
+    ),
+    copySections: copySourceOf(held).sections.map(({ id, title }) => ({ id, title })),
   };
 }
 
@@ -509,8 +566,20 @@ function viewOf(team: TeamNoteTypes, held: HeldNoteType): z.infer<typeof NoteTyp
 function listNoteTypesAdmin(scope: TeamScope) {
   return scope.tx(async (tx) => {
     const team = await loadTeamNoteTypes(tx, scope.team.teamId);
+    // Every version of each, each checked as definitionFor checks it: what they showed before.
+    const versions = await versionsFor(
+      tx,
+      scope.team.teamId,
+      team.all.map((n) => n.key),
+    );
     return team.all
-      .map((held) => viewOf(team, held))
+      .map((held) =>
+        viewOf(
+          team,
+          held,
+          (versions.get(held.key) ?? []).map((v) => v.definition),
+        ),
+      )
       .sort((a, b) => byTitle.compare(a.title, b.title) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   });
 }

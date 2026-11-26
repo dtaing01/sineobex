@@ -3303,6 +3303,22 @@
         ],
         "type": "object"
       },
+      "NoteTypeCopySection": {
+        "description": "A section copy_section can name from this note type",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "type": "object"
+      },
       "NoteTypeDefinition": {
         "properties": {
           "definition": {
@@ -3839,6 +3855,48 @@
         ],
         "type": "object"
       },
+      "NoteTypeHiddenPart": {
+        "description": "A part an earlier version had and the current version lacks (design 5.4, 8.1)",
+        "properties": {
+          "code": {
+            "description": "An answer’s code",
+            "type": "string"
+          },
+          "kind": {
+            "description": "A section, a field (at any depth) or an answer of a choice field the current version lacks",
+            "enum": [
+              "section",
+              "field",
+              "option"
+            ],
+            "type": "string"
+          },
+          "part": {
+            "additionalProperties": {},
+            "description": "A section or a field as that version held it, so what is inside it can be named",
+            "type": "object"
+          },
+          "path": {
+            "description": "A section’s id; a field’s path, the entry part of a repeating section left out; for an answer, its field’s path",
+            "type": "string"
+          },
+          "showAgain": {
+            "description": "set_hidden with hidden false copies it back now, unchanged: the editor offers Show again. A part inside a hidden one comes back with it",
+            "type": "boolean"
+          },
+          "words": {
+            "description": "Its title, label or words in the newest version that had it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "words",
+          "showAgain"
+        ],
+        "type": "object"
+      },
       "NoteTypeList": {
         "properties": {
           "noteTypes": {
@@ -3951,6 +4009,13 @@
       },
       "NoteTypeView": {
         "properties": {
+          "copySections": {
+            "description": "The sections a copy from it reads, in order: the platform’s newest released version of a platform note type, whatever the team’s copy holds, else its current version",
+            "items": {
+              "$ref": "#/components/schemas/NoteTypeCopySection"
+            },
+            "type": "array"
+          },
           "customized": {
             "description": "The team edited, removed or restored it: a platform version is then only offered",
             "type": "boolean"
@@ -3959,6 +4024,13 @@
             "additionalProperties": {},
             "description": "Its current version’s resolved definition",
             "type": "object"
+          },
+          "hidden": {
+            "description": "What earlier versions had and the current one lacks, newest first: none for a type never hidden from",
+            "items": {
+              "$ref": "#/components/schemas/NoteTypeHiddenPart"
+            },
+            "type": "array"
           },
           "key": {
             "type": "string"
@@ -4021,7 +4093,9 @@
           "update",
           "referencedBy",
           "definition",
-          "protected"
+          "protected",
+          "hidden",
+          "copySections"
         ],
         "type": "object"
       },

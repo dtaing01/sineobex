@@ -963,6 +963,24 @@ enum NoteTypeEventSource {
   String toJson() => wire;
 }
 
+/// A section, a field (at any depth) or an answer of a choice field the current version lacks
+enum NoteTypeHiddenPartKind {
+  section('section'),
+  field('field'),
+  option('option'),
+
+  /// A value this app version does not know yet. Kept so a newer server never breaks decoding.
+  unknown('');
+
+  const NoteTypeHiddenPartKind(this.wire);
+  final String wire;
+
+  static NoteTypeHiddenPartKind fromJson(String value) =>
+      NoteTypeHiddenPartKind.values.firstWhere((e) => e.wire == value, orElse: () => NoteTypeHiddenPartKind.unknown);
+
+  String toJson() => wire;
+}
+
 enum NoteTypePlatformUpdateChangesFixedItem {
   kinds('kinds'),
   group('group'),
@@ -4609,6 +4627,27 @@ class NoteToFinish {
       };
 }
 
+/// A section copy_section can name from this note type
+class NoteTypeCopySection {
+  const NoteTypeCopySection({
+    required this.id,
+    required this.title,
+  });
+
+  final String id;
+  final String title;
+
+  factory NoteTypeCopySection.fromJson(Map<String, dynamic> json) => NoteTypeCopySection(
+        id: json['id'] as String,
+        title: json['title'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'title': title,
+      };
+}
+
 class NoteTypeDefinition {
   const NoteTypeDefinition({
     required this.definition,
@@ -4731,6 +4770,49 @@ class NoteTypeEvent {
       };
 }
 
+/// A part an earlier version had and the current version lacks (design 5.4, 8.1)
+class NoteTypeHiddenPart {
+  const NoteTypeHiddenPart({
+    this.code,
+    required this.kind,
+    this.partValue,
+    required this.path,
+    required this.showAgain,
+    required this.words,
+  });
+
+  /// An answer’s code
+  final String? code;
+  /// A section, a field (at any depth) or an answer of a choice field the current version lacks
+  final NoteTypeHiddenPartKind kind;
+  /// A section or a field as that version held it, so what is inside it can be named
+  final Map<String, Object?>? partValue;
+  /// A section’s id; a field’s path, the entry part of a repeating section left out; for an answer, its field’s path
+  final String path;
+  /// set_hidden with hidden false copies it back now, unchanged: the editor offers Show again. A part inside a hidden one comes back with it
+  final bool showAgain;
+  /// Its title, label or words in the newest version that had it
+  final String words;
+
+  factory NoteTypeHiddenPart.fromJson(Map<String, dynamic> json) => NoteTypeHiddenPart(
+        code: json['code'] == null ? null : json['code'] as String,
+        kind: NoteTypeHiddenPartKind.fromJson(json['kind'] as String),
+        partValue: json['part'] == null ? null : Map<String, Object?>.from(json['part'] as Map),
+        path: json['path'] as String,
+        showAgain: json['showAgain'] as bool,
+        words: json['words'] as String,
+      );
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        if (code != null) 'code': code!,
+        'kind': kind.toJson(),
+        if (partValue != null) 'part': partValue!,
+        'path': path,
+        'showAgain': showAgain,
+        'words': words,
+      };
+}
+
 class NoteTypeList {
   const NoteTypeList({
     required this.noteTypes,
@@ -4846,8 +4928,10 @@ class NoteTypeRevision {
 
 class NoteTypeView {
   const NoteTypeView({
+    required this.copySections,
     required this.customized,
     required this.definition,
+    required this.hidden,
     required this.key,
     required this.protected,
     required this.referencedBy,
@@ -4859,10 +4943,14 @@ class NoteTypeView {
     required this.version,
   });
 
+  /// The sections a copy from it reads, in order: the platform’s newest released version of a platform note type, whatever the team’s copy holds, else its current version
+  final List<NoteTypeCopySection> copySections;
   /// The team edited, removed or restored it: a platform version is then only offered
   final bool customized;
   /// Its current version’s resolved definition
   final Map<String, Object?> definition;
+  /// What earlier versions had and the current one lacks, newest first: none for a type never hidden from
+  final List<NoteTypeHiddenPart> hidden;
   final String key;
   final NoteTypeProtectedParts protected;
   /// How many active presets name it, by their kind; it can’t be removed while any do
@@ -4880,8 +4968,10 @@ class NoteTypeView {
   final int version;
 
   factory NoteTypeView.fromJson(Map<String, dynamic> json) => NoteTypeView(
+        copySections: (json['copySections'] as List<dynamic>).map((e) => NoteTypeCopySection.fromJson(e as Map<String, dynamic>)).toList(),
         customized: json['customized'] as bool,
         definition: Map<String, Object?>.from(json['definition'] as Map),
+        hidden: (json['hidden'] as List<dynamic>).map((e) => NoteTypeHiddenPart.fromJson(e as Map<String, dynamic>)).toList(),
         key: json['key'] as String,
         protected: NoteTypeProtectedParts.fromJson(json['protected'] as Map<String, dynamic>),
         referencedBy: (json['referencedBy'] as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt())),
@@ -4894,8 +4984,10 @@ class NoteTypeView {
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
+        'copySections': copySections.map((e) => e.toJson()).toList(),
         'customized': customized,
         'definition': definition,
+        'hidden': hidden.map((e) => e.toJson()).toList(),
         'key': key,
         'protected': protected.toJson(),
         'referencedBy': referencedBy.map((k, v) => MapEntry(k, v)),

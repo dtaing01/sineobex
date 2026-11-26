@@ -473,6 +473,14 @@ function platformNewest(): Record<string, ResolvedNoteType> {
 }
 
 /**
+ * The definition copy_section reads from a note type (5.4): the platform's newest released version
+ * of a key the platform ships, whatever the team's copy of it now holds, else its current version.
+ */
+export function copySourceOf(held: HeldNoteType): ResolvedNoteType {
+  return platformNewest()[held.key] ?? held.definition;
+}
+
+/**
  * Every version of the note type, oldest first, each read as definitionFor reads it: the newest is
  * the head's current one, since every writer moves the head with the version it writes.
  */

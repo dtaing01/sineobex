@@ -2435,6 +2435,11 @@ export interface components {
             /** Format: date-time */
             startedAt: string;
         };
+        /** @description A section copy_section can name from this note type */
+        NoteTypeCopySection: {
+            id: string;
+            title: string;
+        };
         NoteTypeDefinition: {
             /** @description The resolved definition, in the format of @sineobex/forms */
             definition: {
@@ -2583,6 +2588,26 @@ export interface components {
             /** @description The version the act made, or stood on: an archive and a restore make none */
             version: number;
         };
+        /** @description A part an earlier version had and the current version lacks (design 5.4, 8.1) */
+        NoteTypeHiddenPart: {
+            /** @description An answer’s code */
+            code?: string;
+            /**
+             * @description A section, a field (at any depth) or an answer of a choice field the current version lacks
+             * @enum {string}
+             */
+            kind: "section" | "field" | "option";
+            /** @description A section or a field as that version held it, so what is inside it can be named */
+            part?: {
+                [key: string]: unknown;
+            };
+            /** @description A section’s id; a field’s path, the entry part of a repeating section left out; for an answer, its field’s path */
+            path: string;
+            /** @description set_hidden with hidden false copies it back now, unchanged: the editor offers Show again. A part inside a hidden one comes back with it */
+            showAgain: boolean;
+            /** @description Its title, label or words in the newest version that had it */
+            words: string;
+        };
         NoteTypeList: {
             noteTypes: components["schemas"]["NoteTypeEntry"][];
         };
@@ -2615,12 +2640,16 @@ export interface components {
             revision: number;
         };
         NoteTypeView: {
+            /** @description The sections a copy from it reads, in order: the platform’s newest released version of a platform note type, whatever the team’s copy holds, else its current version */
+            copySections: components["schemas"]["NoteTypeCopySection"][];
             /** @description The team edited, removed or restored it: a platform version is then only offered */
             customized: boolean;
             /** @description Its current version’s resolved definition */
             definition: {
                 [key: string]: unknown;
             };
+            /** @description What earlier versions had and the current one lacks, newest first: none for a type never hidden from */
+            hidden: components["schemas"]["NoteTypeHiddenPart"][];
             key: string;
             protected: components["schemas"]["NoteTypeProtectedParts"];
             /** @description How many active presets name it, by their kind; it can’t be removed while any do */

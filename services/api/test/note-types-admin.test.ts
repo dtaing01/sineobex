@@ -130,6 +130,15 @@ interface NoteTypeRow {
     fields: string[];
     options: { path: string; code: string }[];
   };
+  hidden: {
+    kind: 'section' | 'field' | 'option';
+    path: string;
+    code?: string;
+    words: string;
+    showAgain: boolean;
+    part?: Record<string, unknown>;
+  }[];
+  copySections: { id: string; title: string }[];
 }
 
 const spy = logSpy();
@@ -377,12 +386,70 @@ describe('GET /v1/admin/note-types', () => {
       });
       expect(row.update, row.key).toBeNull();
       expect([row.updateOnOffer, row.updateChangesFixed], row.key).toEqual([false, false]);
+      // What a copy from it reads: the platform's newest released version of a platform note type,
+      // else its current version (copy_section, design 5.4).
+      const platform = [...PRESETS].filter((p) => p.key === row.key).sort((a, b) => b.version - a.version)[0];
+      expect(row.copySections, row.key).toEqual(
+        (platform?.definition ?? row.definition).sections.map((x) => ({ id: x.id, title: x.title })),
+      );
     }
     // The auto note type is protected whole; Red flags, disposition and follow-up (PRD main 409), said
     // once as `whole`, so the page offers it no edit the API would refuse.
     const red = rows.find((x) => x.key === 'red_flags_disposition')!;
     expect(red.protected.whole).toBe(true);
     expect(red.protected.sections).toEqual(red.definition.sections.map((s) => s.id));
+  });
+
+  it('lists what an earlier version had and the current one lacks, in the words of the newest version that had it, with Show again for what can be copied back', async () => {
+    const t = await presetsTeam(h, 'Note Types Hidden');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const key = (await theirs.create({ title: 'Demo: Hidden round', copyOf: 'outreach' })).body.key as string;
+    expect((await rowOf(key, theirs)).hidden).toEqual([]);
+    const first = await theirs.publish(key, 1, [
+      { op: 'rename_label', path: 'outreach.notes', label: 'Demo: What happened' },
+      { op: 'retire_option', path: 'outreach.support', code: 'hygiene' },
+    ]);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const second = await theirs.publish(key, 2, [{ op: 'set_hidden', path: 'outreach.notes', hidden: true }]);
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    const v2 = (await storedAs(key, 2, t.teamId)).definition;
+    const row = await rowOf(key, theirs);
+    expect(row.hidden).toEqual([
+      {
+        kind: 'field',
+        path: 'outreach.notes',
+        words: 'Demo: What happened',
+        showAgain: true,
+        part: v2.sections[0]!.fields.find((f) => f.id === 'notes'),
+      },
+      { kind: 'option', path: 'outreach.support', code: 'hygiene', words: 'Hygiene', showAgain: false },
+    ]);
+    // Shown again, it is no longer listed; the retired answer still is.
+    const shown = await theirs.publish(key, 3, [{ op: 'set_hidden', path: 'outreach.notes', hidden: false }]);
+    expect(shown.status, JSON.stringify(shown.body)).toBe(200);
+    expect((await rowOf(key, theirs)).hidden.map((p) => [p.kind, p.path, p.code])).toEqual([
+      ['option', 'outreach.support', 'hygiene'],
+    ]);
+  });
+
+  it('lists the sections a copy reads: the platform’s for a platform note type the team edited, and the team’s own of its own', async () => {
+    const t = await presetsTeam(h, 'Note Types Copy Sections');
+    const theirs = noteTypesApi(t.teamId, t.admin);
+    const gpc = await rowOf('general_primary_care', theirs);
+    const hidden = gpc.definition.sections.find((x) => x.id === 'eyes')!;
+    const edit = await theirs.publish('general_primary_care', gpc.version, [
+      { op: 'set_hidden', path: hidden.id, hidden: true },
+    ]);
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    const after = await rowOf('general_primary_care', theirs);
+    expect(after.definition.sections.map((x) => x.id)).not.toContain(hidden.id);
+    expect(after.copySections).toContainEqual({ id: hidden.id, title: hidden.title });
+    // A copy of it is the team's own: a copy from it reads its current version.
+    const key = (await theirs.create({ title: 'Demo: Our clinic', copyOf: 'general_primary_care' })).body
+      .key as string;
+    const copy = await rowOf(key, theirs);
+    expect(copy.copySections).toEqual(copy.definition.sections.map((x) => ({ id: x.id, title: x.title })));
+    expect(copy.copySections.map((x) => x.id)).not.toContain(hidden.id);
   });
 
   it('counts the active field supply maps that name each note type', async () => {
@@ -1008,7 +1075,8 @@ describe('PUT /v1/admin/note-types/{key}: what it checks before it stores a vers
       atCurrent.t.teamId,
     );
     const before = await byHand('Note Types Rows Before', 2, 3);
-    expect((await before.theirs.list()).status).toBe(200);
+    // The list reads every version too, for what each showed before (its hidden parts, Show again).
+    expect((await before.theirs.list()).status).toBe(500);
     await refusedUnwritten(
       () => before.theirs.publish('social_needs', 3, [{ op: 'rename_type', title: 'Demo: Over a bad row' }]),
       500,

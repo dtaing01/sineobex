@@ -67,6 +67,8 @@ const row: NoteTypeRow = {
     fields: [],
     options: [{ path: 'needs.given', code: 'none' }],
   },
+  hidden: [],
+  copySections: definition.sections.map((s) => ({ id: s.id, title: s.title })),
 };
 
 const draw = () =>

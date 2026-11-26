@@ -23,6 +23,8 @@ export * from './edit.ts';
 export * from './edit-options.ts';
 export * from './edit-add.ts';
 export * from './edit-fanout.ts';
+// What a note type no longer shows, for Show again and the pages' words (phase 5 design 5.4, 8.1).
+export * from './edit-hidden.ts';
 // The interpreter (7.1): pure functions of a definition and a note's answers.
 export * from './interp/field-at.ts';
 export * from './interp/check-answer.ts';
