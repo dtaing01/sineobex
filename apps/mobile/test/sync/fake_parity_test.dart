@@ -6159,11 +6159,37 @@ void main() {
         flags['flag.medium']!,
         more: {'correctedTime': now.add(const Duration(hours: 1)).toIso8601String()},
       );
-      expect(await send(alex, [ahead, correctedAhead]), [taken(ahead), taken(correctedAhead)]);
-      for (final c in [ahead, correctedAhead]) {
-        expect(server.records[idOf(c)]!.attributes['effectiveAt'], now.toIso8601String());
+      final answers = await send(alex, [ahead, correctedAhead]);
+      expect(answers, [taken(ahead), taken(correctedAhead)]);
+      // Each at its own receipt: the push's moment, and the second change's a moment after it.
+      for (final (c, answer) in [(ahead, answers[0]), (correctedAhead, answers[1])]) {
+        final details = answer['details']! as Map<String, Object?>;
+        expect(server.records[idOf(c)]!.attributes['effectiveAt'], details['receivedAt']);
+        expect(details['effectiveAt'], details['receivedAt']);
       }
+      expect((answers.first['details']! as Map<String, Object?>)['receivedAt'], now.toIso8601String());
       expect(server.records[idOf(ahead)]!.attributes['clockVerified'], isFalse);
+    });
+
+    // Review finding VS6: the API stores each change of a push in a transaction of its own, so two
+    // changes capped at their receipt are dated apart, in the order they came. The test server dated
+    // every change of a push at one instant, so the fold ordered such a pair by ID.
+    test('two creates of one push, both capped at the receipt, are answered two times in the order sent', () async {
+      final ahead = {'deviceTime': now.add(const Duration(minutes: 10)).toIso8601String()};
+      final low = flagChange(patientB, flags['flag.low']!, more: ahead);
+      final high = flagChange(patientB, flags['flag.high']!, more: ahead);
+      final answers = await send(alex, [low, high]);
+      expect(answers, [taken(low), taken(high)]);
+      final times = [
+        for (final a in answers) DateTime.parse((a['details']! as Map<String, Object?>)['effectiveAt']! as String),
+      ];
+      expect(times.first.isBefore(times.last), isTrue, reason: '$times');
+      expect(
+        [
+          for (final c in [low, high]) server.records[idOf(c)]!.attributes['effectiveAt'],
+        ],
+        [for (final t in times) t.toIso8601String()],
+      );
     });
 
     test('held for review, it takes its time from when the server first received it, not from its accept', () async {
