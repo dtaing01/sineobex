@@ -11,7 +11,10 @@
 export type PlatformEffect = 'install' | 'skip' | 'update' | 'offer';
 
 export type PlatformUpdateInput = {
-  /** The team holds a copy: a head with the entry's origin key, or for a note type a platform version. */
+  /**
+   * The team holds a copy: a head with the entry's origin key, or for a note type any version of its
+   * key, the team's own too, so a key the team holds only as its own is offered, never installed over.
+   */
   exists: boolean;
   /** The copy's head; null with no copy. */
   state: 'active' | 'archived' | null;
