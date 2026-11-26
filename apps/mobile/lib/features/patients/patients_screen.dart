@@ -100,6 +100,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   @override
   void initState() {
     super.initState();
+    _s.addListener(_indexChanged);
     if (widget.focusSearch) WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
     _loadEmpty();
   }
@@ -108,6 +109,8 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
   void didUpdateWidget(_PatientsBody old) {
     super.didUpdateWidget(old);
     if (!identical(old.services, widget.services)) {
+      old.services.removeListener(_indexChanged);
+      widget.services.addListener(_indexChanged);
       _run = null;
       _riskFilter = null;
       _conditionFilter = const {};
@@ -120,6 +123,7 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   @override
   void dispose() {
+    _s.removeListener(_indexChanged);
     _debounce?.cancel();
     _query.dispose();
     _focus.dispose();
@@ -255,6 +259,18 @@ class _PatientsBodyState extends ConsumerState<_PatientsBody> {
 
   /// The flags a search is narrowed by: the filters', while they count ([_filtering]).
   Set<String> get _filterIds => _filtering ? {?_riskFilter, ..._conditionFilter} : const {};
+
+  /// The team index stopped being held (its expiry, or a 403 that took it): a filter chosen from it
+  /// narrows nothing now, so it goes with the list it gave, as if the person had cleared it, and the
+  /// tab shows its empty state again (review finding X1).
+  void _indexChanged() {
+    if (_indexHeld || (_riskFilter == null && _conditionFilter.isEmpty)) return;
+    setState(() {
+      _riskFilter = null;
+      _conditionFilter = const {};
+      _filtersChanged();
+    });
+  }
 
   /// A filter chosen or cleared: with nothing typed, the list of who carries the flags; with a search
   /// typed, the search again, narrowed by them as it runs, so it logs only the patients it shows (a
