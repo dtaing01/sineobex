@@ -375,6 +375,60 @@ void main() {
     expect(reasons, hasLength(ran));
   });
 
+  // Verification finding VS1: an unlock starts its refreshers and its push together. The run's first
+  // refresher (the note type list on a real phone) still waits on its answer when the push begins, so
+  // the team index's, after it, waits for the push to be answered.
+  test('at an unlock, the team index is asked for only once the unlock’s push is answered', () async {
+    final first = _Gate();
+    refreshers = (t) => [
+      first,
+      ...patientRefreshers(
+        OpenTeam(
+          userId: t.userId,
+          teamId: t.teamId,
+          store: t.store,
+          api: t.api,
+          clock: t.clock,
+          permissions: FakeSyncServer.healthcareStaff.toList(),
+        ),
+        idLinkBaseUrl: 'http://localhost:3100',
+      ),
+    ];
+    sync.dispose();
+    await launch();
+    await signIn();
+    await sync.refreshNow();
+    expect(PatientServices.of(sync.store!)!.index.state.present, isTrue);
+    sync.store!.createEncounter(kind: 'medical');
+    await lock();
+    // Locked long enough that the unlock asks for the index again.
+    wall = wall.add(const Duration(minutes: 20));
+    boot.advance(const Duration(minutes: 20));
+    first.gate = Completer<void>();
+    holds['/v1/sync/push'] = Completer<void>();
+    final before = requests.length;
+    List<String> sent() => [for (final r in requests.skip(before)) r.path];
+    Future<void> settle() async {
+      for (var i = 0; i < 50; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    await session.unlockWithPin(pin);
+    await sync.ready();
+    await settle();
+    expect(sync.snapshot.syncing, isTrue, reason: 'the unlock’s push is held');
+    first.gate!.complete();
+    await settle();
+    expect(sent(), isNot(contains('/v1/patients/index')), reason: 'the index waits for the push');
+    holds['/v1/sync/push']!.complete();
+    await idle();
+    await sync.refreshNow();
+    final paths = sent();
+    expect(paths.indexOf('/v1/patients/index'), greaterThan(paths.indexOf('/v1/sync/push')));
+    expect(sync.store!.unsynced().total, 0);
+  });
+
   test('a status this app version doesn’t know never deletes anything', () async {
     await signIn();
     sync.store!.createEncounter(kind: 'medical');
@@ -797,6 +851,13 @@ class _Refresher implements AfterSyncRefresher {
   final void Function(RefreshReason) onRefresh;
   @override
   Future<void> refresh(RefreshReason reason) async => onRefresh(reason);
+}
+
+/// A refresher that, while [gate] is set, waits for it: a slow first download (the note type list).
+class _Gate implements AfterSyncRefresher {
+  Completer<void>? gate;
+  @override
+  Future<void> refresh(RefreshReason reason) async => gate?.future;
 }
 
 /// The vault's keystore, with a way to hold a read of the wrapped key after it has been read (a

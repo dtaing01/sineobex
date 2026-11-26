@@ -1,10 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sineobex_field/api/transport.dart';
+import 'package:sineobex_field/patients/patient_providers.dart';
+import 'package:sineobex_field/patients/team_index.dart' show TeamIndexRefresher;
+import 'package:sineobex_field/presets/preset_store.dart';
+import 'package:sineobex_field/presets/presets_refresher.dart';
 import 'package:sineobex_field/sync/clock.dart';
 import 'package:sineobex_field/sync/entities.dart';
 import 'package:sineobex_field/sync/local_store.dart';
+import 'package:sineobex_field/sync/sync_controller.dart' show OpenTeam;
 import 'package:sineobex_field/sync/sync_engine.dart';
 
 import 'fake_server.dart';
@@ -30,6 +36,53 @@ class _OtherHash implements ApiTransport {
     }
     return copy;
   }
+}
+
+/// The test server behind a hand that holds the next push, once [hold] is set, until it completes: a
+/// push the API is still storing, waiting on the team's write lock. The server then stores it as of
+/// when it was sent, as the API dates a change by when its push's transaction began. Every request
+/// and answer is written down, in order.
+class _HeldPush implements ApiTransport {
+  _HeldPush(this.inner, {required this.serverTime, required this.setServerTime});
+  final ApiTransport inner;
+  final DateTime Function() serverTime;
+  final void Function(DateTime) setServerTime;
+  Completer<void>? hold;
+
+  /// `sent <path>` and `answered <path>`, as they happened.
+  final events = <String>[];
+
+  @override
+  Future<Object?> send(String method, String path, {Map<String, String>? query, Object? body}) async {
+    events.add('sent $path');
+    final held = path == '/v1/sync/push' ? hold : null;
+    final Object? answer;
+    if (held == null) {
+      answer = await inner.send(method, path, query: query, body: body);
+    } else {
+      hold = null;
+      final began = serverTime();
+      await held.future;
+      final now = serverTime();
+      setServerTime(began);
+      try {
+        answer = await inner.send(method, path, query: query, body: body);
+      } finally {
+        setServerTime(now);
+      }
+    }
+    events.add('answered $path');
+    return answer;
+  }
+}
+
+/// A refresher whose download waits for [answer]: the note type list an unlock's run asks for first.
+class _Waiting implements AfterSyncRefresher {
+  _Waiting(this.answer);
+  final Future<void> answer;
+
+  @override
+  Future<void> refresh(RefreshReason reason) => answer;
 }
 
 /// Phase 2 done-when: charting in airplane mode, killing the app mid-sync, reconnecting on a slow
@@ -927,6 +980,157 @@ void main() {
       final flags = chart['flags']! as Map<String, Object?>;
       expect((flags['primary']! as Map<String, Object?>)['flagId'], high);
       expect((flags['history']! as List<Object?>).length, 3);
+    });
+  });
+
+  // Verification finding VS1: the server dates a change by when its push began, which can be before an
+  // index that leaves it out was worked out (the push waiting on the team's write lock), and the phone
+  // then takes that index as holding its change. So the phone runs its own pushes before its own
+  // downloads: no refresher starts while a push's batches are under way, whatever asked for it.
+  group('a push under way holds back every download until it is answered', () {
+    late _HeldPush link;
+    late TestPhone p;
+    late PatientServices services;
+
+    setUp(() async {
+      link = _HeldPush(
+        server.transportFor(alex, team),
+        serverTime: () => serverTime,
+        setServerTime: (t) => serverTime = t,
+      );
+      p = TestPhone(userId: alex, teamId: team, transport: () => link, wall: start);
+      phones.add(p);
+      services = PatientServices(
+        OpenTeam(
+          userId: alex,
+          teamId: team,
+          store: p.store,
+          api: p.engine.api,
+          clock: p.clock,
+          permissions: FakeSyncServer.healthcareStaff.toList(),
+        ),
+        idLinkBaseUrl: 'http://localhost:3100',
+        copy: (_) async => true,
+        wallNow: () => p.wall,
+      );
+      // A push gives the phone its clock reference; the index refresher comes after, so none is held.
+      await p.engine.syncAll();
+      p.engine.refreshers.add(TeamIndexRefresher(services.index, p.engine.api, wallNow: () => p.wall));
+      link.events.clear();
+    });
+
+    void advance(Duration d) {
+      p.advance(d);
+      serverTime = serverTime.add(d);
+    }
+
+    /// Lets everything already under way run as far as it can.
+    Future<void> settle() async {
+      for (var i = 0; i < 50; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    /// Starts a sync whose push the server holds, and waits until the phone has sent it.
+    Future<(Future<SyncOutcome>, Completer<void>)> heldPush() async {
+      final held = link.hold = Completer<void>();
+      final push = p.engine.syncAll(force: true);
+      for (var i = 0; i < 50 && !link.events.contains('sent /v1/sync/push'); i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(link.events, ['sent /v1/sync/push']);
+      return (push, held);
+    }
+
+    /// The team index was asked for only once every push was answered.
+    void indexAfterThePush() {
+      final asked = link.events.indexOf('sent /v1/patients/index');
+      expect(asked, isNot(-1), reason: 'the index downloads once the push is answered');
+      expect(asked, greaterThan(link.events.lastIndexOf('answered /v1/sync/push')));
+    }
+
+    for (final reason in [RefreshReason.opened, RefreshReason.timer, RefreshReason.manual]) {
+      test('a refresh asked for while a push is held (${reason.name}) asks for the index only once the push is '
+          'answered', () async {
+        p.store.createEncounter(kind: 'medical');
+        final (push, held) = await heldPush();
+        final refresh = p.engine.runRefreshers(reason);
+        await settle();
+        expect(link.events, ['sent /v1/sync/push'], reason: 'nothing is downloaded while the push is under way');
+        held.complete();
+        expect(await push, isA<SyncDone>());
+        await refresh;
+        indexAfterThePush();
+        expect(p.store.outbox(), isEmpty);
+      });
+    }
+
+    test('a run under way when a push begins starts no refresher after it until the push is answered', () async {
+      // An unlock's run: its first refresher (the note type list) still waits on its answer when the
+      // unlock's push begins, and the index's refresher comes next.
+      final listed = Completer<void>();
+      p.engine.refreshers.insert(0, _Waiting(listed.future));
+      final run = p.engine.runRefreshers(RefreshReason.opened);
+      p.store.createEncounter(kind: 'medical');
+      final (push, held) = await heldPush();
+      listed.complete();
+      await settle();
+      expect(link.events, ['sent /v1/sync/push'], reason: 'the index waits for the push');
+      held.complete();
+      expect(await push, isA<SyncDone>());
+      await run;
+      indexAfterThePush();
+    });
+
+    test('High set offline over the index’s Low, its push held while the index is asked for: the index comes '
+        'after the push, with High, on the profile and the list row', () async {
+      Map<String, Object?> flag(String name, int rank) => {
+        'name': name,
+        'tier': 'primary',
+        'criteria': '',
+        'color': 'red',
+        'rank': rank,
+        'sensitive': false,
+      };
+      final high = server.addPreset(team, 'flag', flag('Demo: High', 10));
+      final low = server.addPreset(team, 'flag', flag('Demo: Low', 30));
+      await PresetsRefresher(PresetStore(p.store), p.engine.api, current: () => true).refresh(RefreshReason.manual);
+      final patient = server.seedPatient(preferredName: 'Demo Wren');
+      server.seed(entityFlagChange, {
+        'patientId': patient,
+        'flagId': low,
+        'action': 'set',
+        'reason': 'Demo: doing ok',
+      }, by: blair);
+      advance(const Duration(minutes: 1));
+      await p.engine.runRefreshers(RefreshReason.manual);
+      expect(services.index.flagsOf(patient)?.primary, low);
+      // Opened offline from the index: a list-only copy.
+      server.offline = true;
+      await services.patients.open(patient);
+      expect(isPartialChart(p.store, patient), isTrue);
+      advance(const Duration(minutes: 1));
+      services.flags.record(patient, flagId: high, action: 'set', reason: 'Demo: worse tonight');
+      server.offline = false;
+
+      link.events.clear();
+      final (push, held) = await heldPush();
+      // The push waits on the team's write lock; two seconds on, the timer asks for the index.
+      advance(const Duration(seconds: 2));
+      final refresh = p.engine.runRefreshers(RefreshReason.timer);
+      await settle();
+      held.complete();
+      expect(await push, isA<SyncDone>());
+      await refresh;
+      expect(p.store.outbox(), isEmpty, reason: 'confirmed');
+      expect(isPartialChart(p.store, patient), isTrue);
+      expect(
+        [services.flags.flagsOf(patient).riskLevel?.flagId, services.flags.riskLevelOf(patient)?.flagId],
+        [high, high],
+        reason: 'the profile and the list row',
+      );
+      expect(services.index.flagsOf(patient)?.primary, high, reason: 'the index was worked out after the push');
+      indexAfterThePush();
     });
   });
 }

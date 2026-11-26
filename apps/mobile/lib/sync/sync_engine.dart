@@ -177,7 +177,30 @@ class SyncEngine {
   ///
   /// Any batch's outcome other than [SyncDone] is the result, not only the first's: a wipe order,
   /// lost access or a spent device ID must be acted on, and after a failure work is still waiting.
+  ///
+  /// No refresher starts while its batches are under way ([_pushes]); its own refreshers run after
+  /// them.
   Future<SyncOutcome> syncAll({bool force = false, int maxBatches = 50}) async {
+    final ended = Completer<void>();
+    _pushes.add(ended.future);
+    final SyncOutcome outcome;
+    try {
+      outcome = await _pushAll(force: force, maxBatches: maxBatches);
+    } finally {
+      _pushes.remove(ended.future);
+      ended.complete();
+    }
+    if (outcome is! SyncDone) return outcome;
+    await _refreshOpenRecords();
+    await runRefreshers(RefreshReason.afterSync);
+    return outcome;
+  }
+
+  /// The pushes under way, each until its batches end.
+  final _pushes = <Future<void>>{};
+
+  /// [syncAll]'s batches, and the report after them.
+  Future<SyncOutcome> _pushAll({required bool force, required int maxBatches}) async {
     var sent = 0, confirmed = 0, rejected = 0, conflicts = 0, unanswered = 0;
     for (var i = 0; i < maxBatches; i++) {
       final outcome = await syncOnce(force: force || i > 0);
@@ -200,8 +223,6 @@ class SyncEngine {
       final report = await syncOnce(force: true);
       if (report is SyncWipeRequested || report is SyncDeviceSpent || report is SyncAccessLost) return report;
     }
-    await _refreshOpenRecords();
-    await runRefreshers(RefreshReason.afterSync);
     return SyncDone(sent: sent, confirmed: confirmed, rejected: rejected, conflicts: conflicts, unanswered: unanswered);
   }
 
@@ -212,8 +233,14 @@ class SyncEngine {
   /// the sync's outcome. One run at a time: a call while one runs waits for it, then runs its own
   /// (a timer tick during a sync's refresh). Nothing runs while the store is frozen for a
   /// removal's hand-over (D21): the server's data isn't this person's to download any more, and a
-  /// search of it couldn't be logged. Nothing is awaited unless a run is in progress, so a call
-  /// never waits on a future made in another zone (a widget test's fake clock).
+  /// search of it couldn't be logged. Nothing is awaited unless a run or a push is in progress, so
+  /// a call never waits on a future made in another zone (a widget test's fake clock).
+  ///
+  /// This phone's own pushes go first: each refresher waits to start until no push's batches are
+  /// under way. The server dates a change by when its push began, which can be before an index it
+  /// leaves out was worked out (the push waiting on the team's write lock), and the phone would
+  /// then take that index as holding the change (phase 5 design 6.1). A push that begins while a
+  /// refresher runs is dated after it, so the refresher needn't stop.
   Future<void> runRefreshers(RefreshReason reason) async {
     for (var running = _refreshing; running != null; running = _refreshing) {
       await running;
@@ -229,6 +256,11 @@ class SyncEngine {
 
   Future<void> _runRefreshers(RefreshReason reason) async {
     for (final r in [...refreshers]) {
+      // Before each refresher, not only the first: a run that began before the push (an unlock's,
+      // whose note type list goes first) would otherwise start the index's download during it.
+      for (var push = _pushes.firstOrNull; push != null; push = _pushes.firstOrNull) {
+        await push;
+      }
       if (store.frozen) return;
       try {
         await r.refresh(reason);
