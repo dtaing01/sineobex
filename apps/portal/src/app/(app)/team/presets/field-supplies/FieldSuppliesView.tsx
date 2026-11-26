@@ -47,14 +47,15 @@ export const LINES_HINT =
  * Why a mapping suggests nothing now (8.1's warning row), and what to do: its note type, field or
  * answer has left the note type's current version. A note started on an earlier version is read on
  * that version, and still has them (5.4, rule 4). A mapping whose field the version lacks can't be
- * saved (the API refuses an edit of it, unknown_path), and its field can't be changed, so it is
- * removed, and another made where one is needed; one whose answer was retired takes another answer.
+ * saved (the API refuses an edit of it, unknown_path), and its field can't be changed, so the field
+ * is shown again in its note type (Show again, under Hidden in a published version), or the mapping
+ * removed and another made where one is needed; one whose answer was retired takes another answer.
  */
 export const WARNINGS = {
   noteTypeUnknown: 'This note type isn’t on your team’s list, so this mapping suggests nothing.',
   noteTypeRemoved: 'This note type was removed, so this mapping suggests nothing.',
   fieldHidden:
-    'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
+    'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Show the field again in its note type, remove this mapping, or add a mapping for another answer.',
   answerRetired:
     'This answer was retired from the note type’s current version, so this mapping suggests nothing. Choose another answer under Edit, or remove it.',
   /** A grid's row picked from an answer since retired: the field is there, the row is not. */

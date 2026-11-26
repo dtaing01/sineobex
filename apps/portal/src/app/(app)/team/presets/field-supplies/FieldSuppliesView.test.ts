@@ -113,9 +113,10 @@ describe('the field supplies page', () => {
 
   it('warns where the field is hidden, or the answer retired, in the note type’s current version, saying what to do', () => {
     const html = draw();
-    // An edit of it is refused while its field is hidden (unknown_path): remove it, or map another.
+    // An edit of it is refused while its field is hidden (unknown_path): show the field again in its
+    // note type, remove it, or map another (the accessibility review, settled point 3).
     expect(sectionOf(html, 'Demo: Pad given')).toContain(
-      'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
+      'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Show the field again in its note type, remove this mapping, or add a mapping for another answer.',
     );
     expect(sectionOf(html, 'Demo: Film given')).toContain(
       'This answer was retired from the note type’s current version, so this mapping suggests nothing. Choose another answer under Edit, or remove it.',

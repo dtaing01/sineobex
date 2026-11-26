@@ -1506,7 +1506,7 @@ test.describe('field supplies, /team/presets/field-supplies', () => {
     await expect(fact(food, 'Answer')).toHaveText('Hygiene');
     const notes = section('Demo: Notes on the supply round');
     await expect(notes).toContainText(
-      'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Remove it, or add a mapping for another answer.',
+      'This field is hidden in the note type’s current version, so this mapping suggests nothing and can’t be saved. Show the field again in its note type, remove this mapping, or add a mapping for another answer.',
     );
     await expect(fact(notes, 'Field')).toHaveText('Outreach / community encounter: Notes');
 
