@@ -564,7 +564,8 @@ As built (unit F3):
 - **Team creation** installs in the platform-scope transaction that creates the team and, when
   it installed anything, writes `forms.presets_installed` (`{ installed }`) in the team's audit
   chain. A new team holds no row, so nothing can differ; a failure fails the creation, and no
-  team, role or audit event is left.
+  team, role or audit event is left. Phase 5 widens the event's details to
+  `{installed, offered, heads}` (phase 5 design 9; 5.2 as built).
 - **The seed** installs in both seeded teams, the demo team and its neighbour, in platform scope,
   and logs how many versions each got; a second seed writes nothing. It takes `presets` as an
   option, so a test can seed the fixture note types.
