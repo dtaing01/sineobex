@@ -1,3 +1,4 @@
+import type { CopySource } from '@/components/presets/CopySection';
 import type { ReviewRow } from '@/components/presets/review';
 import type {
   NoteTypeDefinition,
@@ -128,4 +129,20 @@ export function noteTypeReviewRows(now: NoteTypeDefinition, update: NoteTypeDefi
     };
   });
   return [...facts, ...sections];
+}
+
+/**
+ * What a section can be copied from on one note type's page (design 5.4's copy_section): every other
+ * note type, a removed one too, each with the sections a copy from it reads, as the list gives them
+ * (the platform's newest version of a platform note type, whatever the team's copy of it holds, else
+ * its current version). Whether one can be copied here is the API's to say (D114).
+ */
+export function copySources(rows: readonly NoteTypeRow[], key: string): CopySource[] {
+  return rows
+    .filter((r) => r.key !== key)
+    .map((r) => ({
+      key: r.key,
+      title: r.state === 'archived' ? `${r.title} (removed)` : r.title,
+      sections: r.copySections,
+    }));
 }

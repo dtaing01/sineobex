@@ -8,7 +8,10 @@ import { WhereBox } from './AddField';
 import type { HeldActs } from './OptionEditor';
 import styles from './presets.module.css';
 
-/** A note type a section can be copied from: its key, title and sections, as the list gave them. */
+/**
+ * A note type a section can be copied from: its key, title and the sections a copy from it reads, as
+ * the list gave them (its `copySections`: a platform note type's are the platform's newest version's).
+ */
 export interface CopySource {
   key: string;
   title: string;

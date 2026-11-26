@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { NoteTypeDefinition } from '@/lib/presets';
-import { noteTypeReviewRows } from './words';
+import type { NoteTypeDefinition, NoteTypeRow } from '@/lib/presets';
+import { copySources, noteTypeReviewRows } from './words';
 
 // The review of a note type's update on offer (phase 5 design 5.1, 8.1): only what was reviewed is
 // taken, so every part the update changes is shown before and after. Every name is made up.
@@ -34,5 +34,53 @@ describe('the review of a note type’s update', () => {
     const same = definition('Demo: Wound care', 'Demo: Wound');
     const [row] = noteTypeReviewRows(same, same).filter((r) => r.field === 'section:wound');
     expect(row).toMatchObject({ now: row!.update, changes: false });
+  });
+});
+
+describe('what a section can be copied from (design 5.4’s copy_section)', () => {
+  const row = (key: string, title: string, over: Partial<NoteTypeRow> = {}): NoteTypeRow => ({
+    key,
+    title,
+    state: 'active',
+    version: 2,
+    customized: true,
+    updateOnOffer: false,
+    updateChangesFixed: false,
+    update: null,
+    referencedBy: {},
+    definition: definition(title, 'Demo: Wound'),
+    protected: { whole: false, sections: [], fields: [], options: [] },
+    hidden: [],
+    copySections: [{ id: 'wound', title: 'Demo: Wound' }],
+    ...over,
+  });
+
+  it('offers every other note type with the sections a copy from it reads, the platform’s where the team’s copy hid one (item 11)', () => {
+    const rows = [
+      row('general_primary_care', 'Demo: Clinic', {
+        // The team hid Eyes; a copy from the platform's note type reads the platform's version still.
+        copySections: [
+          { id: 'eyes', title: 'Demo: Eyes' },
+          { id: 'ears', title: 'Demo: Ears' },
+        ],
+      }),
+      row('t_00000000000e', 'Demo: Round', { state: 'archived' }),
+      row('t_00000000000f', 'Demo: This one'),
+    ];
+    expect(copySources(rows, 't_00000000000f')).toEqual([
+      {
+        key: 'general_primary_care',
+        title: 'Demo: Clinic',
+        sections: [
+          { id: 'eyes', title: 'Demo: Eyes' },
+          { id: 'ears', title: 'Demo: Ears' },
+        ],
+      },
+      {
+        key: 't_00000000000e',
+        title: 'Demo: Round (removed)',
+        sections: [{ id: 'wound', title: 'Demo: Wound' }],
+      },
+    ]);
   });
 });

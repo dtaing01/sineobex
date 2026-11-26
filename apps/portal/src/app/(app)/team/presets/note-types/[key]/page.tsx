@@ -6,7 +6,7 @@ import { listNoteTypes, noteTypeHistory, type NoteTypeRow } from '@/lib/presets'
 import { NOTE_TYPE_SENTENCES, publishedSentence } from '@/lib/refusals';
 import { RemoveNoteType, RestoreNoteType } from '../NoteTypeForms';
 import { History, Offer } from '../NoteTypesView';
-import { groupOf, readersOf, visitsOf, whoseOf } from '../words';
+import { copySources, groupOf, readersOf, visitsOf, whoseOf } from '../words';
 import { NoteTypeEditor } from './NoteTypeEditor';
 
 // The screen's name only: a note type's title is the team's own text, kept out of the tab's title.
@@ -78,14 +78,8 @@ export default async function NoteTypePage({
   const row = rows.find((r) => r.key === key);
   if (!row) notFound();
   const history = await noteTypeHistory(key);
-  const others = rows.filter((r) => r.key !== key);
-  const titles = Object.fromEntries(others.map((r) => [r.key, r.title]));
-  // Every other note type, a removed one too, with its sections: what can be copied is the API's to say.
-  const sources = others.map((r) => ({
-    key: r.key,
-    title: r.state === 'archived' ? `${r.title} (removed)` : r.title,
-    sections: r.definition.sections.map((s) => ({ id: s.id, title: s.title })),
-  }));
+  const titles = Object.fromEntries(rows.filter((r) => r.key !== key).map((r) => [r.key, r.title]));
+  const sources = copySources(rows, key);
   const { definition } = row;
   return (
     <>
