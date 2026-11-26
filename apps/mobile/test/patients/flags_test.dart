@@ -635,6 +635,40 @@ void main() {
       expect(flags().flagsOf(p).history.single.at, dated, reason: 'as the chart dates it');
     });
 
+    // The held twin (the coordinator's bite B1): a held answer carries the hold time, which is the time
+    // a Program Admin's accept will date the change by; its stored receipt, replayed, carries it again.
+    test('a held change whose first answer was lost, made while the clock had no reference, is dated by the '
+        'server’s hold time, not by when its receipt came again', () async {
+      final p = await openedPatient();
+      server.offline = true;
+      phone.boot.reboot();
+      phone.wall = phone.wall.add(const Duration(hours: 2));
+      await phone.restart();
+      services = servicesFor(FakeSyncServer.healthcareStaff.toList());
+      expect(phone.clock.status.state, ClockState.unverified);
+      // The role lost patients.edit at the desk: the server holds the change for a Program Admin.
+      server.permissions[alex] = {...FakeSyncServer.healthcareStaff}..remove('patients.edit');
+      final id = flags().record(p, flagId: high, action: 'set', reason: 'Demo: left hospital');
+      final changeId = createOf(id).changeId;
+      server.offline = false;
+      server.dropPushResponses = 1;
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), hasLength(1), reason: 'the server held it; its answer never came');
+      expect(server.heldAt[changeId], start);
+      // The person puts the clock right; half an hour on, the phone sends the change again.
+      phone.wall = phone.wall.subtract(const Duration(hours: 2));
+      advance(const Duration(minutes: 30));
+      await phone.engine.syncAll(force: true);
+      expect(flagChanges(), isEmpty, reason: 'its stored receipt, held, lets it leave the phone');
+      var view = flags().flagsOf(p);
+      expect([view.sentForReview, view.history.single.state], [true, FlagChangeState.inReview]);
+      expect(view.history.single.at, start, reason: 'the server held it at its first receipt');
+      server.acceptHeld(changeId);
+      await services.charts.fetch([p], reason: FetchChartsReason.refresh);
+      view = flags().flagsOf(p);
+      expect([view.riskLevel?.flagId, view.history.single.at], [high, start], reason: 'as the chart dates it');
+    });
+
     test(
       'a change the server holds for review shows only as Sent for review, until a Program Admin accepts it',
       () async {
