@@ -234,6 +234,30 @@ void main() {
       });
       expect([for (final c in found['candidates']! as List) (c as Map)['patientId']], [theirs]);
     });
+
+    // Review finding VS5: duplicates.test.ts holds the same case. The rematch's candidates are the
+    // patient's own team's, with a birth as well as a name, which the queue's threshold takes.
+    test('the duplicate rematch: never pairs another team’s patient', () async {
+      const birth = {'precision': 'day', 'date': '1951-04-12'};
+      server.seedPatient(preferredName: 'Demo Oakley', birth: birth, team: otherTeam);
+      Future<(Map<String, Object?>, Object?)> pushed() async {
+        final intake = change(entityPatient, 'create', consented({'preferredName': 'Demo Oakley', 'birth': birth}));
+        final answer = results(await push(alex, 'dev-alex', [intake])).single;
+        final index = await asked(alex, team, '/v1/patients/index', {'limit': 100});
+        final entry = (index['entries']! as List).cast<Map<String, Object?>>().singleWhere(
+          (e) => e['patientId'] == intake['recordId'],
+        );
+        return (answer, entry['duplicate']);
+      }
+
+      final (mine, mineHint) = await pushed();
+      expect([mine['status'], (mine['details'] as Map?)?['possibleDuplicate'], mineHint], ['accepted', null, null]);
+      expect(server.pairs, isEmpty);
+      // The control: a second of the team's own, as alike, is paired with the first.
+      final (twin, twinHint) = await pushed();
+      expect([(twin['details'] as Map?)?['possibleDuplicate'], (twinHint as Map?)?['status']], [true, 'open']);
+      expect(server.pairs, hasLength(1));
+    });
   });
 
   test('a card conflict tells every member who manages the team’s people, naming the valid card', () async {

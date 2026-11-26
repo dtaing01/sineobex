@@ -199,6 +199,25 @@ describe('the re-run at sync (design 8.2)', () => {
     expect(await rematch(described, 'sync')).toEqual({ flagged: [], possibleDuplicate: false });
   });
 
+  // Review finding VS5: the phone's test server paired two teams' alike patients; fake_parity_test.dart
+  // holds the same case. The candidates are the team's (candidates.ts: every query is led by the team).
+  it('the duplicate rematch: never pairs another team’s patient', async () => {
+    const otherTeam = await createTeam(h, 'Neighbour Patients Team (demo)');
+    const neighbour = await memberWith(h, otherTeam, ADMIN);
+    const alike: NewPatient = { preferredName: 'Oakley', birth: { precision: 'day', date: '1951-04-12' } };
+    const theirs = (await createPatient(h, otherTeam, neighbour.userId, alike)).id;
+    const ours = (await createPatient(h, teamId, admin.userId, alike)).id;
+    expect(await rematch(ours, 'sync')).toEqual({ flagged: [], possibleDuplicate: false });
+    const [{ pairs } = { pairs: -1 }] = await h.scratch.owner<{ pairs: number }[]>`
+      select count(*)::int as pairs from sineobex.duplicate_pairs
+      where ${theirs} in (patient_a, patient_b) or ${ours} in (patient_a, patient_b)`;
+    expect(pairs).toBe(0);
+    // The control: a second of the team's own, as alike, is paired with the first.
+    const twin = (await createPatient(h, teamId, admin.userId, alike)).id;
+    const control = await rematch(twin, 'sync');
+    expect([control.flagged.map((f) => f.otherId), control.possibleDuplicate]).toEqual([[ours], true]);
+  });
+
   it('keeps a not-sure pair in the queue with its note, and leaves decided pairs alone', async () => {
     const x = (
       await createPatient(h, teamId, admin.userId, {
