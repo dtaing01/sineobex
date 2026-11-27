@@ -564,94 +564,241 @@ Rows already in the document, reused rather than repeated: BM-74 (a bundle's pro
 17. **The audit log names no item or bag for an order** (9). An audit search can tell that a patient was given something, and when, but not what; the chart and the supply log, under their read rules, can.
 18. **Below-minimum reminders are read against the minimum now.** An alert opened under an old minimum is quiet while the current one does not hold, and shows again if a later minimum does, until the item's next movement closes or keeps it.
 
-## 13. Units and a first card list
-Units: I1 schema, rules and sync; I2 inventory routes; I3 push; I4 phone orders; I5 phone banners and alerts; I6 portal; I7 the Done when and the close. The names share nothing with phase 4's units (F, E, L) or phase 5's (P). A card's ID is its unit and a short name. Each unit with T cards has one `tests` card (level X) that writes those cards' test files and vectors first. I1 lands first, alone, with CI green. Then I2 and I3 side by side, then I4 and I5, then I6, then I7. Levels follow `docs/plan/README.md`: an always-X path is X, a screen, a widget or a page is R, and S is kept for a card whose every mistake a machine check catches. A contract card regenerates the contract after its unit's routes or schemas. Files an earlier phase also edits, its cards first: `api/app.ts`, `api/routes/sync.ts`, `api/routes/encounters.ts`, `api/encounters/{read,counts}.ts`, `api/patients/{charts,projection,schemas}.ts`, `api-test/permissions.test.ts`, `db/seed/seed.ts`, `presets/src/schemas.ts`, `phone/presets/models.dart`, `phone/sync/{entities,local_store,local_db}.dart`, the fake, `chart_cache.dart`, `home_screen.dart`, `patient_screen.dart`, `sync_labels.dart`, phase 4's note types, summary and visit screens, phase 5's item page, the generated contract. Short paths: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `phone/` is `apps/mobile/lib/`, `phone-test/` is `apps/mobile/test/`, `presets/` is `packages/presets/`, `vectors/` is `packages/contract/test-vectors/`, `portal/` is `apps/portal/src/app/(app)/`, `fake` is `phone-test/sync/fake_server.dart`.
+## 13. Units and the card list
+This section is the work-list ("How this phase is built"): no card is written in full, so there is no card folder under `docs/plan/`. Each row says what a card builds, its files, its level and the cards that must be on the branch first. A unit is built from the design sections its rows point to, tests first, by one agent in its own worktree. Phases 4 and 5 are done (`1fe1632`), so no row needs one of their cards; every file they built is named in the row that edits it, and the tests they wrote for it keep passing unchanged, with this phase's cases beside them.
+
+Units: **I0** phase 5's leftovers (the phase's first unit: plan risks 11 to 14 and 16, D146), in four parts; **IF** the focus ring (its own unit, plan risk 15); **I1** schema, rules and sync, in two parts (I1a, I1b); **I2** the inventory routes and reads; **I3** push; **I4** the phone's orders; **I5** the phone's banners and stock alerts; **I6** the portal, in two parts (I6a, I6b); **I7** the Done when, the whole-phase review and the close. The names share nothing with phase 4's units (F, E, L, H) or phase 5's (P). A card's ID is its unit and a short name. Section 11's defaults are rows of `docs/decisions-for-review.md` before I0 starts, and each card that builds one marks it `PLAN-OPEN (<row>):`.
+
+### 13.1 Order
+A unit starts when the cards it needs are on the branch with CI green. At most two units are built at once (`CLAUDE.md`), each pair owning disjoint files but for the shared files 13.2 orders. A migration is pushed only after its review; other code may land first and take its fixes as later commits.
+
+| Wave | Units | Why this order |
+|---|---|---|
+| 1 | **I0-sweep** with **I0-split** | I0 is the phase's first unit. The sweep changes the load by id every synced entity implements (`EntityRules.load`, `services/api/src/sync/records.ts` 833) and `fetchRecords`, before I1b adds two entities and edits `review.ts`. The split gives the end-to-end job room before any spec grows, and shortens local CI, which every later landing runs under one lock. Disjoint: `services/api/` against `.github/`, `tools/` and `apps/portal/e2e/` |
+| 2 | **I0-held** with **IF** | I0-held edits the phone's sync engine, its store and Needs attention before I1b and I4 do. The focus ring lands before this phase's screens, so they are checked with it. Disjoint: `apps/mobile/lib/sync/` and `lib/features/sync/` against `lib/design/` |
+| 3 | **I1a**, alone | The tables, the vectors, the preset fields and the pure functions every later unit reads |
+| 4 | **I1b**, alone | The two synced entities, their read rule and their mirror, in one push, and the contract. With I1a it is the schema and contract unit: it lands with CI green before any unit that needs it starts |
+| 5 | **I2** with **I0-words** | I2's routes and reads, the test server's mirror of the reads and the Done when's story. I0-words needs I0-split, and comes before any of I6's tables. Disjoint: `services/api/`, `db/seed/` and `apps/mobile/test/sync/` against `apps/portal/` |
+| 6 | **I3** with **I6a** | I3 edits I2's `outings.ts` and I1b's `movements.ts`, with its own permission rows and contract. I6a needs I2-contract and I0-words' rule. Disjoint: `services/api/` and the phone's push files against `apps/portal/` |
+| 7 | **I4** with **I6b** | I4 needs I2-contract, I2-fake-reads and I3-phone's edit of `app_providers.dart`. I6b needs I6a, I0-words (a patient's page) and I1-preset-fields. Disjoint: `apps/mobile/` against `apps/portal/` |
+| 8 | **I5** with **I7-server** | I5 edits `patient_screen.dart` after I4-hook. I7-server is one API test and needs I2 and I3 |
+| 9 | **I7** | The phone's, the screens' and the live Done when and the PHI pins; then the whole-phase review; then the close |
+
+**Sync rules land with their mirror.** I1-wire, I1-movements, I1-order-entity, I1-alert-entity, I1-read-rule, I1-phone-entities, I1-local-db, I1-fake-orders and I1-fake-alerts land in one push, and so do I2-field-bundle, I2-alerts, I2-chart-alerts and I2-fake-reads: the phone's test server mirrors the server's rules by hand, and the two never land apart (`CLAUDE.md`; plan risk 7; D52).
+
+**I1 and I6 land in two parts.** I1a and I1b are built one after the other, each by one agent; I6a and I6b in waves 6 and 7.
+
+Nine waves at two agents. If time runs short, IF may move to any wave before phase 11, and I0-words to any wave before I6a; nothing else moves.
+
+### 13.2 Files more than one unit or card edits, and the order
+- `services/api/src/sync/records.ts` (`EntityRules.load`), every `services/api/src/sync/entities/*.ts`, `read-rules.ts`: I0-sweep, then I1b's cards. `services/api/src/sync/entities/index.ts`: I0-sweep, I1-order-entity, I1-alert-entity.
+- `services/api/src/sync/apply.ts`: I0-sweep (its loads), then I1-read-rule (`fieldForAnswer`'s cases).
+- `services/api/src/sync/review.ts`: I0-sweep (`fetchRecords`), then I1-read-rule (`shownChange`, `asRead`, `leftOut`, `order_not_applied`).
+- `services/api/src/sync/devices.ts`: I0-sweep (`requestWipe`), then I3-tokens.
+- `services/api/src/encounters/read.ts`: I0-sweep (its loads), then I2-visit-orders.
+- `services/api/test/sync.test.ts`: I0-sweep (its bypass describe). `services/api/test/bypass-scope.ts` is I0-sweep's, then the coordinator's; I1b's, I2's and I3's tests use it.
+- `services/api/src/patients/charts.ts`: I1-alert-entity (`CHART_TABLES`), then I2-chart-alerts. `services/api/src/patients/schemas.ts`: I2-chart-alerts.
+- `services/api/src/app.ts`: I2-locations, I2-review, then I3-tokens. `services/api/src/routes/inventory.ts`: I2's route cards in the order of their Needs.
+- `services/api/src/inventory/movements.ts`: I1-movements, then I3-outbox. `services/api/src/inventory/outings.ts`: I2-outings, then I3-outbox.
+- `services/api/src/routes/sync.ts`: I3-drain only. `services/api/src/types.ts`: I3-sender only.
+- `services/api/test/permissions.test.ts`: I2-permissions, then I3-permissions.
+- The generated contract (`pnpm contract:generate`): every card that changes a route or a schema regenerates it in its own commit (`CLAUDE.md`), and I1-contract, I2-contract and I3-contract close each unit's. `packages/contract/test/spec.test.ts`: I2-contract. Where two units changed the contract, the second to land regenerates it on top of the first; generated files are never merged by hand.
+- `packages/contract/test-vectors/preset-bodies.json`: I1-tests. `sync-values.json`: I1-wire. `inventory-done-when.json`: I2-done-when.
+- `packages/presets/src/schemas.ts`, `rules.ts`, `apps/mobile/lib/presets/models.dart`, `apps/mobile/test/presets/models_test.dart`: I1-preset-fields. `packages/presets/data/platform.json`, `packages/presets/test/platform-data.test.ts`: I1-platform-marks.
+- `apps/mobile/lib/sync/local_db.dart`: I0-held (if its count needs a column, it takes `_v5`), then I1-local-db (the next step). `apps/mobile/lib/sync/local_store.dart`: I0-held, I1-phone-entities, then I1-local-db.
+- `apps/mobile/lib/features/sync/sync_labels.dart`: I0-held, I1-phone-entities (the entity and category labels), then I4-needs-attention. `needs_attention_screen.dart`: I0-held, then I4-needs-attention.
+- `apps/mobile/test/sync/fake_server.dart`, `fake_parity_test.dart`: I1-fake-orders, I1-fake-alerts; the fake and `fake_reads_test.dart`: I2-fake-reads.
+- `apps/mobile/lib/app_providers.dart`: I3-phone, then I4-bundle-store. `apps/mobile/lib/app.dart` (routes): I4-bags-screen, I4-orders-screen, then I5-home. `apps/mobile/lib/patients/patient_providers.dart`: I4-bundle-store, then I5-alert-store. `apps/mobile/lib/features/patients/patient_screen.dart`: I4-hook, then I5-banner-strip.
+- `apps/mobile/lib/design/tokens.dart`, `theme.dart`: IF only.
+- `apps/portal/e2e/helpers.ts`: I0-split (if a shard needs it), then I0-words (`expectTableWords`). `apps/portal/e2e/a11y.spec.ts`: I0-split, I0-words, I6-e2e-inventory, I6-e2e-chart. Each spec file makes the data it reads (I0-split's rule); a new spec does too.
+- `apps/portal/src/app/(app)/patients/[patientId]/page.tsx`: I0-words, then I6-patient-banners. `apps/portal/src/lib/refusals.ts`: I6-location, I6-restock, I6-count, I6-outings. `apps/portal/src/app/actions/inventory.ts`: I6-location, I6-restock, I6-count, I6-outings. `apps/portal/src/lib/inventory.ts`: I6-inventory, then I6-review.
+- `.github/workflows/ci.yml`, `apps/portal/playwright.config.ts`, `tools/e2e-db.sh`, `tools/ci-local.sh`: I0-split only. `tools/live-sync.sh`: I7-live.
+- `db/seed/seed.ts`: I2-seed.
+- Shared test helpers are the coordinator's edits, in the same commit as the card that needs them: `services/api/test/harness.ts` (I3-sender's recording sender), `apps/mobile/test/helpers/app_harness.dart` (I4-bundle-store's refresher, as `appRefreshers` wires it).
+- `docs/decisions-for-review.md`: this design's rows (section 11), then I7-close (Where cells as built). `CLAUDE.md`: the coordinator's edit, with I0-split (local CI's time).
+
+Within a unit, a file two cards edit is edited in the order of their Needs.
+
+### 13.3 Who owns each rule
+Each rule of sections 4 to 9 is written once, by the card named here; other cards call it.
+
+| Rule | Section | Card |
+|---|---|---|
+| Every synced entity's load, `fetchRecords`, flags.ts's id check and `requestWipe` name their team in their SQL; row-level security is the second line | 2.3; D146 | I0-sweep; every later entity and route follows it, held by `bypass-scope.ts` |
+| The portal's end-to-end job across runners, each spec standing alone; local CI's suites side by side | 2.3 | I0-split |
+| A change whose answers keep naming another hash: a sync fault in Needs attention past the threshold, still unconfirmed, its backoff its own | 2.3 | I0-held |
+| A table's words split only when wider than the table: the stacked table's remedy, held at 640, 800 and 1024 px, plain and with text spacing | 2.3, 8 | I0-words; every I6 table uses it |
+| The phone's focus ring at 3:1 in the three themes | 2.3 | IF-ring |
+| The five tables: constraints, the team policy, append-only movements, alerts closed only, a balance as the sum, one open alert per kind, the members of an outing, `patient_of_change` | 4.1 to 4.5 | I1-migration-* |
+| `allergenTerms`, `sensitivity` (raised, never lowered) and `recountDays`, optional with a default in both parsers | 4.3 | I1-preset-fields |
+| The platform's sensitivity marks | 4.3 | I1-platform-marks |
+| `alertEffect`, `countDelta`, `absorbs`, `outingOver`, `alertVisibleTo`, `pickLocation` | 5.3 | I1-stock-rules-ts, I1-stock-rules-dart |
+| `mayOrderItem`, `itemOffered`, `orderProblem`, `orderVisibleTo` | 5.1, 5.3 | I1-order-rules-ts, I1-order-rules-dart |
+| `allergyMatches`, `allergyOutcome` | 5.4 | I1-allergy-ts, I1-allergy-dart |
+| `chartBanners`, `patientAlertShown` | 5.5 | I1-banners-ts, I1-banners-dart |
+| `pushMessage` and the fixed list | 9 | I1-push-text |
+| An order's and an alert's values | 6.1, 6.2 | I1-wire |
+| Every stock movement: `ensureLocation`, the row, its outing, the absorbed late dispense, `alertEffect`, the alert rows and the audit event, after the team lock, in the change's transaction | 5.2 | I1-movements; I1-order-entity, I2-restock and I2-counts call it |
+| The order: its parents, its checks before the insert, accept-and-flag, the refusals, `voided` held from anyone but its author | 6.1 | I1-order-entity |
+| The patient alert and `ended` | 6.2 | I1-alert-entity |
+| Who reads an order or an alert, in every sync read: the records read, the review queue (and what it leaves out), a value sent back; `order_not_applied` | 5.1, 5.5, 6.1, 6.2 | I1-read-rule; I2's reads call `orderShown` and `patientAlertShown` |
+| The phone's registry; the field bundle's table and its going with the server copies | 6.4 | I1-phone-entities, I1-local-db |
+| The phone's test server mirrors 6.3 | 6.3 | I1-fake-orders, I1-fake-alerts, I2-fake-reads |
+| Each online route: its key, the team lock first, its audit event, its refusals, an id once per form | 7 | I2's and I3's route cards; I2-permissions and I3-permissions hold the keys |
+| What a URL's query may carry | 7 | I2-contract |
+| Push: a token's going at a wipe, a removal or a sign-out; one outbox row per team, recipient, sentence and hour; the drain's second look, never failing a sync | 7 | I3-tokens, I3-outbox, I3-drain, I3-phone |
+| What the phone offers, the result and lot asked first, the bundle's prompt, the hard stop and its ways out, the supply screen at Complete, the Quick encounter's line | 5.1, 5.4 | I4-flow; drawn by I4-orders-screen, I4-bundle-prompt, I4-allergy-stop, I4-supply-screen |
+| The fixes and their words | 6.1, 8.8 | I4-orders-store, I4-needs-attention |
+| No count on the phone | 3 (point 9) | I4-orders-screen, I4-supply-screen; I5-home shows only `stockAlerts` |
+| The Done when's story | 10.1 | I2-done-when |
+
+### 13.4 The cards
+Levels follow `docs/plan/README.md`. An always-X path is X: the API's `sync/`, `auth/` and `db/` code, the phone's `lib/sync/`, the phone's test server, a migration with policies or triggers, `.github/` and `tools/`. So is a card whose wrong line would lose a write, move stock twice or show something to the wrong reader where no other card's test would catch it: the stock movement writer, the read rule, the push outbox and drain, a token's going at a wipe. Each unit's tests card is X, since what it writes is what the T cards are held to, and so is the Done when's story. A screen or a page is R, and so are the contract cards, the seed and the tests that walk the Done when but the live one. `orderVisibleTo` and `alertVisibleTo` are T because `order-rules.json` and `stock-rules.json` pin them. A T card's tests are written first, by its unit's tests card. No row is S: none is left to a machine check alone. Levels say where review is strictest ("How this phase is built").
+
+Short paths: `api/` is `services/api/src/`, `api-test/` is `services/api/test/`, `phone/` is `apps/mobile/lib/`, `phone-test/` is `apps/mobile/test/`, `presets/` is `packages/presets/`, `vectors/` is `packages/contract/test-vectors/`, `(app)/` is `apps/portal/src/app/(app)/`, `actions/` is `apps/portal/src/app/actions/`, `lib/` is `apps/portal/src/lib/`, `e2e/` is `apps/portal/e2e/`, `fake` is `phone-test/sync/fake_server.dart`. A file that does not exist yet is new; every other is edited. Migrations take the next free numbers, 0026 to 0030 if nothing lands between.
+
+#### I0 Phase 5's leftovers (2.3; plan section 8, risks 11 to 14 and 16; D146)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I0-sweep | X | `api/sync/records.ts` (`EntityRules.load` takes the team), every `api/sync/entities/*.ts` (each load names its team in its SQL), `api/sync/entities/index.ts`, `api/sync/apply.ts`, `api/sync/read-rules.ts`, `api/sync/review.ts` (`fetchRecords` compares each record's team), the loads' other callers (`api/encounters/{assign,cosign,handoff,queues,read,timeline}.ts`, `api/patients/{corrections,field-reviews,problems-admin}.ts`), `api/patients/flags.ts` (its id check names the team), `api/sync/devices.ts` (`requestWipe` names the team); `api-test/bypass-scope.ts` (the bypass scope of `sync.test.ts`'s describe, moved out for later units' tests), `api-test/sync.test.ts` (one case per path: on the bypass connection another team's record is not loaded, fetched, flag-checked or wiped; each fails with its line taken out). Risk 13 | — |
+| I0-split | X | `.github/workflows/ci.yml` (the portal job across runners, each with its own Postgres and `tools/e2e-db.sh`), `apps/portal/playwright.config.ts` (its shards), `tools/e2e-db.sh`, each `e2e/*.spec.ts` that read an earlier file's data (it makes what it reads; every spec passes alone on a fresh database), `tools/ci-local.sh` (the database and API suites side by side on their own scratch databases; the end-to-end shards one after another on the fixed ports). Risks 11 and 12 | — |
+| I0-held | X | `phone/sync/sync_engine.dart` (the backoff kept to the change whose answers keep naming another hash; the others go at the next tick), `phone/sync/local_store.dart` (that change counted; past the threshold a sync fault in Needs attention, unconfirmed and never let go of: `PLAN-OPEN (TM-39)`), `phone/features/sync/sync_labels.dart` and `needs_attention_screen.dart` (the fault's sentence and its next step), `phone-test/sync/sync_scenarios_test.dart` (on `_OtherHash`: the threshold, the others at the next tick, the change kept), `phone-test/sync/sync_controller_test.dart`, `phone-test/features/sync_labels_test.dart` (three themes, 200% text, 320 px). Risk 16 | — |
+| I0-words | R | The remedy as one rule of the stacked table pattern (`apps/portal/src/components/SideBySide.module.css`, `SideBySide.tsx`: cells wrap at spaces, free text anywhere, a table stacked up to the width it needs), applied on risk 14's eight pages (`(app)/team/duplicates/page.tsx`, `(app)/team/duplicates/[pairId]/page.tsx`, `(app)/team/attestation/page.tsx`, `(app)/team/cosign/page.tsx`, `(app)/patients/page.tsx`, `(app)/patients/[patientId]/page.tsx`, `(app)/patients/[patientId]/history/page.tsx`, `(app)/team/incomplete-notes/page.tsx`, with their CSS modules); `e2e/helpers.ts` (`expectTableWords`: `tableWordsSplit` at 640, 800 and 1024 px, plain and with text spacing), those pages' specs and `e2e/a11y.spec.ts`. Risk 14 | I0-split |
+
+#### IF The focus ring (2.3; plan risk 15; phase 5's VX4)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| IF-ring | R | `phone/design/tokens.dart` (`focusRing`), `phone/design/theme.dart` (each control's focus drawn as a ring at 3:1 or more against its surface, WCAG 1.4.11), `phone-test/design/contrast_test.dart` (the ring in Day, Night run and High contrast), `phone-test/design/focus_ring_test.dart` (a focused button, field, chip, switch and list row draw it) | — |
+
+#### I1 Schema, rules and sync (4, 5, 6.1 to 6.3)
+First part, **I1a**:
 
 | Card | Level | Files | Needs |
 |---|---|---|---|
-| I1-migration-locations | X | `db/migrations/<n>_stock_locations_outings.sql`, `db/test/stock-locations.test.ts` | phase 5's P0-migration |
-| I1-migration-movements | X | `<n>_stock_movements.sql` (append-only trigger, balances trigger, alerts), `db/test/stock-movements.test.ts` | I1-migration-locations |
-| I1-migration-orders | X | `<n>_encounter_orders.sql` (with `patient_of_change`), `db/test/encounter-orders.test.ts` | I1-migration-movements; phase 4's L0; phase 5's P5-migration |
-| I1-migration-alerts | X | `<n>_patient_alerts.sql`, `db/test/patient-alerts.test.ts` | I1-migration-orders |
-| I1-migration-push | X | `<n>_push.sql`, `db/test/push.test.ts` (the column pin) | — |
-| I1-tests | X | The five vector files of 5.3 with their TypeScript and Dart readers; new `allergenTerms` cases in phase 5's `vectors/preset-bodies.json` | phase 5's P0-tests |
-| I1-item-terms | T | `presets/src/schemas.ts`, `phone/presets/models.dart` (`allergenTerms`, optional, default none) | I1-tests; phase 5's P0-schemas-catalog, P2-models |
+| I1-migration-locations | X | `db/migrations/<n>_stock_locations_outings.sql` (4.1), `db/test/stock-locations.test.ts` (one team stock row a team; a bag's location ID is its preset ID; a bag on one outing a day; one to three members, the lead among them; an ended outing changes no more; a second team sees nothing) | I0-sweep |
+| I1-migration-movements | X | `<n>_stock_movements.sql` (append-only trigger, balances trigger with `carried`, alerts and their guard), `db/test/stock-movements.test.ts` (random movements: each balance the sum; update and delete refused; a direct write to a balance caught; one open alert of a kind; a quantity of 0 only for `not_carried`) | I1-migration-locations |
+| I1-migration-orders | X | `<n>_encounter_orders.sql` (the guard, `patient_of_change`), `db/test/encounter-orders.test.ts` (only the void and its bookkeeping change; `ordered_at` never after receipt) | I1-migration-movements |
+| I1-migration-alerts | X | `<n>_patient_alerts.sql`, `db/test/patient-alerts.test.ts` (only the end and its bookkeeping change) | I1-migration-orders |
+| I1-migration-push | X | `<n>_push.sql` (4.5; `devices_team_id_key`), `db/test/push.test.ts` (the outbox's column pin; one person on two teams, one hour: two rows; a token unique within its team) | I1-migration-alerts |
+| I1-tests | X | The vector files of 5.3 and their readers (`api-test/{inventory-rules,order-rules,allergy-check,chart-banners,push-messages}.test.ts`; `phone-test/inventory/rules_test.dart`, `phone-test/orders/{rules,allergy_check}_test.dart`, `phone-test/alerts/banners_test.dart`); `allergenTerms`, `sensitivity` and `recountDays` cases in `vectors/preset-bodies.json`, with a lowering of `sensitivity` refused | I0-sweep |
+| I1-preset-fields | T | `presets/src/schemas.ts` (the three fields, optional with their defaults), `presets/src/rules.ts` (`sensitivity` may only rise: `PLAN-OPEN (CO-19)`), `phone/presets/models.dart` (the same three), `phone-test/presets/models_test.dart` (the cases' new sha256; `presetsReaderRevision` stays) | I1-tests |
+| I1-platform-marks | R | `presets/data/platform.json` (the six items of 4.3 at their next version, `sensitive`: `PLAN-OPEN (CO-19)`), `presets/test/platform-data.test.ts` (the marks; `platformUpdateEffect` takes them in place for an untouched copy and offers them to an edited one) | I1-preset-fields |
 | I1-stock-rules-ts | T | `api/inventory/rules.ts` | I1-tests |
 | I1-stock-rules-dart | T | `phone/inventory/rules.dart` | I1-tests |
 | I1-order-rules-ts | T | `api/orders/rules.ts` | I1-tests |
 | I1-order-rules-dart | T | `phone/orders/rules.dart` | I1-tests |
 | I1-allergy-ts | T | `api/orders/allergy-check.ts` | I1-tests |
 | I1-allergy-dart | T | `phone/orders/allergy_check.dart` | I1-tests |
-| I1-banners-ts | T | `api/alerts/banners.ts` | I1-tests |
+| I1-banners-ts | T | `api/alerts/banners.ts` (`chartBanners`, `patientAlertShown`) | I1-tests |
 | I1-banners-dart | T | `phone/alerts/banners.dart` | I1-tests |
 | I1-push-text | T | `api/push/messages.ts` | I1-tests |
-| I1-wire | X | `api/sync/schemas.ts`, `api/sync/entities/values.ts`, `vectors/sync-values.json` (both entities) | I1-migration-orders, I1-migration-alerts |
-| I1-movements | X | `api/inventory/movements.ts` (`ensureLocation`, the movement, `alertEffect`, alert rows, audit), `api-test/inventory-movements.test.ts` | I1-migration-movements, I1-stock-rules-ts |
-| I1-order-entity | X | `api/sync/entities/order.ts`, `api/sync/entities/index.ts`, `api-test/sync-orders.test.ts` | I1-order-rules-ts, I1-allergy-ts, I1-wire, I1-movements; phase 4's L1 (`loadSigner`) |
-| I1-alert-entity | X | `api/sync/entities/patient-alert.ts`, `api/sync/entities/index.ts`, `api/patients/charts.ts` (`CHART_TABLES`) | I1-wire |
-| I1-read-rules | X | `api/routes/sync.ts` (the read rule of each entity, 6.1 and 6.2) | I1-order-entity, I1-alert-entity |
-| I1-phone-entities | X | `phone/sync/entities.dart`, `phone/sync/local_store.dart` | I1-wire |
-| I1-local-db | X | `phone/sync/local_db.dart` (the `inventory_bundle` table) | — |
-| I1-fake-orders | X | `fake`, `fake_parity_test.dart` (orders, the ledger, stock alerts) | I1-read-rules, I1-phone-entities |
-| I1-fake-alerts | X | `fake`, `fake_parity_test.dart` (patient alerts and their read rule) | I1-fake-orders |
-| I1-labels | R | `phone/features/sync/sync_labels.dart` (the three problems, the notice) | I1-phone-entities |
-| I1-contract | S | The generated contract | I1-wire |
-| I2-tests | X | `api-test/inventory-{locations,stock,restock,counts,outings,field-bundle,alerts}.test.ts`, `orders-{visit-read,review}.test.ts`, `chart-alerts.test.ts`, `me-counts-stock.test.ts` | I1 |
-| I2-locations | T | `api/routes/inventory.ts`, `api/inventory/locations.ts`, `api/app.ts` (list, owner) | I2-tests |
-| I2-stock-log | T | `api/routes/inventory.ts`, `api/inventory/reads.ts` (a location's stock, the supply log) | I2-locations |
-| I2-restock | T | `api/routes/inventory.ts`, `api/inventory/restock.ts` (restock, receive) | I2-locations |
-| I2-counts | T | `api/routes/inventory.ts`, `api/inventory/counts.ts` (set-up, correction) | I2-restock |
-| I2-outings | T | `api/routes/inventory.ts`, `api/inventory/outings.ts` (list, create, end) | I2-locations |
-| I2-field-bundle | T | `api/routes/inventory.ts`, `api/inventory/field-bundle.ts` | I2-outings |
-| I2-alerts | T | `api/routes/inventory.ts`, `api/inventory/alerts.ts` | I2-outings |
-| I2-home-count | T | `api/encounters/counts.ts`, `api/routes/encounters.ts` (`stockAlerts`) | I2-alerts; phase 4's L2 |
-| I2-visit-orders | T | `api/encounters/read.ts`, `api/routes/encounters.ts` (`orders`, through `orderVisibleTo`) | I2-tests; phase 4's L2 |
-| I2-chart-alerts | T | `api/patients/projection.ts`, `api/patients/schemas.ts` (`alerts`, with the sensitive filter) | I2-tests; phase 5's P5-chart-read |
-| I2-review | T | `api/routes/orders.ts`, `api/orders/reads.ts`, `api/app.ts` (orders to review) | I2-tests |
-| I2-permissions | R | `api-test/permissions.test.ts` (a row for each route of I2 and I3) | the route cards of I2; I3-tokens |
-| I2-contract | S | The generated contract | I2-permissions |
-| I2-seed | S | `db/seed/demo-inventory.ts`, `db/seed/seed.ts` (stock, an owner and an outing for phase 5's demo bags; recipe `seed-data.md`; the PHI guard checks it) | I2-outings |
-| I3-tests | X | `api-test/push-{tokens,sender}.test.ts`, `phone-test/push/push_tokens_test.dart` | I1-migration-push |
-| I3-tokens | T | `api/routes/push.ts`, `api/push/tokens.ts`, `api/app.ts` | I3-tests |
-| I3-sender | T | `api/types.ts`, `api/push/sender.ts`, `api-test/harness.ts` (`PushSender` in `Deps`, the empty and the recording sender) | I3-tests |
-| I3-outbox | X | `api/push/outbox.ts` (`queuePush`), one call each in `api/inventory/movements.ts` and `outings.ts`, `api-test/push-outbox.test.ts` | I1-movements, I2-outings |
-| I3-drain | X | `api/push/drain.ts`, `api/routes/sync.ts`, `api-test/push-drain.test.ts` | I3-sender, I3-outbox |
-| I3-phone | T | `phone/push/push_tokens.dart`, `phone/app_providers.dart` (`PushTokenSource`, empty, registered after sign-in) | I3-tokens, I2-contract |
-| I4-tests | X | `phone-test/inventory/inventory_repository_test.dart`, `phone-test/orders/{order_repository,order_flow,offline_orders}_test.dart` (offline, and kill the app before sync) | I2-contract |
-| I4-fake-reads | X | `fake`, `fake_reads_test.dart` (the field bundle, `orders` in the visit read) | I2-contract, I1-fake-alerts |
-| I4-bundle-store | T | `phone/inventory/inventory_repository.dart`, `inventory_refresher.dart`, `phone/patients/patient_providers.dart` | I4-tests, I4-fake-reads, I1-local-db |
-| I4-orders-store | T | `phone/orders/order_repository.dart` (`placeOrders`, `voidOrder`, the three fixes of 6.1) | I4-tests |
-| I4-flow | T | `phone/orders/order_flow.dart` (offer, check, stop, override; a bundle stops before any line) | I4-orders-store; phase 5's P2-supplies |
-| I4-bags-screen | R | `phone/features/orders/bags_today_screen.dart` | I4-bundle-store |
-| I4-orders-tab | R | `phone/features/orders/orders_tab.dart` | I4-flow, I4-bags-screen |
-| I4-allergy-stop | R | `phone/features/orders/allergy_stop_screen.dart` | I4-flow |
-| I4-supply-screen | R | `phone/features/orders/supply_screen.dart` | I4-allergy-stop |
-| I4-given-list | R | `phone/features/orders/given_list.dart`, phase 4's visit read view | I4-orders-store; phase 4's L5 |
-| I4-hook | R | Phase 4's note types screen and summary screen, `phone/features/patients/patient_screen.dart` ("+ Order") | I4-orders-tab, I4-supply-screen |
-| I4-a11y | R | Three-theme and narrow-width tests for the screens of I4 | I4-hook, I4-given-list |
-| I5-tests | X | `phone-test/alerts/{alert_repository,stock_alerts}_test.dart` | I2-contract |
-| I5-alert-store | T | `phone/alerts/alert_repository.dart` (add, end, read from `_chart`), `phone/alerts/stock_alerts.dart` | I5-tests, I1-phone-entities |
-| I5-chart-cache | R | `phone/patients/chart_cache.dart`, its test (keeps `alerts`) | I2-contract |
-| I5-banner-strip | R | `phone/features/alerts/banner_strip.dart`, `phone/features/patients/patient_screen.dart` | I5-alert-store, I5-chart-cache, I1-banners-dart |
-| I5-alert-sheets | R | `phone/features/alerts/alert_sheets.dart` | I5-alert-store |
-| I5-home | R | `phone/features/alerts/stock_alerts_screen.dart`, `phone/features/home/home_screen.dart` | I5-alert-store, I1-stock-rules-dart |
-| I5-a11y | R | Three-theme, narrow-width and offline tests for the screens of I5 | I5-home, I5-banner-strip, I5-alert-sheets |
-| I6-inventory | R | `portal/inventory/page.tsx`, `(app)/layout.tsx` (the nav entry) | I2-contract |
-| I6-bag | R | `portal/inventory/[locationId]/page.tsx`, its `actions.ts` (owner) | I6-inventory |
-| I6-restock | R | `portal/inventory/[locationId]/RestockForm.tsx`, `actions.ts` (restock, receive) | I6-bag |
-| I6-count | R | `portal/inventory/[locationId]/CountForm.tsx`, `actions.ts` | I6-restock |
-| I6-log | R | `portal/inventory/log/page.tsx` | I6-inventory |
-| I6-outings | R | `portal/inventory/outings/page.tsx`, its `actions.ts` | I6-inventory |
-| I6-alerts | R | `portal/inventory/alerts/page.tsx`, `portal/home/page.tsx` (the count) | I6-inventory |
-| I6-review | R | `portal/team/orders-review/page.tsx` | I2-contract |
-| I6-patient-banners | R | `portal/patients/[patientId]/page.tsx`, `Banners.tsx` | I2-contract |
-| I6-visit-orders | R | Phase 4's visit page under `portal/encounters/` | I2-contract; phase 4's L6 |
-| I6-item-terms | R | Phase 5's `portal/team/presets/items/[id]/page.tsx` ("Allergy words") | I1-item-terms; phase 5's P3-item-edit |
-| I6-e2e | R | `apps/portal/e2e/inventory.spec.ts`, `a11y.spec.ts` (Playwright and axe, three themes) | the page cards of I6 |
-| I7-server | X | `api-test/inventory-done-when.test.ts` | I2, I3 |
-| I7-phone | X | `phone-test/orders/done_when_test.dart` (against the fake) | I4 |
-| I7-live | X | `phone-test/orders/live_orders_test.dart`, `tools/live-sync.sh` | I7-phone |
-| I7-phi-pins | X | `api-test/inventory-phi.test.ts` (the outbox column list, the details scan, no audit row from Home's count) | I3 |
-| I7-docs | R | `docs/compliance/`, `IMPLEMENTATION_PLAN.md` (the D-table, section 6 rows), the PR description | all |
 
-**Count: 84 cards. S 3, T 28, R 27, X 26.** By unit: I1 27, I2 15, I3 6, I4 12, I5 7, I6 12, I7 5. No card changes more than three source files.
+Second part, **I1b** (one push with its mirror):
+
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I1-wire | X | `api/sync/schemas.ts` (the entity lists; the notice kinds `order_flagged`, `order_not_applied`), `api/sync/entities/values.ts` (both creates; `voided` and `ended` as the `Retraction` shape), `vectors/sync-values.json` (both entities, with astral and U+0085 cases as phase 5's) | I1a |
+| I1-movements | X | `api/inventory/movements.ts` (`ensureLocation`, the movement, its outing, the absorbed late dispense, `alertEffect`, the alert rows, the audit event, after the team lock), `api-test/inventory-movements.test.ts` (an item the bag does not list; the restock reminder with `bagMinimumsOn` on and off; a changed minimum counted from the next movement; a late dispense dated before a count absorbed; the outing found by bag and by member; another team's location on the bypass scope) | I1-wire, I1-stock-rules-ts |
+| I1-order-entity | X | `api/sync/entities/order.ts` (`PLAN-OPEN (PL-30)`, `(BM-94)`), `api/sync/entities/index.ts`, `api-test/sync-orders.test.ts` (every row of 6.1; a replay moves stock once; two phones, either order; a void held behind its refused create, then both; an order held behind its refused note; a held order accepted and rejected; a void by someone else held; the version an order names; the audit insert forced to fail writes nothing) | I1-order-rules-ts, I1-allergy-ts, I1-movements |
+| I1-alert-entity | X | `api/sync/entities/patient-alert.ts` (`PLAN-OPEN (BM-96)`), `api/sync/entities/index.ts`, `api/patients/charts.ts` (`CHART_TABLES`), `api-test/sync-patient-alerts.test.ts` (an end held behind its create) | I1-order-entity |
+| I1-read-rule | X | `api/sync/read-rules.ts` (`readNeed`: `encounter_order` with `encounters.chart`; `orderShown` through `orderVisibleTo`, `patientAlertShown`; `PLAN-OPEN (CO-19)`, `(PL-35)`, `(CO-18)`), `api/sync/review.ts` (`shownChange`, `asRead` and `leftOut`: a held order, void, alert or end hidden from or left out for a reviewer the rule hides it from; `order_not_applied` on a reject), `api/sync/apply.ts` (`fieldForAnswer`: a `voided` or `ended` answer), `api-test/sync-orders-read.test.ts` (the records read, the review queue and a value sent back, by reader) | I1-alert-entity |
+| I1-phone-entities | X | `phone/sync/entities.dart` (both entities: parents, the note among them; category `inventory` and `patients`; `patientVia`; `statusAfter` for `voided` and `ended`), `phone/sync/local_store.dart` (an order filed under its encounter, an alert under its patient; the notices), `phone/features/sync/sync_labels.dart` (`entityLabel`s; `categoryLabel` "Encounter inventory"), `phone-test/patients/entities_test.dart` | I1-wire, I0-held |
+| I1-local-db | X | `phone/sync/local_db.dart` (the next step: `inventory_bundle`), `phone/sync/local_store.dart` (`clearServerData` deletes it; the `orderFlags` receipt hook), `phone-test/sync/local_db_test.dart` (a version 4 file keeps its work), `phone-test/sync/local_store_test.dart` (a sign-out that keeps work keeps an unsynced order, its visit and an unsynced alert) | I1-phone-entities |
+| I1-fake-orders | X | `fake`, `fake_parity_test.dart` (orders, the ledger and the absorbed dispense, stock alerts, the refusals and their fixes, the parents, the flags with the same receipt details, the re-check over the fake's allergies, `voided` and its hold, `order_not_applied`, the read rule; another team's order missing; each its own receipt instant) | I1-read-rule, I1-local-db |
+| I1-fake-alerts | X | `fake`, `fake_parity_test.dart` (patient alerts, `ended`, their read rule; another team's alert missing) | I1-fake-orders |
+| I1-contract | R | The generated contract | I1-fake-alerts |
+
+#### I2 The inventory routes and reads (6.4's bundle, 7, 10.1's story)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I2-done-when | X | `vectors/inventory-done-when.json` (10.1's story: its people, the field user, the lead and Logistics on the run among them, the bag, the item, the outing, and each step's expected answer in each place, written before any test that walks it) | I1 |
+| I2-tests | X | `api-test/inventory-{locations,stock,restock,counts,outings,field-bundle,alerts}.test.ts`, `orders-{visit-read,review}.test.ts`, `chart-alerts.test.ts`, `me-counts-stock.test.ts` (each with another team on the bypass scope; each logged read refused when its audit cannot be written; each write's audit insert forced to fail writes nothing; each writer seen to take the lock first; each act's id once per form) | I1 |
+| I2-locations | T | `api/routes/inventory.ts`, `api/inventory/locations.ts` (`PLAN-OPEN (PL-29)`), `api/app.ts` (list, owner) | I2-tests |
+| I2-stock-log | T | `api/routes/inventory.ts`, `api/inventory/reads.ts` (a location's stock; the supply log, its visits by `orderShown`, `inventory.log_viewed`) | I2-locations |
+| I2-restock | T | `api/routes/inventory.ts`, `api/inventory/restock.ts` (restock, from outside: `PLAN-OPEN (TM-38)`; receive) | I2-stock-log |
+| I2-counts | T | `api/routes/inventory.ts`, `api/inventory/counts.ts` (set-up, correction, not carried; the correction's key refused in its own transaction: `PLAN-OPEN (PL-31)`; Recount due: `PLAN-OPEN (BM-97)`) | I2-restock |
+| I2-outings | T | `api/routes/inventory.ts`, `api/inventory/outings.ts` (list, create with members, end: `PLAN-OPEN (PL-28)`, `(TM-37)`) | I2-counts |
+| I2-field-bundle | T | `api/routes/inventory.ts`, `api/inventory/field-bundle.ts` (`PLAN-OPEN (BM-101)`) | I2-outings |
+| I2-alerts | T | `api/routes/inventory.ts`, `api/inventory/alerts.ts` (`PLAN-OPEN (PL-27)`, `(BM-86)`, `(BM-87)`) | I2-field-bundle |
+| I2-home-count | T | `api/encounters/counts.ts` (`HomeCounts.stockAlerts`, by the alerts list's own function), `api/routes/encounters.ts` (its summary) | I2-alerts |
+| I2-visit-orders | T | `api/encounters/read.ts` (`recordsMadeAt` gains orders by `orderShown`, each logged `patient.viewed`) | I2-tests |
+| I2-chart-alerts | T | `api/patients/charts.ts`, `api/patients/schemas.ts` (the chart's `alerts`, record snapshots by `patientAlertShown`) | I2-visit-orders |
+| I2-review | T | `api/routes/orders.ts`, `api/orders/reads.ts` (orders to review by `orderShown`), `api/app.ts` | I2-locations |
+| I2-fake-reads | X | `fake`, `fake_reads_test.dart` (`GET /v1/inventory/field-bundle`; the chart's `alerts` by 6.2's read rule; `GET /v1/inventory/alerts?surface=phone` by `alertVisibleTo`; each read the team's alone. The visit read, `recentVisits` and `/v1/me/counts` stay scripted, `scripted_api.dart`) | I2-field-bundle, I2-alerts, I2-chart-alerts |
+| I2-permissions | R | `api-test/permissions.test.ts` (a `ROUTES` row for each route of this unit; the count correction and Not carried refused for Logistics) | I2-home-count, I2-review, I2-chart-alerts |
+| I2-contract | R | The generated contract; `packages/contract/test/spec.test.ts` (`QUERY_PATTERNS`: the outings' `date` and the supply log's `from` and `to`, on exactly those paths) | I2-permissions |
+| I2-seed | R | `db/seed/demo-inventory.ts` (stock, an owner and an outing with its members for the demo team's bag, recipe `seed-data.md`), `db/seed/seed.ts`, `db/test/demo-inventory.test.ts` (each row as the API writes it: a movement per change with its audit event, balances the sum, alerts by `alertEffect`; a second run writes nothing; the PHI guard passes) | I2-outings |
+
+#### I3 Push (4.5, 7, 9's sentences)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I3-tests | X | `api-test/push-{tokens,sender,outbox,drain}.test.ts`, `phone-test/push/push_tokens_test.dart` | I2 |
+| I3-tokens | X | `api/routes/push.ts`, `api/push/tokens.ts`, `api/app.ts` (after I2-review), `api/sync/devices.ts` (a wipe drops the device's token in its transaction), `api/services/memberships.ts` (a removal drops the user's tokens) | I3-tests |
+| I3-sender | T | `api/types.ts` (`PushSender`, an optional member of `Deps`), `api/push/sender.ts` (the empty sender, the default, and the recording one: `PLAN-OPEN (PL-32)`, `(CO-16)`); `api-test/harness.ts` is the coordinator's edit, in the same commit | I3-tests |
+| I3-outbox | X | `api/push/outbox.ts` (`queuePush`), one call each in `api/inventory/movements.ts` and `api/inventory/outings.ts` | I3-sender |
+| I3-drain | X | `api/push/drain.ts` (the second look, one push per recipient and sentence, an active device of an active member), `api/routes/sync.ts` (after a push commits, never failing it) | I3-outbox |
+| I3-permissions | R | `api-test/permissions.test.ts` (the token routes; `not_your_device`) | I3-tokens, I2-permissions |
+| I3-contract | R | The generated contract | I3-permissions |
+| I3-phone | X | `phone/push/push_tokens.dart`, `phone/app_providers.dart` (`PushTokenSource`, empty, registered after sign-in), `phone/auth/session_controller.dart` (the token deleted at every sign-out, Log out anyway included), `phone/sync/sync_controller.dart` (and at a team switch) | I3-contract |
+
+#### I4 The phone's orders (5.1, 5.4, 6.4, 8.1 to 8.5, 8.8)
+Every screen row's test covers section 8's standard: Day, Night run and High contrast, 200% text, 320 px wide and offline, with its semantics; every sheet and dialog sits in a freeze gate (`phone-test/security/dialog_gates_test.dart` passes) and every free text box is a private box (D126).
+
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I4-tests | X | `phone-test/inventory/inventory_repository_test.dart`, `phone-test/orders/{order_repository,order_flow,offline_orders}_test.dart` (offline; the app killed before sync, then stored once with its hash matched; a bundle's prompt; a bundle stopped whole; an allergy added offline stops the next order; no field bundle: team stock; Complete opens the supply screen once) | I2-contract, I2-fake-reads |
+| I4-bundle-store | T | `phone/inventory/inventory_repository.dart`, `phone/inventory/inventory_refresher.dart` (an `AfterSyncRefresher`, only for a role that may read the bundle), `phone/app_providers.dart` (in `appRefreshers`, after the presets' refresher), `phone/patients/patient_providers.dart`; the same wiring in `phone-test/helpers/app_harness.dart` is the coordinator's edit | I4-tests, I3-phone |
+| I4-orders-store | T | `phone/orders/order_repository.dart` (`placeOrders`, `voidOrder`, a change of bag as a void and an order in one transaction, the fixes of 6.1) | I4-tests |
+| I4-flow | T | `phone/orders/order_flow.dart` (offer, the result and lot asked first, the bundle's prompt, check over the profile's allergy list, stop, override, the supply suggestions with the Quick encounter's line, untouched at Complete: `PLAN-OPEN (BM-91)`, `(BM-92)`, `(BM-99)`, `(BM-100)`) | I4-orders-store |
+| I4-needs-attention | R | `phone/features/sync/sync_labels.dart` (the problems' sentences and the `order_flagged` and `order_not_applied` notices'), `phone/features/sync/needs_attention_screen.dart` (Choose the item again, Choose the bag again, Enter the result, Send without the note, Remove this order), `phone-test/features/sync_labels_test.dart`, cases in `phone-test/features/encounters/needs_attention_test.dart` | I4-orders-store |
+| I4-bags-screen | R | `phone/features/orders/bags_today_screen.dart`, `phone/app.dart` (its route), `phone-test/features/orders/bags_today_screen_test.dart` (none today; not downloaded; one outing chosen without asking; the person's own bags) | I4-bundle-store |
+| I4-orders-screen | R | `phone/features/orders/orders_screen.dart`, `phone/app.dart` (its route), `phone-test/features/orders/orders_screen_test.dart` (no numbers and no stock colour, `PLAN-OPEN (BM-85)`; what `itemOffered` lists; medication rows disabled with their words; a result asked before a Labs order; the stepper in its unit) | I4-flow, I4-bags-screen |
+| I4-allergy-stop | R | `phone/features/orders/allergy_stop_screen.dart`, `phone-test/features/orders/allergy_stop_screen_test.dart` (no order until a reason; every other way out orders nothing; focus to the title, the screen reader's title, Choose something else first) | I4-flow |
+| I4-bundle-prompt | R | `phone/features/orders/bundle_prompt_screen.dart`, its test (no line before Continue; Back suggests none) | I4-flow |
+| I4-supply-screen | R | `phone/features/orders/supply_screen.dart`, `phone-test/features/orders/supply_screen_test.dart` ("Saved" whatever the bag holds; a changed bag chip is the order's `locationId`; the Quick encounter's line opens its chip) | I4-allergy-stop, I4-bundle-prompt |
+| I4-given-list | R | `phone/features/orders/given_list.dart`, `phone/features/encounters/visit_screen.dart` (`_RecordRow` for orders), their tests (Remove asks why; a change of bag; a flagged row's words) | I4-orders-store |
+| I4-hook | R | `phone/features/encounters/note_type_list.dart` (the Orders row), `phone/features/encounters/summary_screen.dart` (the Supplies row above Complete, and Complete opening the supply screen once), `phone/features/patients/patient_screen.dart` ("+ Order" among the quick actions), `phone/features/encounters/encounter_labels.dart`, cases in their tests | I4-orders-screen, I4-supply-screen, I4-given-list |
+
+#### I5 The phone's banners and stock alerts (5.5, 5.6, 6.2, 6.4, 8.6, 8.7)
+The same tests as I4's screens.
+
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I5-tests | X | `phone-test/alerts/{alert_repository,stock_alerts}_test.dart` (an alert added and ended offline; a sensitive one absent for a reader without the sensitive projection and present for its author; the phone's list empty during an outing) | I2-fake-reads |
+| I5-chart-cache | T | `phone/patients/chart_cache.dart` (the chart's alerts imported as records, their ids in `_chart` as `alertIds`), `phone-test/patients/chart_cache_test.dart` | I5-tests |
+| I5-alert-store | T | `phone/alerts/alert_repository.dart` (add, end, read the records the chart lists and this phone's own), `phone/alerts/stock_alerts.dart`, `phone/patients/patient_providers.dart` | I5-chart-cache, I4-bundle-store |
+| I5-banner-strip | R | `phone/features/alerts/banner_strip.dart`, `phone/features/patients/patient_screen.dart` (after I4-hook), their tests (never blocks; an icon and words, never colour alone; words wrap; `PLAN-OPEN (BM-95)`) | I5-alert-store, I4-hook |
+| I5-alert-sheets | R | `phone/features/alerts/alert_sheets.dart`, its test (gated; private boxes) | I5-alert-store |
+| I5-home | R | `phone/encounters/encounter_api.dart` (`HomeTiles.stockAlerts`), `phone/features/encounters/home_tiles.dart` (Supplies to restock, from the same answer; "Connect to see these." offline), `phone/features/alerts/stock_alerts_screen.dart`, `phone/app.dart` (its route), their tests (`scripted_api.dart` answers `/v1/me/counts`) | I5-alert-store |
+
+#### I6 The portal (8's pages), in two parts
+Every page's test: its states and words, `expectReflowWithSpacing` with axe in three themes, `expectTableWords`, `expectNothingStored`, addresses carry only IDs, listed values and dates, and titles name no patient; each table on I0-words' rule. **I6a** is I6-inventory to I6-e2e-inventory; **I6b** is I6-review to I6-e2e-chart.
+
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I6-inventory | R | `(app)/inventory/page.tsx`, `(app)/layout.tsx` (the nav entry, with `inventory.view`), `lib/inventory.ts` (the API's calls) | I2-contract, I0-words |
+| I6-location | R | `(app)/inventory/[locationId]/page.tsx` (its items A–Z with a search box), `actions/inventory.ts` and `actions/inventory.test.ts` (owner), `lib/refusals.ts` (`owner_not_member`, `team_stock_fixed`) | I6-inventory |
+| I6-restock | R | `(app)/inventory/[locationId]/RestockForm.tsx` (row order and scroll kept; pre-filled from an alert, those rows on top; Save restock pinned), `actions/inventory.ts` (restock, receive), `lib/refusals.ts` (`bag_archived`, `item_unknown`) | I6-location |
+| I6-count | R | `(app)/inventory/[locationId]/CountForm.tsx` (set-up, correction with its reason, Not carried), `actions/inventory.ts`, `lib/refusals.ts` (`reason_invalid`) | I6-restock |
+| I6-log | R | `(app)/inventory/log/page.tsx` | I6-inventory |
+| I6-outings | R | `(app)/inventory/outings/page.tsx`, `actions/inventory.ts`, `lib/refusals.ts` (`bag_taken`, `team_size`, `lead_not_member`, `member_not_field`, `already_ended`) | I6-count |
+| I6-alerts | R | `(app)/inventory/alerts/page.tsx`, `(app)/home/page.tsx` (the count) | I6-inventory |
+| I6-e2e-inventory | R | `e2e/inventory.spec.ts` (the portal's steps of the Done when, read from `inventory-done-when.json`; each page above; it makes its own data), `e2e/a11y.spec.ts` | I6-log, I6-outings, I6-alerts, I2-done-when |
+| I6-review | R | `(app)/team/orders-review/page.tsx`, `lib/inventory.ts` | I6a |
+| I6-patient-banners | R | `(app)/patients/[patientId]/page.tsx`, `(app)/patients/[patientId]/Banners.tsx` | I6a |
+| I6-visit-orders | R | `(app)/encounters/[encounterId]/page.tsx` (the visit's orders among its records) | I6a |
+| I6-preset-fields | R | `(app)/team/presets/items/ItemFields.tsx`, `(app)/team/presets/items/[id]/ItemView.tsx`, `(app)/team/presets/items/items.ts`, `actions/presets-items.ts` and its test, `apps/portal/src/components/presets/review.ts` ("Allergy words" and "Sensitivity", in the form and in an update's review; sensitivity offered only upward); `(app)/team/presets/bag-minimums/BagMinimumsView.tsx`, `actions/presets-bags.ts` and its test (the recount setting) | I6a, I1-preset-fields |
+| I6-e2e-chart | R | `e2e/orders.spec.ts` (orders to review, the banners, a visit's orders, the item form's new parts and the recount setting; it makes its own data), `e2e/a11y.spec.ts` | I6-review, I6-patient-banners, I6-visit-orders, I6-preset-fields |
+
+#### I7 The Done when, the whole-phase review and the close (10)
+| Card | Level | Files | Needs |
+|---|---|---|---|
+| I7-server | R | `api-test/inventory-done-when.test.ts` (steps 1 to 9, from the story) | I2-done-when, I3-contract |
+| I7-phone | R | `phone-test/orders/done_when_test.dart` (steps 3 and 4, and step 5's receipt and ledger, on the test server) | I2-done-when, I4-hook |
+| I7-screens | R | `phone-test/features/orders/done_when_screens_test.dart` (step 3 offline and step 8, on the screens, in three themes, at 200% text and 320 px) | I7-phone, I5-home |
+| I7-live | X | `phone-test/orders/live_orders_test.dart` (steps 1 to 9 against the real API, the field user's and the lead's phones), `tools/live-sync.sh` (last) | I7-phone, I3-contract |
+| I7-phi-pins | X | `api-test/inventory-phi.test.ts` (a scan of every new event's details for the seeded name, item text, bag name, reason, result, alert text and `sensitive`; no audit row from Home's count) | I3-drain |
+| I7-review | X | No files of its own: the whole-phase review (sync safety, audit, permissions, PHI, accessibility, the test server's fidelity); each confirmed finding fixed in the files it names, with a test shown failing first | I7-server, I7-screens, I7-live, I7-phi-pins, I6-e2e-chart |
+| I7-close | X | `docs/compliance/`, `IMPLEMENTATION_PLAN.md` (the D-table from D150, section 6's rows, the phase's row), this design's Status and as-built lines, the phase 6 rows of `docs/decisions-for-review.md` (Where cells as built). The PR description is the coordinator's | I7-review |
+
+**Count: 95 cards: T 27, R 36, X 32, and no S.** By unit: I0 4, IF 1, I1 27 (I1a 17, I1b 10), I2 17, I3 8, I4 12, I5 6, I6 13 (I6a 8, I6b 5), I7 7. The draft's first list had 84 (S 3, T 28, R 27, X 26). The review added phase 5's leftovers and the focus ring (5); the story, the reads' mirror, a permissions and a contract card for push, the platform's sensitivity marks, Needs attention's card, the bundle's prompt, a second portal end-to-end card, the screens' Done when and the whole-phase review (10); took out I1-labels (now I1-phone-entities' labels and I4-needs-attention), I4-fake-reads (now I2-fake-reads), and I4-a11y and I5-a11y (now in each screen's row) (4); renamed I1-item-terms I1-preset-fields, I1-read-rules I1-read-rule, I4-orders-tab I4-orders-screen, I6-bag I6-location, I6-item-terms I6-preset-fields and I7-docs I7-close; and made the contract cards and the seed R, I3-tokens and I3-phone X and I5-chart-cache T.
