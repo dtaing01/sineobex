@@ -293,6 +293,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          # Gradle's plugins come from Maven Central, which rate-limits: a 429 failed this build on
+          # 1fe1632 before anything compiled. A run whose Gradle files are unchanged takes them from here.
+          cache: gradle
+          cache-dependency-path: |
+            apps/mobile/android/**/*.gradle*
+            apps/mobile/android/gradle/wrapper/gradle-wrapper.properties
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
