@@ -1,8 +1,169 @@
-> Draft plan (Nov 14), checked against the reviewed phase 4 design and the designs of the phases before it. Check section 2 against the code before building, and write the task cards when the phase starts.
+> Reviewed on Nov 26 against the PRD and against the code as built (`1fe1632`, phase 5 closed) by four reviewers, and revised from the review on Nov 27 in two passes, sections 1 to 12 and then section 13 and this top matter. Each of its 95 findings was checked against the PRD and the code before it was applied: 82 were applied and 13 in part, where two findings disagreed or a part was wrong by the source, each with its reason ("What the review found"). No unit is built (Status).
 
 # Phase 6: orders, inventory and alerts
 
 "PRD main N" is a line of the product spec's main tab; "Build plan N" a line of its Build plan tab. Code citations are paths and functions at `1fe1632` (phase 5 closed), from the repository root. "lifecycle" and "forms" with a section number are the two parts of the phase 4 design (`docs/design/phase-4/`); "phase 5" with a section number is `docs/design/phase-5-admin-configuration.md`. A row id (PL-27, BM-85, CO-16, TM-37) is a row of `docs/decisions-for-review.md`. The migrations take the next free numbers when their unit starts: phase 4 took 0017 to 0022 and phase 5 took 0023 to 0025, so 0026 to 0030 if nothing lands between.
+
+**Done when** (Build plan 98; `IMPLEMENTATION_PLAN.md` section 4, phase 6 row): dispensing 3 of an item a bag holds 1 of leaves it at −2 and alerts the Program Admin, Logistics and the route lead, with nothing shown to the field user during the run.
+
+## Status (Nov 27): designed and reviewed; no unit built
+| Unit | State | Needs first | What it builds |
+|---|---|---|---|
+| I0 Phase 5's leftovers | Not started | Nothing: it is the first unit, its four parts two at a time (13.1, waves 1, 2 and 5) | The API's own team filter wherever row-level security was the only line (I0-sweep: plan risk 13, D146); the portal's end-to-end job split across runners and a shorter local CI (I0-split: risks 11 and 12); a held answer that keeps naming another hash shown as a sync fault, with its own backoff (I0-held: risk 16); the stacked table's remedy on eight pages (I0-words: risk 14) |
+| IF The focus ring | Not started | Nothing (wave 2) | A focus ring at 3:1 in the three themes for the whole phone app (risk 15) |
+| I1 Schema, rules and sync | Not started | I0-sweep and I0-held. I1a, then I1b, each landed alone with CI green | Migrations 0026 to 0030; the three preset fields and the platform's sensitivity marks; the pure functions and their vectors; the two synced entities with their read rule in `read-rules.ts`, the phone's registry and schema, and the test server's mirror; the contract |
+| I2 The inventory routes and reads | Not started | I1 | The Done when's story; the inventory routes, the field bundle, the alerts and Home's count; orders in the visit read, alerts in the chart, orders to review; the test server's reads; permission rows, the contract and the seed |
+| I3 Push | Not started | I2 | Tokens and their going, the sender interface with its empty default, the outbox and the drain; the phone's token source |
+| I4 The phone's orders | Not started | I2-contract, I2-fake-reads, I3-phone | Bags today, the Orders screen, the bundle's prompt, the hard stop, the supply screen, Given in this visit, Needs attention's fixes, and the hooks into phase 4's screens |
+| I5 The phone's banners and stock alerts | Not started | I4-hook, I4-bundle-store | The chart's alerts as records, the banner strip, the alert sheets, Home's Supplies to restock |
+| I6 The portal | Not started | I2-contract and I0-words; I6b also I6a and I1-preset-fields | I6a: Inventory, a location, restock, receive and count, the supply log, outings, alerts. I6b: orders to review, the patient page's banners, a visit's orders, the new parts of phase 5's item form and Bag minimums page |
+| I7 The Done when, the whole-phase review and the close | Not started | Every other unit; I7-server after I2 and I3 | The Done when in five places; the PHI pins; the whole-phase review; the close |
+
+Each unit is built from the sections its rows in 13.4 point to. Keep this table current as units land: each row gets the date it landed, what is on the branch, its review's count of findings, and what is left, as phase 5's table does.
+
+## How this phase is built
+By the frontier model with helper agents, from the card index of section 13, as phases 4 and 5 were (D127; the default of PL-9 in `docs/decisions-for-review.md`, which the project lead may still decide otherwise). What that means here:
+
+- **The card list of section 13 is the work-list.** Each row's files, needs and order hold. No card is written in full, so there is no `docs/plan/phase-6-orders-inventory-alerts/` folder, and `tools/card-run.mjs` is not used. What only a small model needs (a card's length, how much it may read, at most three source files a card) does not apply; unit order, who owns each file and each rule, which units run side by side, and each row's needs do.
+- **The order of 13.1 holds.** I0 is the first unit; I1 lands alone, in two parts, with CI green; at most two agents work at once (`CLAUDE.md`), each pair owning disjoint files but for the shared files 13.2 orders. A migration is pushed only after its review.
+- **A unit is built from the design sections its rows point to**, tests first, by one agent in its own worktree (`CLAUDE.md`, "Running units with helper agents"). Each unit's commits are also pushed to `claude/p6-wip-<unit>`, which is never merged; the project lead deletes those branches when the phase lands.
+- **What a card's checks gave is replaced.** Every rule is removed by a script to see its test fail. Each unit gets an independent review, each confirmed finding shown by a failing test before it is fixed. The whole-phase adversarial review at the end is I7-review.
+- **Levels still say where review is strictest.** An X row gets the coordinator's second review.
+- **Nothing is asked of a person mid-build.** Every default of section 11 is listed in `docs/decisions-for-review.md` under who decides, as "Chosen, not yet built (phase 6)", from this reviewed design and ahead of the build, and each card that builds one marks it `PLAN-OPEN (<row>):`. The close names the files its markers are in.
+
+## Decisions to copy into the plan's D-table when the phase closes
+Numbered on from phase 5's D149. The defaults they rest on are rows of section 11.
+
+| # | Decision | Why |
+|---|---|---|
+| D150 | Phase 6 is built as phases 4 and 5 were: by the frontier model with helper agents from section 13's card list, two agents at a time at most, each unit's commits backed up to `claude/p6-wip-<unit>` and never merged; no card is written in full and no small model runs ("How this phase is built"; PL-9's default) | D127; no machine here runs the small model, and the card list already names every file, its needs and the order |
+| D151 | Phase 5's leftovers are this phase's first unit, I0: every load by id, the records read, flags.ts's id check and `requestWipe` name their team in their SQL (D146); the portal's end-to-end job is split across runners and local CI shortened; a change whose answer keeps naming another hash shows as a sync fault with its own backoff; the stacked table's remedy holds every table. The focus ring is unit IF, before this phase's screens (2.3, 13.1) | Plan risks 11 to 16. The sweep changes the interface both new entities implement, and every later landing pays local CI's time under one lock (review findings DU1, DU2, DC5, DR7) |
+| D152 | A stock count is the sum of immutable signed movements, kept in `stock_balances` by a trigger, with no floor. A set-up count, a correction and a removal from a bag are the only movements that are not sums, worked out on the server under the team lock. A `dispense` or `void` dated before a count of its item and location that arrives after it is absorbed by a `count_absorbed` movement in its own transaction (4.2, 5.2) | Two phones offline cannot conflict and −2 is arithmetic (PRD main 126); a count already held what an order given before it took (review finding DR5) |
+| D153 | Phones send orders; the server writes their movements. One synced record, `encounter_order`, carries the order and its bag; its movement and the alerts it opens or closes are written in its change's transaction. A held order or void writes none until an accept, which dates it by its own time; a reject tells its sender (`order_not_applied`) (6.1) | An order and its deduction can never disagree; a held change waits for a person (D59; review finding DR2) |
+| D154 | The server never refuses an order for a judgment. A credential that may not order, read by `signedUnder` at the order's time, or an allergy the phone did not hold, is stored and flagged. The only refusals are what the worker can fix (`unknown_item`, `unknown_bag`, `result_invalid`, `result_missing`, `note_other_visit`), each with its fix; the note an order names is its parent; a rule that throws is a `definition_error`. An order is judged by the item version it names, its allergies by the item's current words (5.1, 6.1) | The item has already left the bag (D59); an older phone can offer only what it holds (review findings DR9, DR10, DC3, DC19, DC20) |
+| D155 | Medical follows the item and the credential, as phase 4 made it follow the note (D56), and so does sensitivity: an item is `none`, `sensitive` or `treatment`, read as phase 4 reads a sensitive note type and a treatment record section. A mark may be raised, never lowered; the platform marks six items (4.3, 5.1) | PRD main 121, 435, 447; lowering would show past orders to readers they were hidden from (D132's reason), and raising is how the platform's marks reach teams that installed its items before this phase (review findings DP1, DR1) |
+| D156 | Who reads an order is one function, `orderVisibleTo`, behind `orderShown` in `read-rules.ts`, asked by the sync read, the review queue, a value sent back, the visit read's records, recent visits, the supply log's visits, orders to review and the banners' test results; it reads the item's marks at the order's version and now, the stricter counting. A voided order's reason goes only to its author and PL-19's Program Admin (5.1, 6.1) | D99: two copies of a read rule drift (review findings DC2, DR1, DR2, DR3, DR16, DU7) |
+| D157 | Stock alerts are rows opened and closed by arithmetic in the transaction of the movement that crossed the line. Who is shown one is worked out when it is read: the portal to `inventory.view`, the phone and a push to `inventory.manage` holders and the alert's outing lead, held from anyone on an outing under way; a below-minimum alert only while minimums are on and its minimum holds. The drain asks again before it sends (5.6) | A role change needs no repair; the field user sees no alert during the run (PRD main 126); a reminder outlives no minimum (review findings DP3, DP15, DR6, DU9) |
+| D158 | The route, until phase 7, is an outing: a day, a lead, one to three members and the bags taken. A movement's outing is the one the server finds holding its bag, or for team stock its author, at the movement's time; the phone holds no count (4.1, 5.2) | PRD main 327, 474; the server must know who is on the run, and the phone's word for it can be stale (review findings DP3, DR6) |
+| D159 | The allergy hard stop is one pure pair of functions, run on the phone over the profile's allergy list (the chart's or the index entry's, plus this phone's own, less any entered in error) before every order, and again on the server over the patient's group. Only Record and give places a stopped order; every other way out places nothing (5.4) | PRD main 450, 497; an allergy recorded at the visit must stop the next order, and a drug must never be given by a dismissed screen (review findings DR11, DR12) |
+| D160 | A patient alert is a synced record with a set-once end. It comes with the chart as record snapshots and is read by one rule, `patientAlertShown`: a sensitive one only with the sensitive projection or by its author (4.4, 5.5, 6.2) | An end offline needs the record's field version, and D44 is for what is not a record (review findings DC7, DR4) |
+| D161 | No audit event of an order or a patient alert names the item, the bag or whether an alert is sensitive, for any of them (9) | The chain can't be redacted (D41), and a role with `team.view_audit` without the sensitive keys would read what the chart hides (CO-14's reasoning; review finding DR8) |
+| D162 | Every online inventory write takes the team lock first and carries an id made once per form. A correction and a removal from a bag need `inventory.manage` and PL-19's Program Admin and a reason, kept with the movement and never audited; a key decided after a read is refused in a transaction of its own (5.2, 7) | PRD main 954, 961; D115; PL-14; D98 (review findings DC13, DC24, DP5, DR15) |
+| D163 | Push sends only a fixed sentence and a count worked out when it is sent. The outbox is one row per team, recipient, sentence and hour; a token is unique within its team and goes at sign-out, wipe and removal; the sender sends nothing until the provider's accounts exist and counsel answers (4.5, 7) | PRD main 601, 746; one person on two teams must not stop a queue, and a phone passed on must not get its last person's pushes (review findings DR13, DR19, DC14) |
+| D164 | The phone's field bundle holds the outings of the server's date and the day either side and the bags the person owns, needs `encounters.chart` or `inventory.view`, lives in local schema v5, and goes with the team's other server copies (6.4) | PRD main 474, 475; Log out anyway keeps no server copy (D29, D130); a charting role without `inventory.view` would always deduct from team stock (review findings DC12, DR6, DR22, DP9) |
+| D165 | Suggest, then confirm: Complete opens the supply screen once when the visit holds suggestions the person neither confirmed nor dismissed; a bundle's prompt comes before its lines; the Quick encounter's Medication answer opens the Orders screen on its chip; a Labs item asks its result first (5.1) | PRD main 104, 382, 409, 424, 445, 471 (review findings DP2, DP6, DP7, DP10, DC6, DC9) |
+
+## What the review found
+Four reviewers read the draft on Nov 26, each with one lens, against the saved copies of the PRD (the same bytes as the Nov 26 export) and the code as built (`1fe1632`). They found 95: 4 blockers, 49 major and 42 minor.
+
+| Lens | Findings | The most serious |
+|---|---|---|
+| The code as built (DC) | 27: 1 blocker, 12 major, 14 minor | The read rule's card named `routes/sync.ts`, where the one copy is `read-rules.ts`, so a held sensitive alert and a Medical order would have gone to every reviewer and reader (DC2); `preset_error` was no stored rejection the framework makes; patient alerts could not ride in `_chart`; the visit read already lists the records made at a visit; phase 5's leftovers, a bundle's prompt and the decisions rows were missing |
+| Fidelity to the PRD (DP) | 25: 1 blocker, 10 major, 14 minor | Orders of sensitive items, a pregnancy test's result among them, were read by Billing/Data and the CHW preset (DP1); a bundle's prompt was never asked; an admin on the run was pushed during it; recounts were pushed past the MVP; a correction carried no reason and no item could leave a bag; suggestions could be skipped by tapping Complete; the Quick encounter's medication had no item to map |
+| The rules that never bend (DR) | 22: 1 blocker, 12 major, 9 minor | The same blocker from the rules' side (DR1), with the read rules in the wrong file (DR2); a count taken while orders were unsynced counted them twice; the push outbox's one-column key stopped a queue for a person on two teams; audit details named sensitive items; the hard stop could miss an allergy recorded minutes earlier on the phone, and a dismissed stop could give the drug |
+| Units and cards (DU) | 21: 1 blocker, 15 major, 5 minor | No unit carried phase 5's leftovers (DU1); units said to run side by side shared files and waited on each other both ways; the test server's mirror of the reads was in the wrong unit; the Done when ran in three places, not five, and tested the field user on the lead alone |
+
+The blockers came from three causes: a read rule placed outside its one copy (DC2, with DR2 and DU7); an order read by its item's Medical mark alone, with no sensitivity (DP1, DR1); and a first unit that did not carry the work the plan assigned it (DU1, with DC5 and DR7). D156, D155 and D151 exist for them.
+
+How each was settled. Every finding was checked against the PRD and the code at `1fe1632` first; each claim about the code was read where it pointed. Where two findings disagreed, the PRD and the code decided: an item's sensitivity has three levels, as phase 4 reads notes (DP1 over DR1's two), and may be raised but not lowered (neither reviewer's "fixed at creation", since lowering is what D132 guards against); the members of an outing are stored and only those on a run are held (DP3 over DR6's holding everyone); a throwing rule reuses `definition_error` (DC3 over DR14's new code); the outbox category is the PRD's "Encounter inventory" (DP20 over DC21); a correction needs PL-19's Program Admin (DC24 and DR15 over DP22). Thirteen were applied in part, each with its reason below; none was refuted whole.
+
+| Finding | What it found | Outcome |
+|---|---|---|
+| DC1 | Migration numbers and "no bag table" were stale: migrations stop at 0025, and a bag is a preset | Applied (top matter, 2.1) |
+| DC2 (blocker) | The read rule's one copy is `read-rules.ts`, applied in the review queue, the records read and a value sent back; built in `routes/sync.ts`, both entities fell to `default` and were shown whole | Applied in part: I1-read-rule owns `read-rules.ts`, `review.ts` and `apply.ts` (6.1, 6.2, 13.4); the split into two cards for the three-file limit is not needed, since the limit no longer applies (DU3) |
+| DC3 | `preset_error` is no stored rejection; only `DefinitionError` and class 23 are caught | Applied: bodies read with no cast, a fault is `definition_error` (6) |
+| DC4 | A void by someone else is held for review, not stored with no effect | Applied: held for a Program Admin, as phase 5's flag mark (6.1; BM-94) |
+| DC5 | Phase 5's leftovers were not in the unit list | Applied: unit I0, with IF (2.3, 13) |
+| DC6 | A bundle's prompt, which phase 5 left to this phase, was never asked | Applied (5.1, 8.3a; BM-74) |
+| DC7 | A patient alert is a synced record, so it cannot ride in `_chart` as JSON | Applied: imported as records, ids in `_chart` (6.4) |
+| DC8 | The visit read already lists the records made at a visit, each logged on its own | Applied: orders join `records`; no new key (7) |
+| DC9 | The Quick encounter's Medication section names no item for a mapping | Applied, in DP7's form (5.1; BM-100) |
+| DC10 | Section 11's defaults had no rows, and the decisions check fails a marker without one | Applied: 35 rows from PL-27, BM-85, CO-16, TM-37, and BF-11 (11) |
+| DC11 | New portal tables must take phase 5's stacked-table remedy and reflow checks; actions live in `app/actions/` | Applied (8, 13.4) |
+| DC12 | The field bundle needs local schema v5 and must go with the server copies | Applied (6.4; I1-local-db) |
+| DC13 | "A client requestId" has no counterpart; the built pattern is an id made once per form | Applied: `act_id`, `id_taken` (4.2, 7) |
+| DC14 | Nothing is built for push; `Deps` is built in four places; `devices` has no composite key; removal and wipe must drop tokens | Applied in part: `push` optional in `Deps` with the empty default, `devices_team_id_key`, tokens dropped at wipe and removal, PL-32, CO-16 and BF-11 (4.5, 7); the plan's section 7 gains the push provider at the close (I7-close), not in this revision |
+| DC15 | The new tables did not follow the shape of a record changed by one mark | Applied (4) |
+| DC16 | New sheets, dialogs and text boxes must sit in the freeze gates and be private boxes | Applied (8) |
+| DC17 | Section 2's second table and risk 1 forecast phases now built | Applied (2.2, 12) |
+| DC18 | Stale line citations in section 2 | Applied (2.1) |
+| DC19 | Not every id the order names was checked before the insert; a missing visit had no fix | Applied (6.1) |
+| DC20 | The credential at the order's time is `signedUnder`'s, with its time rule | Applied (5.1; PL-30) |
+| DC21 | The phone's registry, labels and screens need more than the cards named | Applied in part: each part designed and given a card (6.1, 8, 13.4); the outbox category is DP20's `inventory`, the PRD's words, not `supplies` |
+| DC22 | The Done when should run from one shared story in five places | Applied (10.1) |
+| DC23 | Allergy words on the platform's items are a platform update, and the phone's reader pin moves | Applied: the pin moves, no platform words ship (4.3; BM-103) |
+| DC24 | "Program Admin" is read one way in the code, another here; the field bundle's and the count's keys | Applied (5.2, 7; PL-31) |
+| DC25 | The 24-hour alert's push is reserved but never queued | Applied: a departure and PL-33 (9, 12) |
+| DC26 | No "How this phase is built" section | Applied (top matter) |
+| DC27 | The test server's mirror list missed what phase 5 taught it | Applied (6.3) |
+| DP1 (blocker) | Orders of sensitive items were read by roles the PRD keeps them from (PRD main 121) | Applied in part: three levels read as phase 4 reads notes (4.3, 5.1; CO-19); the mark may be raised, not "fixed at creation"; the platform marks leave out the Menstrual care kit, a Non-Medical bundle in PRD main 447, which CO-19 asks; audit details name no item at all (DR8), not only a sensitive one |
+| DP2 | A bundle's prompt was never asked | Applied (5.1, 8.3a) |
+| DP3 | The outing had no members, so a field user on the run could be alerted during it | Applied: `bag_outing_members`; members held (4.1, 5.6; BM-86) |
+| DP4 | Required periodic recounts were pushed past the MVP | Applied: `recountDays`, "Recount due" (4.3, 5.2; BM-97) |
+| DP5 | A correction carried no reason, and an item could never leave a bag | Applied in part: the reason and Not carried (4.2, 5.2, 7); the act counts the item out to 0 itself instead of refusing `balance_not_zero`, since a `not_carried` row after a recount to 0 would need a quantity of 0, which DP5's own 4.2 forbade; its key is a correction's (PL-31) |
+| DP6 | Suggest-then-confirm was a row the worker might never open | Applied (5.1; BM-99) |
+| DP7 | The Quick encounter's medication answers cannot become an order through a mapping | Applied (5.1; BM-100) |
+| DP8 | "Request supplies" fell between phases 6 and 7 | Applied in part: an Out row and PL-34 (1); phase 7's design, which lists it as phase 6's, is not this revision's to change (an open question for the coordinator) |
+| DP9 | A bag's owner changed nothing | Applied (6.4, 8.1; BM-101) |
+| DP10 | A Labs order could be placed without its result | Applied: asked first, `result_missing` (5.1, 6.1) |
+| DP11 | Section 11 asked four questions with no default | Applied: BF-11, CO-16, BM-97; the fourth is gone (DP7) |
+| DP12 | Staff could change the bag only on the supply screen | Applied (5.1, 8.5) |
+| DP13 | "Team stock A–Z with search" was applied to the wrong list | Applied (7, 8) |
+| DP14 | The restock form missed two PRD rules and "− 2 kits +" was not placed | Applied (8) |
+| DP15 | Below-minimum reminders outlived minimums turned off or lowered | Applied (5.2, 5.6) |
+| DP16 | Team stock got no low-stock warning, and the choice was not marked | Applied (5.2; BM-98) |
+| DP17 | The allergy "alternative" was read narrowly | Applied (5.4; BM-92); the plan's phase 6 row now says "with an alternative" |
+| DP18 | Two PRD alerts were never pushed, and the push list was called whole | Applied (9, 12; PL-33) |
+| DP19 | The Done when held the words only for the lead and skipped a case | Applied (10.1, 10.2) |
+| DP20 | Orders had no place in the sign-out progress | Applied: "Encounter inventory" (6.1) |
+| DP21 | Readings not in section 12 | Applied in part: three readings added (12); "every order" is followed as the PRD says (5.4), not recorded as a narrower reading |
+| DP22 | Two choices were built with no row | Applied in part: PL-31 and BM-96; the correction's default is PL-19's Program Admin, not `team.manage_presets`, and its row the project lead's (DR15) |
+| DP23 | The "Allergies not asked yet" banner repeated the badge | Applied: dropped from the banners (5.5) |
+| DP24 | The Out table missed five PRD lines | Applied (1; BM-102) |
+| DP25 | Section 2 and risk 1 still described phase 5 as unbuilt | Applied (2.2, 12) |
+| DR1 (blocker) | An order of a sensitive item was read as any order | Applied in part, with DP1: the sensitive projection is DR1's own rule; a `treatment` level and the Naloxone kit's mark come from DP1; the mark may be raised, not fixed |
+| DR2 | The new read rules were in the wrong file; the review queue and the records read would show every held order and sensitive alert; a held order's accept and reject were unsaid | Applied (6.1, 6.2) |
+| DR3 | The supply log read an order by a rule of its own, and its audit event named no patient | Applied (7) |
+| DR4 | Patient alerts in `_chart` could not be ended offline, and the author's own sensitive alert vanished | Applied (5.5, 6.4) |
+| DR5 | A count taken while a phone held unsynced dispenses counted them twice | Applied: `count_absorbed` (5.2) |
+| DR6 | An admin on the run was pushed at once; an order with no outing opened an alert every manager's phone showed; "today" had no time zone | Applied in part: the outing found by the server, the drain's second look and the date window (5.2, 5.6, 6.4); not every push of an alert on an outing waits, only those of people on a run (DP3) |
+| DR7 | Phase 5's leftovers were not in the first unit, and nothing new named its team in its SQL | Applied (4, 13) |
+| DR8 | Audit details named sensitive things the chain can never redact | Applied, and extended to the bag (9) |
+| DR9 | Which item version an order is judged by was unsaid | Applied, a missing version being `definition_error` (DC3) (5.1, 6.1) |
+| DR10 | An order that names a note did not wait for that note | Applied (6.1) |
+| DR11 | The hard stop could read the index's allergies and miss one recorded on the phone minutes earlier | Applied (5.4) |
+| DR12 | Every way out of the hard stop but Record and give must order nothing | Applied (5.4, 8.3) |
+| DR13 | The outbox's one-column unique key stopped a queue for a person on two teams | Applied: every unique index starts with `team_id` (4) |
+| DR14 | `preset_error` caught a throw in TypeScript, not a SQL cast | Applied in part: no cast, parsed in TypeScript (6); the existing `definition_error` and its sentence instead of a new code (DC3) |
+| DR15 | "Program Admin" was read a third way, and the count's second key was refused after a read | Applied (5.2, 7; PL-31) |
+| DR16 | A void's reason went to every reader of the order | Applied, as a new row (PL-35) rather than an edit of phase 5's PL-18 (5.1) |
+| DR17 | No read showed the override reason | Applied (7) |
+| DR18 | What can change after an order is stored was said two ways | Applied (4.3, 8.5) |
+| DR19 | Push tokens outlived the person who registered them | Applied (4.5, 7) |
+| DR20 | The test server's list left out holds, team checks and the new notices | Applied (6.3) |
+| DR21 | The accessibility bar was lower than the project's | Applied (8, 10) |
+| DR22 | Dispensing and the bags it deducts from were gated by different keys | Applied (7) |
+| DU1 (blocker) | No first unit carried phase 5's leftovers | Applied: I0 and IF; the threshold is TM-39 (2.3, 13) |
+| DU2 | The order put the leftovers nowhere | Applied (13.1) |
+| DU3 | No "How this phase is built"; section 13 was written for the two-model build | Applied (top matter, 13) |
+| DU4 | I2 and I3 shared files and waited on each other | Applied (13.1, 13.4) |
+| DU5 | I4 and I5 shared files too | Applied (13.1) |
+| DU6 | The test server's mirror of the reads was in the wrong unit and assumed reads it does not serve | Applied (6.3; I2-fake-reads) |
+| DU7 | I1-read-rules named the wrong file | Applied (I1-read-rule) |
+| DU8 | The Done when ran in three places from no shared story | Applied (10.1; I2-done-when, I7) |
+| DU9 | The story tested "nothing shown" on the lead alone | Applied in part: the dispenser is a field user who is not the lead, and BM-87 asks of the portal (10.1); Logistics goes on the run too (DP3), so its push waits with the lead's |
+| DU10 | Six rules that never bend had no test row | Applied (10.2) |
+| DU11 | The accessibility tests were thinner than phase 5's | Applied (8, 13.4) |
+| DU12 | Three S rows, and a T row on an always-X path | Applied (13.4) |
+| DU13 | No file-ownership section | Applied (13.2, 13.3) |
+| DU14 | Card rows left out files they must edit | Applied, `push` optional in `Deps` rather than edited in three tests (13.4) |
+| DU15 | Section 11's defaults had no rows, and no card added them | Applied: listed in this revision, ahead of the build |
+| DU16 | I1 was two units' work, and the order did not fit two agents | Applied (13.1) |
+| DU17 | No whole-phase review card | Applied (I7-review, I7-close) |
+| DU18 | Rules in scope had no test row | Applied (10.2) |
+| DU19 | Stale needs and a stale migration count | Applied (13) |
+| DU20 | The allergy words the hard stop relies on shipped in no card | Applied in part: BM-103 asks which words; no platform words ship, since which drug classes a word stands for is a clinical choice (D140) |
+| DU21 | The bundle's prompt had no card | Applied (I4-flow, I4-bundle-prompt) |
 
 ## 1. Scope and Done when
 **Done when** (Build plan 98; `IMPLEMENTATION_PLAN.md` section 4, phase 6 row): dispensing 3 of an item a bag holds 1 of leaves it at −2 and alerts the Program Admin, Logistics and the route lead, with nothing shown to the field user during the run. Section 10.1 walks it as one story, in five places.
