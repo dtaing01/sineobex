@@ -1,0 +1,7 @@
+/* A mapping's field or answer, where the note type's current version has no words for it, is shown
+   as stored: a path such as preventive.vaccine_status.pneumococcal, one word with no space in it.
+   It breaks anywhere, so it never pushes the page sideways at 320 px, at 200% zoom or with wider
+   text spacing (WCAG 1.4.10, 1.4.12). */
+.breaks {
+  overflow-wrap: anywhere;
+}

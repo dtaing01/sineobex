@@ -1,0 +1,900 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/features/patients/flag_sheet.dart'
+    show chooseConditionsAction, chooseRiskLevelAction, noRiskLevelText;
+import 'package:sineobex_field/features/patients/intake_screen.dart' show IntakeScreen;
+import 'package:sineobex_field/features/patients/patient_screen.dart';
+import 'package:sineobex_field/patients/patient_repository.dart' show PatientRepository;
+import 'package:sineobex_field/presets/preset_store.dart';
+import 'package:sineobex_field/sync/entities.dart' show entityFlagChange;
+import 'package:sineobex_field/sync/local_store.dart';
+
+import 'patient_kit.dart';
+
+/// New patient (design 11, 8.1, 12.1), offline as in 13.1 step 5: consent as a radio group, the
+/// date-of-birth read-back in a live region with **Yes, that's right** gating Create, the duplicate
+/// panel showing Del as likely without a legal name and never taking focus, **Not them**, and Create
+/// with no sheet. Then the Create sheet's focus and order, the draft kept on Back, and the card
+/// chip's clock sentence.
+void main() {
+  Future<AppHarness> offlineIntake(WidgetTester tester, {Run? run}) async {
+    final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
+    seedP1(h.server);
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    await openPatientsTab(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+    return h;
+  }
+
+  FilledButton createButton(WidgetTester tester) =>
+      tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Create patient'));
+
+  /// 13.1 step 5's typing: Agrees, "Smitty", legal given name "Del", born 7/3/46.
+  Future<void> typeSmitty(WidgetTester tester) async {
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Smitty');
+    await type(tester, 'legalGiven', 'Del');
+    await type(tester, 'birth', '7/3/46');
+    await tester.pump(const Duration(milliseconds: 900));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+  }
+
+  for (final run in runs) {
+    testWidgets('a new patient offline: read-back, likely match, Not them, Create (${runName(run)})', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await offlineIntake(tester, run: run);
+      expect(find.text('New patient'), findsWidgets);
+      await expectScreenOk(tester);
+
+      // Consent first, as a radio group with nothing chosen.
+      final agrees = find.bySemanticsLabel('Agrees');
+      await reveal(tester, find.text('Agrees'));
+      await expectScreenOk(tester);
+      expect(tester.getSemantics(agrees), isSemantics(isInMutuallyExclusiveGroup: true, isSelected: false));
+      await tapOn(tester, find.text('Agrees'));
+      expect(tester.getSemantics(agrees), isSemantics(isInMutuallyExclusiveGroup: true, isSelected: true));
+
+      await type(tester, 'preferredName', 'Smitty');
+      await type(tester, 'legalGiven', 'Del');
+      await settle(tester);
+      // The panel arrived while the worker was typing the legal name: focus stayed there.
+      final givenField = find.byKey(const ValueKey('phi.legalGiven'), skipOffstage: false);
+      expect(tester.widget<TextField>(givenField).focusNode!.hasFocus, isTrue);
+      await expectShown(tester, find.text('1 possible match'));
+
+      await type(tester, 'birth', '7/3/46');
+      // Read back only after a pause in typing.
+      expect(find.text('July 3, 1946 · age 80'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 900));
+      final readBack = find.text('July 3, 1946 · age 80');
+      await expectShown(tester, readBack);
+      expect(tester.getSemantics(readBack), isSemantics(isLiveRegion: true));
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+
+      // A two-digit year with day and month both 12 or less: Create waits for the confirmation.
+      expect(createButton(tester).onPressed, isNull);
+      await tapOn(tester, find.text('Yes, that’s right'));
+      expect(createButton(tester).onPressed, isNotNull);
+
+      // The panel: Del, likely, with the reasons in words and no legal name.
+      final count = find.text('1 possible match');
+      await expectShown(tester, count);
+      expect(tester.getSemantics(count), isSemantics(isLiveRegion: true));
+      final card = find.bySemanticsLabel(RegExp(r'^Likely the same person\. Del\.'));
+      await expectShown(tester, card);
+      expect(
+        tester.getSemantics(card).label,
+        contains('Why: Name they go by matches; Street name matches; Birth date: day and month swapped'),
+      );
+      expectNoLegalName(tester);
+      await expectScreenOk(tester);
+
+      await tapOn(tester, find.text('Not them'));
+      await expectShown(tester, find.text('Not Del'));
+
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      // Every likely card was dismissed: no sheet; the profile opens.
+      expect(find.text('No, create a new patient'), findsNothing);
+      expect(find.byType(PatientScreen), findsOneWidget);
+
+      final store = h.sync.store!;
+      final outbox = store.outbox();
+      final checks = [
+        for (final e in outbox)
+          if (e.entity == entityAudit && (e.value! as Map)['action'] == 'patient.match_checked') e,
+      ];
+      final create = outbox.singleWhere((e) => e.entity == entityPatient && e.op == 'create');
+      expect(checks, isNotEmpty);
+      expect(checks.last.seq, lessThan(create.seq));
+      final value = create.value! as Map<String, Object?>;
+      final matchCheck = value['matchCheck']! as Map<String, Object?>;
+      expect(matchCheck['where'], 'phone');
+      expect(matchCheck['dismissed'], [p1Id]);
+      expect(matchCheck['checkId'], (checks.last.value! as Map)['checkId']);
+      expect(value['preferredName'], 'Smitty');
+      expect(value['birth'], {'precision': 'day', 'date': '1946-07-03'});
+      expect((value['consent']! as Map)['decision'], 'given');
+      expect((value['privacyNotice']! as Map)['decision'], 'acknowledged');
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
+  }
+
+  testWidgets('Create with a likely match still showing asks once, heading first, and can create', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await offlineIntake(tester);
+    await typeSmitty(tester);
+    await tapOn(tester, find.text('Yes, that’s right'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+
+    final heading = find.text('Is this Del, born March 7, 1946, usually Demo: by the made-up Elm St underpass?');
+    expect(heading, findsOneWidget);
+    expect(tester.getSemantics(heading), isSemantics(isHeader: true));
+    // Focus is on the question, so a screen reader starts there.
+    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<BottomSheet>(), isNotNull);
+    final open = tester.getRect(find.text('Open Del’s chart'));
+    final create = tester.getRect(find.text('No, create a new patient'));
+    expect(open.top, lessThan(create.top));
+    await expectGuidelines(tester);
+
+    // Back closes it with nothing done.
+    await tester.binding.handlePopRoute();
+    await settle(tester);
+    expect(find.text('No, create a new patient'), findsNothing);
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    await tapOn(tester, find.text('No, create a new patient'));
+    final create2 = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient);
+    expect(((create2.value! as Map)['matchCheck']! as Map)['dismissed'], [p1Id]);
+    expect(find.byType(PatientScreen), findsOneWidget);
+    handle.dispose();
+  });
+
+  // The question is a modal sheet, not under the intake's gate: it sits in its own (phase 3's V1).
+  for (final (how, tell) in <(String, Future<void> Function(WidgetTester, AppHarness))>[
+    // A sync that finds no signal.
+    ('the controller says so', (tester, h) => tester.runAsync(() => h.sync.syncNow())),
+    ('a download ends before the controller says so', (tester, h) async => h.patients.changed()),
+  ]) {
+    testWidgets('a freeze for a hand-over takes the likely match off Create’s question: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await offlineIntake(tester);
+      await typeSmitty(tester);
+      await tapOn(tester, find.text('Yes, that’s right'));
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      // The sheet's own: the screen under it hears the controller (PatientsGate).
+      Finder inSheet(Finder f) => find.descendant(of: find.byType(BottomSheet), matching: f, skipOffstage: false);
+      final question = inSheet(find.textContaining('Is this Del', skipOffstage: false));
+      expect(question, findsOneWidget);
+
+      h.sync.store!.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(inSheet(find.text(frozen)), findsOneWidget);
+      expect(question, findsNothing);
+      for (final part in ['March 7, 1946', 'Elm St', 'Open Del’s chart']) {
+        expect(inSheet(find.textContaining(part, skipOffstage: false)), findsNothing);
+      }
+      expectNoLegalName(tester);
+
+      // Closing it does nothing.
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    });
+
+    // A dialog is not under the intake's gate either: it closes as its Cancel would.
+    testWidgets('a freeze for a hand-over closes This is them’s question, naming Del: $how (V1)', (tester) async {
+      const frozen = 'Your access to this team ended. Saved records are being sent to a Program Admin.';
+      final h = await offlineIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Del');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+      await tapOn(tester, find.text('This is them'));
+      final question = find.text('Open Del’s chart?', skipOffstage: false);
+      expect(find.descendant(of: find.byType(Dialog), matching: question), findsOneWidget);
+      final store = h.sync.store!;
+      final before = store.outbox().length;
+
+      store.freeze(frozen);
+      await tell(tester, h);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Dialog), findsNothing);
+      expect(question, findsNothing);
+      // Its Cancel: the intake stays, and the chart isn't opened.
+      expect(find.byType(PatientScreen), findsNothing);
+      expect(store.outbox(), hasLength(before));
+      expect(h.patients.patients.draft(), isNotNull);
+      // The screen under it says why once the controller does.
+      await tester.runAsync(() => h.sync.syncNow());
+      await settle(tester);
+      expect(find.text(frozen), findsOneWidget);
+      expect(find.byType(PatientScreen), findsNothing);
+      expect(store.outbox(), hasLength(before));
+    });
+  }
+
+  testWidgets('two likely matches: Create asks about each, and records only the ones answered (V10)', (tester) async {
+    final h = await signIn(tester);
+    seedP1(h.server);
+    final other = h.server.seedPatient(preferredName: 'Smitty', birth: {'precision': 'day', 'date': '1946-07-03'});
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    await openPatientsTab(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Smitty');
+    await type(tester, 'birth', '7/3/46');
+    await tester.pump(const Duration(milliseconds: 900));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.text('Yes, that’s right'));
+    await expectShown(tester, find.text('2 possible matches'));
+    expect(find.text('Likely the same person', skipOffstage: false), findsNWidgets(2));
+
+    String question() => tester.widget<Text>(find.textContaining('Is this ')).data!;
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    final first = question();
+    await tapOn(tester, find.text('No, create a new patient'));
+    // Asked about the other one, and nothing created yet.
+    expect(find.textContaining('Is this '), findsOneWidget);
+    expect(question(), isNot(first));
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    // Back: the second is still a possible match, not recorded as Not them.
+    await tester.binding.handlePopRoute();
+    await settle(tester);
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    await expectShown(tester, find.text('1 possible match'));
+
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    expect(question(), isNot(first));
+    await tapOn(tester, find.text('No, create a new patient'));
+    final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient && e.op == 'create');
+    final dismissed = ((create.value! as Map)['matchCheck']! as Map)['dismissed']! as List;
+    expect(dismissed.toSet(), {p1Id, other});
+    expect(find.byType(PatientScreen), findsOneWidget);
+  });
+
+  group('focus follows what replaces a control that goes', () {
+    /// The button, chip or field around [finder] holds the keyboard's focus.
+    bool focused(WidgetTester tester, Finder finder) => Focus.of(tester.element(finder)).hasPrimaryFocus;
+
+    Future<void> pressFocused(WidgetTester tester) async {
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await settle(tester);
+    }
+
+    // At 200% text the card is taller than the list keeps built above the screen.
+    for (final run in [runs.first, runs.firstWhere((r) => r.scale == 2)]) {
+      testWidgets('Not them moves to its Undo, and Undo back to Not them (${runName(run)})', (tester) async {
+        await offlineIntake(tester, run: run);
+        await tapOn(tester, find.text('Agrees'));
+        await type(tester, 'preferredName', 'Smitty');
+        FocusManager.instance.primaryFocus?.unfocus();
+        await settle(tester);
+        // The card's buttons at the top of the screen: the rest of the card is above it.
+        await reveal(tester, find.text('Not them'));
+        // With a keyboard, or a switch: the button is focused, then pressed.
+        Focus.of(tester.element(find.text('Not them'))).requestFocus();
+        await tester.pump();
+        await pressFocused(tester);
+        // The line the card folded to is on screen, not left above it, and holds the focus.
+        expect(find.text('Not Del'), findsOneWidget);
+        expect(focused(tester, find.text('Undo')), isTrue);
+        await pressFocused(tester);
+        expect(find.text('Not Del'), findsNothing);
+        expect(find.text('Not them'), findsOneWidget);
+        expect(focused(tester, find.text('Not them')), isTrue);
+      });
+    }
+
+    testWidgets('a screen reader’s tap on Not them moves to Undo; a finger’s leaves the field alone', (tester) async {
+      await offlineIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Smitty');
+      await type(tester, 'visualDescriptor', 'Demo: red cap');
+      final typing = (await fieldNamed(tester, 'visualDescriptor')).focusNode!;
+      await settle(tester);
+      // A finger, with the keyboard up for another field: typing goes on where it was.
+      await tapOn(tester, find.text('Not them'));
+      await expectShown(tester, find.text('Not Del'));
+      expect(typing.hasFocus, isTrue);
+      await tapOn(tester, find.text('Undo'));
+      expect(typing.hasFocus, isTrue);
+
+      // The same tap from a screen reader or Switch Access.
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        accessibleNavigation: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await tester.pump();
+      await tapOn(tester, find.text('Not them'));
+      expect(focused(tester, find.text('Undo')), isTrue);
+    });
+
+    testWidgets('removing a street name moves to the one before it, and to the field after the last', (tester) async {
+      await offlineIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      for (final name in ['Demo Red', 'Demo Ace']) {
+        await type(tester, 'alias', name);
+        await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+      }
+      // The words inside the row's button (the label is on the button's own node, above its focus).
+      Finder remove(String name) =>
+          find.descendant(of: find.bySemanticsLabel('Remove street name $name'), matching: find.text('Remove')).first;
+      await reveal(tester, remove('Demo Ace'));
+      Focus.of(tester.element(remove('Demo Ace'))).requestFocus();
+      await tester.pump();
+      await pressFocused(tester);
+      expect(find.text('Demo Ace'), findsNothing);
+      expect(focused(tester, remove('Demo Red')), isTrue);
+      await pressFocused(tester);
+      expect(find.text('Demo Red'), findsNothing);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('phi.alias'))).focusNode!.hasFocus, isTrue);
+    });
+  });
+
+  testWidgets('This is them opens the chart and offers to add what was typed', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Del');
+    await type(tester, 'alias', 'Red');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+    await type(tester, 'usualArea', 'Demo: by the library steps');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.text('This is them'));
+    expect(find.text('Open Del’s chart?'), findsOneWidget);
+    await tapOn(tester, find.text('Open the chart'));
+    expect(find.byType(PatientScreen), findsOneWidget);
+    await expectShown(tester, find.text('Add what you typed?'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add what you typed'));
+    final store = h.sync.store!;
+    // Nothing new was created: a street name and an edit on Del's chart.
+    expect(store.outbox().where((e) => e.entity == entityPatient && e.op == 'create'), isEmpty);
+    final alias = store.outbox().singleWhere((e) => e.entity == entityAlias);
+    expect(alias.value, {'patientId': p1Id, 'alias': 'Red'});
+    final edit = store.outbox().singleWhere((e) => e.entity == entityPatient && e.op == 'set');
+    expect(edit.field, 'usualArea');
+    expect(h.patients.patients.draft(), isNull);
+    handle.dispose();
+  });
+
+  testWidgets('a list-only chart keeps what it can’t take yet offered, until the full chart opens (V7)', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Del');
+    await type(tester, 'alias', 'Demo Red');
+    await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+    await tapOn(tester, find.text('Vehicle'));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.text('This is them'));
+    await tapOn(tester, find.text('Open the chart'));
+    await expectShown(tester, find.text('List only: the full chart opens when the phone reconnects.'));
+    await expectShown(tester, find.text('Add what you typed?'));
+    expect(find.textContaining('Living situation: Vehicle. Adds when the full chart opens.'), findsOneWidget);
+    await expectScreenOk(tester);
+
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add what you typed'));
+    expect(find.text('Added. The rest adds when the full chart opens.'), findsOneWidget);
+    final store = h.sync.store!;
+    expect(store.outbox().where((e) => e.entity == entityAlias), hasLength(1));
+    expect(store.outbox().where((e) => e.field == 'livingSituation'), isEmpty);
+    // Only what waits is still offered, and there is nothing to add until the full chart opens.
+    await expectShown(tester, find.text('Add what you typed?'));
+    expect(find.textContaining('Street names: Demo Red'), findsNothing);
+    expect(find.textContaining('Living situation: Vehicle. Adds when the full chart opens.'), findsOneWidget);
+    final add = find.widgetWithText(FilledButton, 'Add what you typed');
+    expect(tester.widget<FilledButton>(add).onPressed, isNull);
+    await expectScreenOk(tester);
+
+    // Back online: the full chart downloads, and the living situation adds.
+    h.server.offline = false;
+    await syncAndRefresh(tester, h);
+    await settle(tester);
+    expect(find.text('List only: the full chart opens when the phone reconnects.'), findsNothing);
+    // The first confirmation has gone.
+    await tester.pump(const Duration(seconds: 5));
+    await settle(tester);
+    await tapOn(tester, add);
+    expect(find.text('Added to the chart'), findsOneWidget);
+    final living = store.outbox().singleWhere((e) => e.entity == entityPatient && e.field == 'livingSituation');
+    expect(living.value, {'kind': 'vehicle'});
+    expect(find.text('Add what you typed?'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('Add what you typed that is refused adds nothing and keeps the offer (V7)', (tester) async {
+    final h = await signIn(tester);
+    // Someone one street name short of all a chart can hold.
+    final wren = h.server.seedPatient(preferredName: 'Demo Wren');
+    for (var i = 1; i <= 19; i++) {
+      h.server.seed(entityAlias, {'patientId': wren, 'alias': 'Demo name $i'});
+    }
+    await syncAndRefresh(tester, h);
+    h.server.offline = true;
+    await openPatientsTab(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Demo Wren');
+    for (final name in ['Demo Extra', 'Demo Spare']) {
+      await type(tester, 'alias', name);
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Add'));
+    }
+    await type(tester, 'usualArea', 'Demo: by the library steps');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await settle(tester);
+    await tapOn(tester, find.text('This is them'));
+    await tapOn(tester, find.text('Open the chart'));
+    await expectShown(tester, find.text('Add what you typed?'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add what you typed'));
+    // The second street name is one too many.
+    await expectShown(tester, find.text('A person can have up to 20 street names.'));
+    expect(find.text('Added to the chart'), findsNothing);
+    // Nothing of it was added, the first street name neither, and it is all still offered.
+    final store = h.sync.store!;
+    expect(store.outbox().where((e) => e.entity == entityAlias), isEmpty);
+    expect(store.outbox().where((e) => e.field == 'usualArea'), isEmpty);
+    await expectShown(tester, find.text('Add what you typed?'));
+    expect(find.textContaining('Street names: Demo Extra, Demo Spare'), findsOneWidget);
+    expect(find.textContaining('Usually found: Demo: by the library steps'), findsOneWidget);
+  });
+
+  testWidgets('Back with anything typed keeps a draft, without the legal name, to continue', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'preferredName', 'Smitty');
+    await type(tester, 'legalGiven', 'Delmar');
+    await tester.binding.handlePopRoute();
+    await settle(tester);
+    expect(find.text('Keep this as a draft?'), findsOneWidget);
+    expect(find.textContaining('The legal name isn’t kept in a draft'), findsOneWidget);
+    await tapOn(tester, find.text('Keep draft'));
+    final draft = h.patients.patients.draft()!;
+    expect(draft['preferred'], 'Smitty');
+    // A legal name stays only in a chart (design 2.9-11), never in the draft: only that one was typed.
+    expect(jsonEncode(draft), isNot(contains('Delmar')));
+    expect(draft.keys.toSet().intersection(PatientRepository.draftLegalKeys), isEmpty);
+    expect(draft[PatientRepository.draftLegalNameDropped], isTrue);
+    await expectShown(tester, find.text('Continue the patient you were adding?'));
+    await tapOn(tester, find.text('Continue'));
+    expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Smitty');
+    expect((await fieldNamed(tester, 'legalGiven')).controller!.text, isEmpty);
+    await expectShown(tester, find.text('The legal name isn’t kept in a draft. Ask for it again.'));
+    await expectScreenOk(tester);
+    handle.dispose();
+  });
+
+  group('the draft is kept as the form changes, never with a legal name (V3, V4, V5)', () {
+    Future<AppHarness> newIntake(WidgetTester tester) async {
+      final h = await signIn(tester);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+      return h;
+    }
+
+    Future<void> lockAndUnlock(WidgetTester tester, AppHarness h) async {
+      await tester.runAsync(h.session.lock);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      await enter(tester, 'PIN', '482913');
+      await tapText(tester, 'Unlock');
+      await tester.runAsync(h.sync.ready);
+      await settle(tester);
+    }
+
+    Future<void> typeRook(WidgetTester tester) async {
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Demo Rook');
+      await type(tester, 'legalGiven', 'Demo Rookwood');
+      await type(tester, 'visualDescriptor', 'Demo: scar over left eye');
+    }
+
+    Future<void> expectRookOffered(WidgetTester tester, AppHarness h) async {
+      final draft = h.patients.patients.draft()!;
+      expect(draft['preferred'], 'Demo Rook');
+      expect(draft['descriptor'], 'Demo: scar over left eye');
+      expect(jsonEncode(draft), isNot(contains('Rookwood')));
+      expect(draft[PatientRepository.draftLegalNameDropped], isTrue);
+      await openPatientsTab(tester);
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+      await tapOn(tester, find.text('Continue'));
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Demo Rook');
+      expect((await fieldNamed(tester, 'legalGiven')).controller!.text, isEmpty);
+      await expectShown(tester, find.text('The legal name isn’t kept in a draft. Ask for it again.'));
+      await expectScreenOk(tester);
+    }
+
+    testWidgets('an idle lock after a pause in typing loses nothing (V3)', (tester) async {
+      final h = await newIntake(tester);
+      await typeRook(tester);
+      await tester.pump(const Duration(seconds: 2));
+      await lockAndUnlock(tester, h);
+      await expectRookOffered(tester, h);
+    });
+
+    testWidgets('the app leaving the screen keeps it at once, before a lock (V3)', (tester) async {
+      final h = await newIntake(tester);
+      await typeRook(tester);
+      // Straight to another app, then back after the grace period: locked.
+      tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.runAsync(h.session.lock);
+      tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      await enter(tester, 'PIN', '482913');
+      await tapText(tester, 'Unlock');
+      await tester.runAsync(h.sync.ready);
+      await settle(tester);
+      await expectRookOffered(tester, h);
+    });
+
+    testWidgets('Declines: no draft of the person’s details, and Back asks nothing (V4)', (tester) async {
+      final h = await newIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Demo Rook');
+      await type(tester, 'visualDescriptor', 'Demo: scar over left eye');
+      await tester.pump(const Duration(seconds: 2));
+      expect(h.patients.patients.draft(), isNotNull);
+      // Back up to the consent question; its Declines comes before the card's.
+      await tester.fling(find.byType(Scrollable).first, const Offset(0, 3000), 3000);
+      await settle(tester);
+      await tapOn(tester, find.text('Declines').first);
+      await expectShown(tester, find.text('Close without saving'));
+      // What was kept as they typed goes as soon as they decline.
+      await tester.pump(const Duration(seconds: 2));
+      expect(h.patients.patients.draft(), isNull);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.text('Keep this as a draft?'), findsNothing);
+      expect(h.patients.patients.draft(), isNull);
+      expect(find.text('Continue the patient you were adding?'), findsNothing);
+    });
+
+    testWidgets('declining a new intake at once leaves an earlier intake’s draft alone (V4)', (tester) async {
+      final h = await newIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'preferredName', 'Demo Rook');
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      await tapOn(tester, find.text('Keep draft'));
+      expect(h.patients.patients.draft()!['preferred'], 'Demo Rook');
+
+      // Someone else, who declines before anything is typed: New patient, not Continue.
+      await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+      await tapOn(tester, find.text('Declines').first);
+      await tester.pump(const Duration(seconds: 2));
+      await tapOn(tester, find.text('Close without saving'));
+      // The form only discards a draft it continued or wrote.
+      expect(h.patients.patients.draft()!['preferred'], 'Demo Rook');
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+    });
+
+    testWidgets('a preferred name filled in from the legal given name stays out of the draft (V5)', (tester) async {
+      final h = await newIntake(tester);
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'legalGiven', 'Delmar');
+      await type(tester, 'legalFamily', 'Quill');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Delmar');
+      await tester.pump(const Duration(seconds: 2));
+      expect(jsonEncode(h.patients.patients.draft()), isNot(contains('Delmar')));
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(
+        find.textContaining('The legal name, and the name filled in from it, aren’t kept in a draft'),
+        findsOneWidget,
+      );
+      await tapOn(tester, find.text('Keep draft'));
+      final draft = h.patients.patients.draft()!;
+      expect(jsonEncode(draft), isNot(contains('Delmar')));
+      expect(jsonEncode(draft), isNot(contains('Quill')));
+      await expectShown(tester, find.text('Continue the patient you were adding?'));
+      await tapOn(tester, find.text('Continue'));
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, isEmpty);
+      await expectShown(
+        tester,
+        find.text('The name they go by was filled in for you, so the draft didn’t keep it. Ask for it again.'),
+      );
+      await expectShown(tester, find.text('The legal name isn’t kept in a draft. Ask for it again.'));
+      await expectScreenOk(tester);
+    });
+
+    testWidgets('a search’s text carried into the form stays out of the draft until changed (V5)', (tester) async {
+      final h = await signIn(tester);
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tester.enterText(find.byKey(const ValueKey('phi.search')), 'Quentin');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await settle(tester);
+      await tapOn(tester, find.text('New patient with this name'));
+      expect((await fieldNamed(tester, 'preferredName')).controller!.text, 'Quentin');
+      await tapOn(tester, find.text('Agrees'));
+      await tester.pump(const Duration(seconds: 2));
+      expect(jsonEncode(h.patients.patients.draft()), isNot(contains('Quentin')));
+      // The worker's own words are kept.
+      await type(tester, 'preferredName', 'Quentin Q');
+      await tester.pump(const Duration(seconds: 2));
+      expect(h.patients.patients.draft()!['preferred'], 'Quentin Q');
+    });
+  });
+
+  testWidgets('declining ends the intake with nothing recorded', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Declines'));
+    await expectShown(tester, find.textContaining('No record is made.'));
+    expect(find.text('Create patient'), findsNothing);
+    await tapOn(tester, find.text('Close without saving'));
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    handle.dispose();
+  });
+
+  testWidgets('a card wanted while the clock is off waits, and the chip says so', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester);
+    h.serverAhead = const Duration(minutes: 7);
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    await openPatientsTab(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+    await tapOn(tester, find.text('Wants a card'));
+    await expectShown(tester, find.text('The card can be made once the phone’s clock is right.'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    // The clock never fails an intake (D35): the patient is saved, wanting a card, without one.
+    final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient);
+    expect((create.value! as Map)['idCardChoice'], 'wants');
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityIdLink), isEmpty);
+    await expectShown(tester, find.text('Make the card once the phone’s clock is right.'));
+    handle.dispose();
+  });
+
+  testWidgets('errors are listed at the top, linked to their fields', (tester) async {
+    final handle = tester.ensureSemantics();
+    await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    final error = find.text('Add a name or what they look like, so the team can recognise them.');
+    await expectShown(tester, error);
+    expect(tester.getSemantics(find.text('One thing to fix')), isSemantics(isLiveRegion: true));
+    // Focus moved to the first field to fix.
+    expect((await fieldNamed(tester, 'preferredName')).focusNode!.hasFocus, isTrue);
+    await expectScreenOk(tester);
+    handle.dispose();
+  });
+
+  // Phase 5 (design 8.2; section 11, row 11; card P5-intake), written ahead of its code: a new
+  // patient's risk level, optional, None by default, with its reason once one is picked, saved with
+  // the patient in createPatient's transaction; no conditions; the patient saves without one where
+  // the presets aren't held or while the clock is paused.
+  group('the risk level at intake (phase 5 design 8.2)', () {
+    Map<String, Object?> flag(String name, String tier, String color, int rank) => {
+      'name': name,
+      'tier': tier,
+      'criteria': '',
+      'color': color,
+      'rank': rank,
+      'sensitive': false,
+    };
+
+    late String high;
+
+    Future<AppHarness> intakeWithFlags(WidgetTester tester, {Run? run, bool clockOff = false}) async {
+      final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
+      final team = h.patients.teamId;
+      high = h.server.addPreset(team, 'flag', flag('Demo: High', 'primary', 'red', 10));
+      h.server
+        ..addPreset(team, 'flag', flag('Demo: Medium', 'primary', 'yellow', 20))
+        ..addPreset(team, 'flag', flag('Demo: Frost risk', 'secondary', 'blue', 10));
+      await syncAndRefresh(tester, h);
+      if (clockOff) {
+        h.serverAhead = const Duration(minutes: 7);
+        await tester.runAsync(() => h.sync.syncNow());
+        await settle(tester);
+      }
+      h.server.offline = true;
+      await openPatientsTab(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'New patient'));
+      await tapOn(tester, find.text('Agrees'));
+      await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+      return h;
+    }
+
+    Future<void> pickLevel(WidgetTester tester, String pill) async {
+      await tapOn(tester, find.text(chooseRiskLevelAction));
+      expect(find.byType(Dialog), findsOneWidget);
+      await tester.tap(find.descendant(of: find.byType(Dialog), matching: find.text(pill)));
+      await settle(tester);
+    }
+
+    List<OutboxEntry> flagChanges(AppHarness h) => [
+      for (final e in h.sync.store!.outbox())
+        if (e.entity == entityFlagChange) e,
+    ];
+
+    for (final run in runs) {
+      testWidgets('optional, None by default; once one is picked, a reason; saved with the patient (${runName(run)})', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        final h = await intakeWithFlags(tester, run: run);
+        await expectShown(tester, find.text('Risk level'));
+        await expectShown(tester, find.text(noRiskLevelText));
+        // Conditions are not offered at intake, and no reason is asked before a level is picked.
+        expect(find.text(chooseConditionsAction), findsNothing);
+        expect(find.byKey(const ValueKey('phi.riskLevelReason')), findsNothing);
+        await expectScreenOk(tester);
+
+        await pickLevel(tester, 'Red · Demo: High');
+        await expectShown(tester, find.text('Red · Demo: High'));
+        await expectShown(tester, find.byKey(const ValueKey('phi.riskLevelReason')));
+        await expectScreenOk(tester);
+        await type(tester, 'riskLevelReason', 'Demo: left hospital this week');
+        await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+        expect(find.byType(PatientScreen), findsOneWidget);
+
+        final outbox = h.sync.store!.outbox();
+        final patient = outbox.singleWhere((e) => e.entity == entityPatient && e.op == 'create');
+        final change = flagChanges(h).single;
+        expect(change.value, {
+          'patientId': patient.recordId,
+          'flagId': high,
+          'action': 'set',
+          'reason': 'Demo: left hospital this week',
+        });
+        // A dependent of the patient's create: sent after it.
+        expect(change.seq, greaterThan(patient.seq));
+        await expectShown(tester, find.text('Red · Demo: High'));
+        handle.dispose();
+      });
+    }
+
+    testWidgets('a level picked needs its reason: Create says so and saves nothing', (tester) async {
+      final h = await intakeWithFlags(tester);
+      await pickLevel(tester, 'Yellow · Demo: Medium');
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      await expectShown(tester, find.text('Give a reason for the risk level.'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+      // None again: nothing is asked, and the patient saves without a level.
+      await pickLevel(tester, noRiskLevelText);
+      expect(find.byKey(const ValueKey('phi.riskLevelReason')), findsNothing);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), hasLength(1));
+      expect(flagChanges(h), isEmpty);
+    });
+
+    // Review finding W5: intake said Team setup's "Connect to finish." of a patient it can finish.
+    testWidgets('where the presets aren’t held the row says the patient can still be created, and the level set later; '
+        'the patient saves without one', (tester) async {
+      final h = await intakeWithFlags(tester);
+      PresetStore(h.sync.store!).clear();
+      h.patients.changed();
+      await settle(tester);
+      await expectShown(tester, find.text('Risk level'));
+      expect(
+        find.text(
+          'Your team’s setup hasn’t downloaded yet, so a risk level can’t be set here. You can still create the '
+          'patient, and set a risk level from their profile once the phone has connected.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Connect to finish'), findsNothing);
+      expect(find.text(chooseRiskLevelAction), findsNothing);
+      await expectScreenOk(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), hasLength(1));
+      expect(flagChanges(h), isEmpty);
+    });
+
+    testWidgets('while the clock is paused the row says so; the patient saves without one (D35)', (tester) async {
+      final h = await intakeWithFlags(tester, clockOff: true);
+      await expectShown(tester, find.text('A risk level can be set once the phone’s clock is right.'));
+      expect(find.text(chooseRiskLevelAction), findsNothing);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), hasLength(1));
+      expect(flagChanges(h), isEmpty);
+    });
+
+    testWidgets('Edit offers no risk level: the profile’s flags row sets one', (tester) async {
+      final h = await intakeWithFlags(tester);
+      await expectShown(tester, find.text('Risk level'));
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+      final id = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient).recordId;
+      await go(tester, '/patients/$id/edit');
+      // The whole form, to its end: a section near the bottom is drawn only once scrolled to. The
+      // form's own list, not the profile's under it.
+      final form = find.descendant(of: find.byType(IntakeScreen), matching: find.byType(Scrollable)).first;
+      // A drag scrolls only as far as the list knows its length, which grows as it builds: ten.
+      for (var i = 0; i < 10; i++) {
+        await tester.drag(form, const Offset(0, -1000));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('Risk level'), findsNothing);
+      expect(find.text(chooseRiskLevelAction), findsNothing);
+    });
+  });
+
+  // The second part's note 5, written ahead of its code: the screen counts a reason as the store
+  // and the server do, in code points, so it says what is missing before the store refuses it.
+  testWidgets('a privacy notice not given needs a reason of three code points, an astral character once', (
+    tester,
+  ) async {
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+    await tapOn(tester, find.text('Not offered'));
+    // Two astral characters are four UTF-16 units and two code points.
+    await type(tester, 'noticeReason', '🧊🧊');
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    await expectShown(tester, find.text('Say why the privacy notice wasn’t given.'));
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    await type(tester, 'noticeReason', '🧊🧊🧊');
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient);
+    expect((create.value! as Map)['privacyNotice'], containsPair('reason', '🧊🧊🧊'));
+  });
+
+  // Review finding F6: the box takes no reason the store would then refuse. A thumbs-up with a skin
+  // tone is drawn as one character and is two code points.
+  testWidgets('the privacy notice’s reason is cut at 300 code points, which its counter says, and Create takes it', (
+    tester,
+  ) async {
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+    await tapOn(tester, find.text('Not offered'));
+    // 151 characters on screen, 301 code points.
+    await type(tester, 'noticeReason', '${'👍🏽' * 150}a');
+    final box = tester.widget<TextField>(find.byKey(const ValueKey('phi.noticeReason')));
+    expect(box.controller!.text, '👍🏽' * 150);
+    await expectShown(tester, find.text('300 of 300 characters'));
+    await expectScreenOk(tester);
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    final create = h.sync.store!.outbox().singleWhere((e) => e.entity == entityPatient);
+    expect((create.value! as Map)['privacyNotice'], containsPair('reason', '👍🏽' * 150));
+  });
+
+  testWidgets('a reason over 300 code points the box got another way, as a draft, is said beside it and nothing '
+      'saves', (tester) async {
+    final h = await offlineIntake(tester);
+    await tapOn(tester, find.text('Agrees'));
+    await type(tester, 'visualDescriptor', 'Demo: man in a blue wheelchair');
+    await tapOn(tester, find.text('Not offered'));
+    final box = find.byKey(const ValueKey('phi.noticeReason'));
+    await reveal(tester, box);
+    // Not typed, so not cut: as a draft restored from an older build would fill it.
+    tester.widget<TextField>(box).controller!.text = '👍🏽' * 151;
+    await tester.pump();
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Create patient'));
+    await expectShown(tester, find.text('Say why the privacy notice wasn’t given in 300 characters or fewer.'));
+    expect(h.sync.store!.outbox().where((e) => e.entity == entityPatient), isEmpty);
+    // Focus goes to the box (kept alive while it has it, wherever the list is scrolled).
+    await settle(tester);
+    final focused = find.byKey(const ValueKey('phi.noticeReason'), skipOffstage: false);
+    expect(tester.widget<TextField>(focused).focusNode!.hasFocus, isTrue);
+  });
+}

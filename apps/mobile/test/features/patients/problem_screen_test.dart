@@ -1,0 +1,265 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/features/patients/problem_screen.dart';
+import 'package:sineobex_field/presets/preset_store.dart';
+import 'package:sineobex_field/sync/local_store.dart';
+
+import 'patient_kit.dart';
+
+/// A problem (design 9.1, 12.1): the status as a radio group with only the forward moves, Still
+/// ongoing as an observation, Resolved asked once, Still has this? on a Resolved problem, and a
+/// note with its counter announced near the limit. Three themes, 200% text and 320 wide; offline.
+void main() {
+  List<OutboxEntry> statusSets(AppHarness h, String problemId) => [
+    for (final e in h.sync.store!.outbox())
+      if (e.entity == entityProblem && e.recordId == problemId && e.field == 'status') e,
+  ];
+
+  for (final run in runs) {
+    testWidgets('a problem moves forward only, and Resolved asks once (${runName(run)})', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await signIn(tester, theme: run.theme, scale: run.scale, narrow: run.narrow);
+      seedP1(h.server);
+      final cough = h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'new'});
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      h.server.offline = true;
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, New')));
+      expect(find.byType(ProblemScreen), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'Problem'), findsOneWidget);
+      await expectShown(tester, find.text('No code: won’t add supplies to route bags'));
+
+      final now = find.bySemanticsLabel('New, current status');
+      await expectShown(tester, now);
+      expect(tester.getSemantics(now), isSemantics(isInMutuallyExclusiveGroup: true, isChecked: true));
+      expect(find.bySemanticsLabel('Move to Ongoing'), findsOneWidget);
+      expect(find.bySemanticsLabel('Move to Resolved'), findsOneWidget);
+      await expectScreenOk(tester);
+
+      // Confirming the status at a visit is an observation of its own.
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Still new'));
+      expect(statusSets(h, cough), hasLength(1));
+      expect(statusSets(h, cough).single.value, {'status': 'new', 'encounterId': null});
+
+      await tapOn(tester, find.bySemanticsLabel('Move to Resolved'));
+      expect(find.text('Mark as Resolved?'), findsOneWidget);
+      expect(
+        find.text('It stops counting toward route supplies, and only a Program Admin can undo it.'),
+        findsOneWidget,
+      );
+      await expectGuidelines(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Mark as Resolved'));
+      expect(statusSets(h, cough).last.value, {'status': 'resolved', 'encounterId': null});
+      // Resolved offers no move back, only Still has this?.
+      expect(find.bySemanticsLabel(RegExp('^Move to')), findsNothing);
+      await expectShown(tester, find.widgetWithText(OutlinedButton, 'Still has this?'));
+      await expectScreenOk(tester);
+
+      await tapOn(tester, find.widgetWithText(OutlinedButton, 'Still has this?'));
+      await tapOn(tester, find.text('It came back (a new episode)'));
+      final again = h.sync.store!.outbox().lastWhere((e) => e.entity == entityProblem && e.op == 'create');
+      expect((again.value! as Map)['recurrenceOf'], cough);
+      expect((again.value! as Map)['status'], 'new');
+      handle.dispose();
+    });
+  }
+
+  testWidgets('a note, with the counter announced near the limit', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester);
+    seedP1(h.server);
+    final cough = h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'ongoing'});
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+    await type(tester, 'problemNote', 'x' * 3500);
+    expect(find.text('3,500 of 4,000 characters'), findsNothing);
+    await type(tester, 'problemNote', 'x' * 3700);
+    final counter = find.text('3,700 of 4,000 characters');
+    await expectShown(tester, counter);
+    // Read when explored; the crossing itself is what's said (below, V11).
+    expect(tester.getSemantics(counter), isSemantics(isLiveRegion: false));
+    await expectShown(tester, find.text('Near the 4,000-character limit.'));
+    await type(tester, 'problemNote', 'Demo: worse at night');
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add note'));
+    final note = h.sync.store!.outbox().singleWhere((e) => e.entity == entityProblemNote);
+    expect(note.value, {'problemId': cough, 'text': 'Demo: worse at night'});
+    await expectShown(tester, find.bySemanticsLabel(RegExp(r'^Note by you, not synced yet: Demo: worse at night')));
+    await expectScreenOk(tester);
+    handle.dispose();
+  });
+
+  group('the note counter is said once on crossing 90% and once at the limit, never per keystroke (V11)', () {
+    /// The labels of every live region on screen: what a screen reader would read out as it changes.
+    List<String> liveLabels(WidgetTester tester) => [
+      for (final node
+          in find.semantics.byPredicate((n) => n.getSemanticsData().flagsCollection.isLiveRegion).evaluate())
+        node.label,
+    ];
+
+    Future<void> openCough(WidgetTester tester, {required bool announces}) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = FakeAccessibilityFeatures(supportsAnnounce: announces);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      final h = await signIn(tester);
+      seedP1(h.server);
+      h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'ongoing'});
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      await reveal(tester, find.byKey(const ValueKey('phi.problemNote')));
+    }
+
+    testWidgets('where the platform takes announcements (iOS)', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openCough(tester, announces: true);
+      tester.takeAnnouncements();
+      final live = <List<String>>[];
+      for (final n in [3500, 3600, 3601, 3602]) {
+        await tester.enterText(find.byKey(const ValueKey('phi.problemNote')), 'a' * n);
+        await tester.pump();
+        live.add(liveLabels(tester));
+      }
+      expect(tester.takeAnnouncements().map((a) => a.message), ['Near the 4,000-character limit.']);
+      // Nothing on screen is a live region whose words change as they type.
+      expect(live.map((l) => l.join('|')).toSet(), hasLength(1), reason: '$live');
+      await tester.enterText(find.byKey(const ValueKey('phi.problemNote')), 'a' * 4000);
+      await tester.pump();
+      expect(tester.takeAnnouncements().map((a) => a.message), [
+        'At the 4,000-character limit: the note can’t be longer.',
+      ]);
+      handle.dispose();
+    });
+
+    testWidgets('where it doesn’t (Android): the band line is the live region', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openCough(tester, announces: false);
+      final live = <String, List<String>>{};
+      for (final n in [3600, 3601, 3602]) {
+        await tester.enterText(find.byKey(const ValueKey('phi.problemNote')), 'a' * n);
+        await tester.pump();
+        live['$n'] = liveLabels(tester);
+      }
+      expect(tester.takeAnnouncements(), isEmpty);
+      expect(live['3600'], contains('Near the 4,000-character limit.'));
+      expect(live.values.map((l) => l.join('|')).toSet(), hasLength(1), reason: '$live');
+      handle.dispose();
+    });
+  });
+
+  testWidgets('a problem row on the profile is a button Switch Access can activate (V6)', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester);
+    seedP1(h.server);
+    h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'ongoing'});
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    final row = find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing'));
+    await reveal(tester, row);
+    expect(tester.getSemantics(row), isSemantics(isButton: true, hasTapAction: true));
+    tester.semantics.tap(find.semantics.byLabel(RegExp(r'^Demo: cough, Ongoing')));
+    await settle(tester);
+    expect(find.byType(ProblemScreen), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets('a role without encounters.chart reads problems and changes nothing', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await signIn(tester, permissions: const ['patients.view', 'patients.edit', 'billing.view_codes']);
+    seedP1(h.server);
+    h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'new'});
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    expect(find.text('Add problem'), findsNothing);
+    await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, New')));
+    expect(find.bySemanticsLabel(RegExp('^Move to')), findsNothing);
+    expect(find.text('Still new'), findsNothing);
+    await expectShown(tester, find.text('Your role reads problems; it doesn’t add notes.'));
+    await expectScreenOk(tester);
+    handle.dispose();
+  });
+
+  // Phase 5 (design 5.3, 8.2; section 11, row 21; card P5-status-check), written ahead of its code:
+  // "Status check due" on a New or Ongoing problem not checked within the team's window, offline from
+  // the settings preset; never on one checked within it or on a Resolved one; nothing where the
+  // presets aren't held.
+  group('Status check due (phase 5 design 5.3)', () {
+    Future<({AppHarness h, String cough, String rash})> problemsWithWindow(WidgetTester tester, {Run? run}) async {
+      final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
+      seedP1(h.server);
+      h.server.addPreset(h.patients.teamId, 'settings', {
+        'name': 'Team settings',
+        'bagMinimumsOn': false,
+        'newBagMinimums': <Object?>[],
+        'problemCheckDays': 30,
+      });
+      final cough = h.server.seed(entityProblem, {
+        'patientId': p1Id,
+        'title': 'Demo: cough',
+        'status': 'ongoing',
+      }, at: h.wall.subtract(const Duration(days: 31)));
+      final rash = h.server.seed(entityProblem, {
+        'patientId': p1Id,
+        'title': 'Demo: rash',
+        'status': 'new',
+      }, at: h.wall.subtract(const Duration(days: 29)));
+      await syncAndRefresh(tester, h);
+      await go(tester, '/patients/$p1Id');
+      h.server.offline = true;
+      return (h: h, cough: cough, rash: rash);
+    }
+
+    for (final run in runs) {
+      testWidgets('a problem past the team’s window says so, offline (${runName(run)})', (tester) async {
+        final handle = tester.ensureSemantics();
+        await problemsWithWindow(tester, run: run);
+        await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+        expect(find.byType(ProblemScreen), findsOneWidget);
+        await expectShown(tester, find.text('Status check due'));
+        await expectScreenOk(tester);
+        handle.dispose();
+      });
+    }
+
+    testWidgets('not on a problem checked within the window, and nowhere where the presets aren’t held', (
+      tester,
+    ) async {
+      final (:h, cough: _, rash: _) = await problemsWithWindow(tester);
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      await expectShown(tester, find.text('Status check due'));
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: rash, New')));
+      expect(find.text('Status check due'), findsNothing);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      PresetStore(h.sync.store!).clear();
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      expect(find.text('Status check due'), findsNothing);
+    });
+
+    // Review finding F5: a confirmation of the same status is a check (section 11, row 21), counted
+    // offline, and after its receipt until a chart gives the server's time.
+    testWidgets('Still ongoing pressed offline checks it at once, on the problem and the profile, and after its '
+        'receipt', (tester) async {
+      final handle = tester.ensureSemantics();
+      final (:h, :cough, rash: _) = await problemsWithWindow(tester);
+      await tapOn(tester, find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing')));
+      await expectShown(tester, find.text('Status check due'));
+      await tapOn(tester, find.text('Still ongoing'));
+      await settle(tester);
+      expect(find.text('Status check due', skipOffstage: false), findsNothing);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      final row = find.bySemanticsLabel(RegExp(r'^Demo: cough, Ongoing'));
+      await reveal(tester, row);
+      expect(tester.getSemantics(row).label, isNot(contains('status check due')));
+
+      h.server.offline = false;
+      await syncAndRefresh(tester, h);
+      expect(h.sync.store!.outbox().where((e) => e.recordId == cough), isEmpty, reason: 'confirmed');
+      expect(h.patients.statusCheckDue(h.patients.problems.problem(cough)!), isFalse);
+      await expectScreenOk(tester);
+      handle.dispose();
+    });
+  });
+}

@@ -1,0 +1,89 @@
+      5\. Abdominal / GI
+
+      A. Inspection
+
+      &#32;&#32;&#32;&#32;•   Flat
+
+      &#32;&#32;&#32;&#32;•   Distended
+
+      &#32;&#32;&#32;&#32;•   Protuberant
+
+      &#32;&#32;&#32;&#32;•   Scars
+
+      &#32;&#32;&#32;&#32;•   Bruising
+
+      &#32;&#32;&#32;&#32;•   Visible masses
+
+      &#32;&#32;&#32;&#32;•   Hernia
+
+      B. Bowel Sounds
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Hypoactive
+
+      &#32;&#32;&#32;&#32;•   Hyperactive
+
+      &#32;&#32;&#32;&#32;•   Absent
+
+      &#32;&#32;&#32;&#32;•   Unable to assess
+
+      C. Palpation
+
+      Tenderness
+
+      &#32;&#32;&#32;&#32;•   None
+
+      &#32;&#32;&#32;&#32;•   Right upper quadrant (RUQ)
+
+      &#32;&#32;&#32;&#32;•   Right lower quadrant (RLQ)
+
+      &#32;&#32;&#32;&#32;•   Left upper quadrant (LUQ)
+
+      &#32;&#32;&#32;&#32;•   Left lower quadrant (LLQ)
+
+      &#32;&#32;&#32;&#32;•   Epigastric
+
+      &#32;&#32;&#32;&#32;•   Suprapubic
+
+      &#32;&#32;&#32;&#32;•   Periumbilical
+
+      &#32;&#32;&#32;&#32;•   Diffuse
+
+      Pain Severity: \_\_\_\_\_ / 10
+
+      D. Peritoneal Signs
+
+      &#32;&#32;&#32;&#32;•   Guarding
+
+      &#32;&#32;&#32;&#32;•   Rebound
+
+      &#32;&#32;&#32;&#32;•   Rigidity
+
+      &#32;&#32;&#32;&#32;•   None
+
+      E. Mass
+
+      &#32;&#32;&#32;&#32;•   None
+
+      &#32;&#32;&#32;&#32;•   Present
+
+      Location: *\_\_*\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+      F. Organomegaly
+
+      &#32;&#32;&#32;&#32;•   Hepatomegaly
+
+      &#32;&#32;&#32;&#32;•   Splenomegaly
+
+      &#32;&#32;&#32;&#32;•   None
+
+      G. Other Findings
+
+      &#32;&#32;&#32;&#32;•   CVA tenderness
+
+      &#32;&#32;&#32;&#32;•   Murphy sign
+
+      &#32;&#32;&#32;&#32;•   McBurney tenderness
+
+      &#32;&#32;&#32;&#32;•   Other

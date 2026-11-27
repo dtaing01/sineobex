@@ -1,0 +1,55 @@
+{
+  "name": "exam_neck",
+  "version": 1,
+  "sections": [
+    {
+      "id": "neck_thyroid",
+      "title": "Neck / thyroid",
+      "spec": "exam-neck",
+      "showWhen": { "field": "exam.systems", "is": "neck_thyroid" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "neck",
+          "kind": "choice",
+          "many": true,
+          "label": "Neck",
+          "options": [
+            { "code": "supple", "label": "Supple", "normal": true },
+            { "code": "stiff", "label": "Stiff" },
+            { "code": "tender", "label": "Tender" },
+            { "code": "mass", "label": "Mass" },
+            { "code": "lymphadenopathy", "label": "Lymphadenopathy" },
+            { "code": "jvd", "label": "JVD" }
+          ],
+          "excludes": [["supple", "stiff"]]
+        },
+        {
+          "id": "thyroid",
+          "kind": "choice",
+          "many": true,
+          "label": "Thyroid",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "enlarged", "label": "Enlarged" },
+            { "code": "nodules", "label": "Nodules" },
+            { "code": "tender", "label": "Tender" },
+            { "code": "asymmetric", "label": "Asymmetric" }
+          ]
+        },
+        {
+          "id": "carotids",
+          "kind": "choice",
+          "many": true,
+          "label": "Carotids",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "bruit", "label": "Bruit" },
+            { "code": "decreased_pulse", "label": "Decreased pulse" }
+          ],
+          "sides": true
+        }
+      ]
+    }
+  ]
+}

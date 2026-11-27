@@ -1,0 +1,8 @@
+{
+  "name": "side",
+  "options": [
+    { "code": "right", "label": "Right" },
+    { "code": "left", "label": "Left" },
+    { "code": "bilateral", "label": "Bilateral" }
+  ]
+}

@@ -1,0 +1,49 @@
+/* The pair table and the duplicate queue: a real table on wide screens. Below 640 px each row
+   becomes a block, its row header first and every cell labelled, so nothing scrolls sideways at
+   320 px (WCAG 1.4.10). */
+.stacked th,
+.stacked td {
+  overflow-wrap: anywhere;
+}
+.lines {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+/* Who made each record. The column headers say it on wide screens; stacked, they are hidden. */
+.provenance {
+  display: none;
+}
+@media (max-width: 639.98px) {
+  .stacked,
+  .stacked tbody,
+  .stacked tr,
+  .stacked th,
+  .stacked td {
+    display: block;
+  }
+  .stacked thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .stacked tbody tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+  }
+  .stacked tbody td {
+    border-bottom: 0;
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+  .stacked td[data-label]::before {
+    content: attr(data-label) ': ';
+    font-weight: 700;
+  }
+  .provenance {
+    display: block;
+  }
+}

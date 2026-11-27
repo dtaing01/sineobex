@@ -1,0 +1,52 @@
+{
+  "piece": "sexrepro-2",
+  "notOptions": ["Pregnant", "weeks", "days", "date", "number", "Text box"],
+  "added": ["Other"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "The section shows when the pregnancy test is Positive, or when the flag Known pregnancy, no test today (sexrepro-1, beside the test) is set: a pregnancy known before this visit is charted without a test being recorded that was not done. The flag is a departure from the lines.",
+      "why": "inventory A44; PRD main 417 (once a pregnancy is confirmed); PLAN-OPEN (forms 10.1 #1): whether a known pregnancy opens the section, for the clinical team to confirm"
+    },
+    {
+      "line": 4,
+      "what": "Gestational age is a duration: weeks and days, stored as days, bounded at 45 weeks (315 days), so a slip such as 400 weeks for 40 is refused.",
+      "why": "forms 2.3 (a duration's max); PLAN-OPEN (forms 10.1 #19): the range of gestational age, 0 to 45 weeks, for the clinical team"
+    },
+    {
+      "line": 6,
+      "what": "A date, past or future: a pregnancy that runs past its due date keeps a due date in the past.",
+      "why": "inventory construct 16; PLAN-OPEN (forms 10.1 #1): the date's range"
+    },
+    {
+      "line": 8,
+      "what": "Gravida is a whole number, 1 to 30.",
+      "why": "PRD main 420; inventory A47; PLAN-OPEN (forms 10.1 #1): the range"
+    },
+    {
+      "line": 10,
+      "what": "Para is a whole number of its own, 0 to 30.",
+      "why": "PRD main 420; inventory A47; PLAN-OPEN (forms 10.1 #1): the range"
+    },
+    {
+      "line": 11,
+      "what": "Choose-many. None known is exclusive.",
+      "why": "inventory A48"
+    },
+    {
+      "line": 24,
+      "what": "Other is written as a heading over its text box (added): it asks for a short text.",
+      "why": "inventory A2, A48"
+    },
+    {
+      "line": 27,
+      "what": "Choose-many. No None is added.",
+      "why": "inventory A48"
+    },
+    {
+      "line": 39,
+      "what": "Other is written as a heading over its text box (added): it asks for a short text.",
+      "why": "inventory A2, A48"
+    }
+  ]
+}

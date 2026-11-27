@@ -1,0 +1,57 @@
+{
+  "piece": "exam-gu",
+  "notOptions": [
+    "Exam performed",
+    "Chaperone: Yes / No",
+    "Patient consent: Yes",
+    "Findings: Structured inputs"
+  ],
+  "added": ["Yes", "No"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_gu, that the General note type includes: its section Genitourinary (GU) shows only while GU (exam.systems is gu, an option marked sensitiveExam) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 3,
+      "what": "Hidden by default unless specifically selected is the section's showWhen on the picker; the line is not typed.",
+      "why": "PRD main 415; forms 6.6"
+    },
+    {
+      "line": 5,
+      "what": "General findings is choose-many. No acute findings is the normal option and clears the others. It is charted without Exam performed.",
+      "why": "focused-exam inventory 3.9, default 13, 26, 35"
+    },
+    {
+      "line": 27,
+      "what": "External exam is choose-many. Normal is the normal option and clears the others. It shows only while Exam performed is ticked, so it comes after the sensitive exam workflow, not before it.",
+      "why": "focused-exam inventory default 13, 26, 35; PLAN-OPEN (forms 10.1 #1): default 35 asks whether Exam performed gates B only"
+    },
+    {
+      "line": 43,
+      "what": "Costovertebral angle (CVA) is choose-one: No tenderness (the normal option), Right, Left, Bilateral, a four-way state. It is charted without Exam performed, so it comes before the workflow.",
+      "why": "focused-exam inventory 3.9, default 14, 26, 35"
+    },
+    {
+      "line": 53,
+      "what": "Optional Sensitive Exam Workflow: The section is a sensitive exam (sensitiveExam): its answers are left out for a reader without the key, and out of the patient overview for everyone. It holds the three fields of the sensitive exam workflow, none of which one-tap Normal fills (noNormal): Exam performed, a tick; Chaperone present, choose-one from the shared list yes_no (Yes and No added), shown while Exam performed is ticked; Patient consented, a tick, shown while Exam performed is ticked and required, so the note cannot be completed with the exam performed and no consent recorded. The bullets are these three fields' lines, not options.",
+      "why": "PRD main 415; forms 5, 6.6; focused-exam inventory default 6, 7, 29, 52, 53"
+    },
+    {
+      "line": 57,
+      "what": "If performed: is the condition of the bullets under it, not typed: Chaperone present and Patient consented show only once Exam performed is ticked.",
+      "why": "forms 6.6"
+    },
+    {
+      "line": 63,
+      "what": "Findings: Structured inputs is one text box, Findings, shown while Exam performed is ticked; the structured findings are parts A to C.",
+      "why": "focused-exam inventory default 34"
+    },
+    {
+      "line": 65,
+      "what": "The privacy requirement is the section's sensitiveExam; the line is not typed.",
+      "why": "PRD main 415; forms 6.6; focused-exam inventory default 52"
+    }
+  ]
+}

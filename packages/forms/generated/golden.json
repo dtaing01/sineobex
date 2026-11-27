@@ -1,0 +1,4969 @@
+[
+  {
+    "key": "general_primary_care",
+    "version": 1,
+    "hash": "6e07366881162ee7209ebe15a1a6c5af40385a24ccc59d8e1253cdf89a318380",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "3e0e6557a877b3a3146d5d0d8c1168b081e407011035afab9366f060f10cb23b",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {
+          "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "problems.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "skin_findings.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "vitals.e0000001.entryAt": "2000-01-01T00:00:00Z"
+        },
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [
+          "problems.e0000001.entryAt",
+          "vitals.e0000001.entryAt"
+        ],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "5a2c79dc2f8b66a36c00999258344aabfc3f12679438e830e55e4ea8cd6e5b54",
+          "noExams": "5a2c79dc2f8b66a36c00999258344aabfc3f12679438e830e55e4ea8cd6e5b54",
+          "noSensitive": "5a2c79dc2f8b66a36c00999258344aabfc3f12679438e830e55e4ea8cd6e5b54"
+        },
+        "contentHash": "ba402e24178c33eff92a3203bd2e4ee8d655784bce4d1d92ef3ef012c48f2a24",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "abdominal.bowel_sounds": "normal",
+          "abdominal.inspection": [
+            "flat"
+          ],
+          "abdominal.mass": "none",
+          "abdominal.organomegaly": [
+            "hepatomegaly"
+          ],
+          "abdominal.other_findings": [
+            "cva_tenderness"
+          ],
+          "abdominal.peritoneal": [
+            "guarding"
+          ],
+          "abdominal.tenderness": [
+            "none"
+          ],
+          "breast.chaperone": "yes",
+          "breast.finding": [
+            "no_mass"
+          ],
+          "breast.inspection": [
+            "symmetric"
+          ],
+          "breast.inspection_side": "right",
+          "breast.mass.characteristics": [
+            "mobile"
+          ],
+          "breast.mass.location": "clock_1",
+          "breast.mass.side": "right",
+          "cv_perfusion.edema": "none",
+          "cv_perfusion.edema_location": [
+            "bilateral_lower_extremities"
+          ],
+          "cv_perfusion.jvd": "none",
+          "cv_perfusion.more_pulses.brachial.left": "zero",
+          "cv_perfusion.more_pulses.brachial.right": "zero",
+          "cv_perfusion.more_pulses.femoral.left": "zero",
+          "cv_perfusion.more_pulses.femoral.right": "zero",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.left": "zero",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.right": "zero",
+          "cv_perfusion.pulses.posterior_tibial_pt.left": "zero",
+          "cv_perfusion.pulses.posterior_tibial_pt.right": "zero",
+          "cv_perfusion.pulses.radial.left": "zero",
+          "cv_perfusion.pulses.radial.right": "zero",
+          "diabetic_foot.inspection": [
+            "intact_skin"
+          ],
+          "diabetic_foot.monofilament.left": "normal",
+          "diabetic_foot.monofilament.right": "normal",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.left": "zero",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.right": "zero",
+          "diabetic_foot.pulses.posterior_tibial_pt.left": "zero",
+          "diabetic_foot.pulses.posterior_tibial_pt.right": "zero",
+          "diabetic_foot.sensation": "intact",
+          "diabetic_foot.temperature": [
+            "warm"
+          ],
+          "diabetic_foot.wound": "yes",
+          "ears.canal.left": [
+            "clear"
+          ],
+          "ears.canal.right": [
+            "clear"
+          ],
+          "ears.external.left": [
+            "normal"
+          ],
+          "ears.external.right": [
+            "normal"
+          ],
+          "ears.hearing": "grossly_intact",
+          "ears.hearing_side": "right",
+          "ears.tympanic.left": [
+            "normal"
+          ],
+          "ears.tympanic.right": [
+            "normal"
+          ],
+          "exam.systems": [
+            "general_appearance"
+          ],
+          "eyes.conjunctiva": [
+            "normal"
+          ],
+          "eyes.movements": [
+            "intact"
+          ],
+          "eyes.pupil_reaction.left": "reactive",
+          "eyes.pupil_reaction.right": "reactive",
+          "eyes.pupils": [
+            "perrl"
+          ],
+          "eyes.sclera": "anicteric",
+          "eyes.visual": [
+            "vision_normal"
+          ],
+          "general_appearance.behavior": [
+            "alert"
+          ],
+          "general_appearance.status": [
+            "well_appearing"
+          ],
+          "gu.chaperone": "yes",
+          "gu.cva": "no_tenderness",
+          "gu.external": [
+            "normal"
+          ],
+          "gu.general": [
+            "no_acute_findings"
+          ],
+          "heart.murmur.character": "systolic",
+          "heart.murmur.location": [
+            "aortic"
+          ],
+          "heart.murmur.radiation": [
+            "none"
+          ],
+          "heart.rate": "normal",
+          "heart.rhythm": "regular",
+          "heart.sounds": [
+            "normal_s1_s2"
+          ],
+          "lymphatic.node_findings.axillary.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.cervical.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.inguinal.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.other.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.supraclavicular.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.nodes": [
+            "cervical"
+          ],
+          "mouth.airway": [
+            "patent"
+          ],
+          "mouth.dentition": [
+            "normal"
+          ],
+          "mouth.mucosa": [
+            "moist"
+          ],
+          "mouth.pharynx": [
+            "clear"
+          ],
+          "msk.e0000001.capillary_refill": "less_than_2_seconds",
+          "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "msk.e0000001.inspection": [
+            "normal"
+          ],
+          "msk.e0000001.palpation": [
+            "no_tenderness"
+          ],
+          "msk.e0000001.pulses": "intact",
+          "msk.e0000001.region": "head_neck",
+          "msk.e0000001.rom_active": [
+            "full"
+          ],
+          "msk.e0000001.rom_passive": [
+            "full"
+          ],
+          "msk.e0000001.sensation": [
+            "intact"
+          ],
+          "msk.e0000001.shoulder_tests.cross_body_adduction": "not_performed",
+          "msk.e0000001.shoulder_tests.empty_can": "not_performed",
+          "msk.e0000001.shoulder_tests.external_rotation": "not_performed",
+          "msk.e0000001.shoulder_tests.hawkins": "not_performed",
+          "msk.e0000001.shoulder_tests.neer": "not_performed",
+          "msk.e0000001.side": "right",
+          "msk.e0000001.tone": "hypertonic",
+          "msk_gait.gait": [
+            "normal"
+          ],
+          "neck_thyroid.carotids.left": [
+            "normal"
+          ],
+          "neck_thyroid.carotids.right": [
+            "normal"
+          ],
+          "neck_thyroid.neck": [
+            "supple"
+          ],
+          "neck_thyroid.thyroid": [
+            "normal"
+          ],
+          "neuro.cn_screen": "grossly_intact",
+          "neuro.cranial_nerves.cn_ii": "visual_fields_intact",
+          "neuro.cranial_nerves.cn_iii_iv_vi": [
+            "extraocular_movements_intact_eomi"
+          ],
+          "neuro.cranial_nerves.cn_ix_x": [
+            "palate_symmetric"
+          ],
+          "neuro.cranial_nerves.cn_v": "facial_sensation_intact",
+          "neuro.cranial_nerves.cn_vii": "symmetric_facial_movement",
+          "neuro.cranial_nerves.cn_viii": "hearing_grossly_intact",
+          "neuro.cranial_nerves.cn_xi": "shoulder_shrug_intact",
+          "neuro.cranial_nerves.cn_xii": "tongue_midline",
+          "neuro.mental_status": [
+            "alert"
+          ],
+          "neuro_motor.coordination": [
+            "finger_to_nose_normal"
+          ],
+          "neuro_motor.gait": [
+            "normal"
+          ],
+          "neuro_motor.reflexes.achilles.left": "zero",
+          "neuro_motor.reflexes.achilles.right": "zero",
+          "neuro_motor.reflexes.biceps.left": "zero",
+          "neuro_motor.reflexes.biceps.right": "zero",
+          "neuro_motor.reflexes.patellar.left": "zero",
+          "neuro_motor.reflexes.patellar.right": "zero",
+          "neuro_motor.reflexes.triceps.left": "zero",
+          "neuro_motor.reflexes.triceps.right": "zero",
+          "neuro_motor.sensory": [
+            "intact"
+          ],
+          "neuro_motor.sensory_location.region": "head",
+          "neuro_motor.sensory_location.side": "right",
+          "nose.findings": [
+            "normal"
+          ],
+          "nose.sinuses": [
+            "no_tenderness"
+          ],
+          "peripheral_vascular.extremity": [
+            "warm"
+          ],
+          "peripheral_vascular.more_pulses.femoral.left": "zero",
+          "peripheral_vascular.more_pulses.femoral.right": "zero",
+          "peripheral_vascular.more_pulses.popliteal.left": "zero",
+          "peripheral_vascular.more_pulses.popliteal.right": "zero",
+          "peripheral_vascular.more_pulses.ulnar.left": "zero",
+          "peripheral_vascular.more_pulses.ulnar.right": "zero",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.left": "zero",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.right": "zero",
+          "peripheral_vascular.pulses.posterior_tibial_pt.left": "zero",
+          "peripheral_vascular.pulses.posterior_tibial_pt.right": "zero",
+          "peripheral_vascular.pulses.radial.left": "zero",
+          "peripheral_vascular.pulses.radial.right": "zero",
+          "peripheral_vascular.refill": "less_than_2_seconds",
+          "peripheral_vascular.symptoms": [
+            "claudication"
+          ],
+          "peripheral_vascular.temperature_change": "warm",
+          "preventive.screening": [
+            "hiv"
+          ],
+          "preventive.screening_action.bp": [
+            "performed"
+          ],
+          "preventive.screening_action.cancer": [
+            "performed"
+          ],
+          "preventive.screening_action.diabetes": [
+            "performed"
+          ],
+          "preventive.screening_action.hep_c": [
+            "performed"
+          ],
+          "preventive.screening_action.hiv": [
+            "performed"
+          ],
+          "preventive.screening_action.pregnancy": [
+            "performed"
+          ],
+          "preventive.screening_action.sti": [
+            "performed"
+          ],
+          "preventive.screening_action.tb": [
+            "performed"
+          ],
+          "preventive.vaccine_status.covid": "up_to_date",
+          "preventive.vaccine_status.flu": "up_to_date",
+          "preventive.vaccine_status.hep_a": "up_to_date",
+          "preventive.vaccine_status.hep_b": "up_to_date",
+          "preventive.vaccine_status.hpv": "up_to_date",
+          "preventive.vaccine_status.pneumococcal": "up_to_date",
+          "preventive.vaccine_status.shingles": "up_to_date",
+          "preventive.vaccine_status.tdap": "up_to_date",
+          "preventive.vaccines": [
+            "flu"
+          ],
+          "problems.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "problems.e0000001.interventions": [
+            "education"
+          ],
+          "problems.e0000001.status": "new",
+          "psych_observation.affect": [
+            "appropriate"
+          ],
+          "psych_observation.appearance": [
+            "calm"
+          ],
+          "psych_observation.orientation": [
+            "person"
+          ],
+          "psych_observation.speech": [
+            "normal"
+          ],
+          "psych_observation.thought": [
+            "linear"
+          ],
+          "pulmonary.auscultation.left": [
+            "clear"
+          ],
+          "pulmonary.auscultation.right": [
+            "clear"
+          ],
+          "pulmonary.location_left": [
+            "upper"
+          ],
+          "pulmonary.location_right": [
+            "upper"
+          ],
+          "pulmonary.other_findings": [
+            "pleural_rub"
+          ],
+          "pulmonary.symptoms": [
+            "cough"
+          ],
+          "pulmonary.work": [
+            "normal"
+          ],
+          "reason.reasons": [
+            "new_concern"
+          ],
+          "rectal.chaperone": "yes",
+          "rectal.dre.result": "normal",
+          "rectal.exam_type": "external_inspection_only",
+          "rectal.findings": [
+            "hemorrhoids"
+          ],
+          "skin.overall": [
+            "warm"
+          ],
+          "skin_findings.e0000001.characteristics": [
+            "erythematous"
+          ],
+          "skin_findings.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "skin_findings.e0000001.location.region": "head",
+          "skin_findings.e0000001.location.side": "right",
+          "skin_findings.e0000001.location.surface": "anterior",
+          "skin_findings.e0000001.same_lesion": "yes",
+          "skin_findings.e0000001.type": [
+            "rash"
+          ],
+          "vitals.e0000001.entryAt": "2000-01-01T00:00:00Z"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "reason",
+            "text": "Reason for encounter: New concern"
+          },
+          {
+            "section": "preventive",
+            "text": "Vaccines: Flu; Status for each vaccine, Flu: Up-to-date; Screening: HIV; Action for each screening, HIV: Performed"
+          },
+          {
+            "section": "exam",
+            "text": "What did you examine?: General"
+          },
+          {
+            "section": "general_appearance",
+            "text": "Quick status: Well appearing; Mental / behavioral appearance: Alert"
+          },
+          {
+            "section": "problems",
+            "text": "Problem 1: Status: New; Intervention: Education"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "reason",
+            "label": "Reason for encounter",
+            "value": "Reason for encounter: New concern"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "preventive",
+            "label": "Preventative care",
+            "value": "Vaccines: Flu; Status for each vaccine, Flu: Up-to-date; Screening: HIV; Action for each screening, HIV: Performed"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "exam",
+            "label": "Focused exam",
+            "value": "What did you examine?: General"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "general_appearance",
+            "label": "General appearance",
+            "value": "Quick status: Well appearing; Mental / behavioral appearance: Alert"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "problems",
+            "label": "Assessment",
+            "value": "Problem 1: Status: New; Intervention: Education"
+          }
+        ],
+        "effectiveKeys": [
+          "exam.systems",
+          "general_appearance.behavior",
+          "general_appearance.status",
+          "preventive.screening",
+          "preventive.screening_action.hiv",
+          "preventive.vaccine_status.flu",
+          "preventive.vaccines",
+          "problems.e0000001.entryAt",
+          "problems.e0000001.interventions",
+          "problems.e0000001.status",
+          "reason.reasons",
+          "vitals.e0000001.entryAt"
+        ],
+        "readModelHash": "b4a1c71cd3c4f5374300a376f575ab6ce2f52fc7c8ae8b23687e31b8532d1ebe",
+        "visibleHashes": {
+          "full": "e81e7e3b742dbb0823963df08f671577a784a6f3d9ccbd166d09fee0985db136",
+          "noExams": "e81e7e3b742dbb0823963df08f671577a784a6f3d9ccbd166d09fee0985db136",
+          "noSensitive": "e81e7e3b742dbb0823963df08f671577a784a6f3d9ccbd166d09fee0985db136"
+        },
+        "contentHash": "7291e678ae56c4aba1404a2a3e2f51fbc24013381aa0a86424a806a783ba6600",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "abdominal.bowel_sounds": "normal",
+          "abdominal.inspection": [
+            "flat"
+          ],
+          "abdominal.mass": "none",
+          "abdominal.organomegaly": [
+            "none"
+          ],
+          "abdominal.peritoneal": [
+            "none"
+          ],
+          "abdominal.tenderness": [
+            "right_upper_quadrant_ruq",
+            "right_lower_quadrant_rlq",
+            "left_upper_quadrant_luq",
+            "left_lower_quadrant_llq",
+            "epigastric",
+            "suprapubic",
+            "periumbilical",
+            "diffuse"
+          ],
+          "breast.finding": [
+            "no_mass",
+            "tenderness",
+            "other"
+          ],
+          "breast.inspection": [
+            "symmetric",
+            "skin_changes",
+            "retraction",
+            "dimpling",
+            "erythema",
+            "discharge"
+          ],
+          "breast.performed": true,
+          "cv_perfusion.edema": "none",
+          "cv_perfusion.jvd": "none",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.left": "two_plus",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.right": "two_plus",
+          "cv_perfusion.pulses.posterior_tibial_pt.left": "two_plus",
+          "cv_perfusion.pulses.posterior_tibial_pt.right": "two_plus",
+          "cv_perfusion.pulses.radial.left": "two_plus",
+          "cv_perfusion.pulses.radial.right": "two_plus",
+          "diabetic_foot.inspection": [
+            "intact_skin",
+            "callus",
+            "corn",
+            "deformity",
+            "nail_abnormality",
+            "erythema",
+            "swelling"
+          ],
+          "diabetic_foot.monofilament.left": "normal",
+          "diabetic_foot.monofilament.right": "normal",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.left": "two_plus",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.right": "two_plus",
+          "diabetic_foot.pulses.posterior_tibial_pt.left": "two_plus",
+          "diabetic_foot.pulses.posterior_tibial_pt.right": "two_plus",
+          "diabetic_foot.sensation": "intact",
+          "diabetic_foot.temperature": [
+            "warm"
+          ],
+          "diabetic_foot.wound": "yes",
+          "ears.canal.left": [
+            "clear"
+          ],
+          "ears.canal.right": [
+            "clear"
+          ],
+          "ears.external.left": [
+            "normal"
+          ],
+          "ears.external.right": [
+            "normal"
+          ],
+          "ears.hearing": "grossly_intact",
+          "ears.tympanic.left": [
+            "normal"
+          ],
+          "ears.tympanic.right": [
+            "normal"
+          ],
+          "exam.systems": [
+            "general_appearance",
+            "heent",
+            "cardiovascular",
+            "pulmonary",
+            "abdominal",
+            "msk",
+            "neurologic",
+            "skin",
+            "peripheral_vascular",
+            "diabetic_foot",
+            "gu",
+            "psych_observation",
+            "lymphatic",
+            "neck_thyroid",
+            "breast",
+            "rectal",
+            "other"
+          ],
+          "eyes.conjunctiva": [
+            "normal"
+          ],
+          "eyes.movements": [
+            "intact"
+          ],
+          "eyes.pupils": [
+            "unequal_pupils",
+            "sluggish_reaction",
+            "nonreactive",
+            "other"
+          ],
+          "eyes.sclera": "anicteric",
+          "eyes.visual": [
+            "vision_normal"
+          ],
+          "general_appearance.behavior": [
+            "alert",
+            "calm",
+            "cooperative"
+          ],
+          "general_appearance.status": [
+            "well_appearing",
+            "no_acute_distress"
+          ],
+          "gu.cva": "no_tenderness",
+          "gu.external": [
+            "normal"
+          ],
+          "gu.general": [
+            "no_acute_findings"
+          ],
+          "gu.performed": true,
+          "heart.rate": "normal",
+          "heart.rhythm": "regular",
+          "heart.sounds": [
+            "normal_s1_s2",
+            "murmur",
+            "rub",
+            "gallop",
+            "other"
+          ],
+          "lymphatic.node_findings.axillary.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.cervical.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.inguinal.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.other.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.node_findings.supraclavicular.findings": [
+            "not_enlarged"
+          ],
+          "lymphatic.nodes": [
+            "cervical",
+            "supraclavicular",
+            "axillary",
+            "inguinal",
+            "other"
+          ],
+          "mouth.airway": [
+            "patent"
+          ],
+          "mouth.dentition": [
+            "normal"
+          ],
+          "mouth.mucosa": [
+            "moist"
+          ],
+          "mouth.pharynx": [
+            "clear"
+          ],
+          "msk.e0000001.capillary_refill": "less_than_2_seconds",
+          "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "msk.e0000001.inspection": [
+            "normal"
+          ],
+          "msk.e0000001.palpation": [
+            "tenderness",
+            "warmth",
+            "crepitus",
+            "mass",
+            "effusion"
+          ],
+          "msk.e0000001.pulses": "intact",
+          "msk.e0000001.region": "head_neck",
+          "msk.e0000001.rom_active": [
+            "full"
+          ],
+          "msk.e0000001.rom_passive": [
+            "full"
+          ],
+          "msk.e0000001.sensation": [
+            "intact"
+          ],
+          "msk.e0000001.side": "right",
+          "msk.e0000001.strength_left": 5,
+          "msk.e0000001.strength_right": 5,
+          "msk_gait.gait": [
+            "normal"
+          ],
+          "neck_thyroid.carotids.left": [
+            "normal"
+          ],
+          "neck_thyroid.carotids.right": [
+            "normal"
+          ],
+          "neck_thyroid.neck": [
+            "supple"
+          ],
+          "neck_thyroid.thyroid": [
+            "normal"
+          ],
+          "neuro.cn_screen": "grossly_intact",
+          "neuro.mental_status": [
+            "alert",
+            "oriented_4"
+          ],
+          "neuro_motor.coordination": [
+            "finger_to_nose_normal",
+            "heel_to_shin_normal"
+          ],
+          "neuro_motor.gait": [
+            "normal"
+          ],
+          "neuro_motor.sensory": [
+            "decreased",
+            "numbness",
+            "tingling",
+            "asymmetric"
+          ],
+          "neuro_motor.strength.lower_extremity.left": 5,
+          "neuro_motor.strength.lower_extremity.right": 5,
+          "neuro_motor.strength.upper_extremity.left": 5,
+          "neuro_motor.strength.upper_extremity.right": 5,
+          "nose.findings": [
+            "normal"
+          ],
+          "nose.sinuses": [
+            "no_tenderness"
+          ],
+          "peripheral_vascular.extremity": [
+            "warm"
+          ],
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.left": "two_plus",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.right": "two_plus",
+          "peripheral_vascular.pulses.posterior_tibial_pt.left": "two_plus",
+          "peripheral_vascular.pulses.posterior_tibial_pt.right": "two_plus",
+          "peripheral_vascular.pulses.radial.left": "two_plus",
+          "peripheral_vascular.pulses.radial.right": "two_plus",
+          "peripheral_vascular.refill": "less_than_2_seconds",
+          "peripheral_vascular.symptoms": [
+            "claudication",
+            "rest_pain",
+            "leg_swelling",
+            "unilateral_swelling",
+            "color_change",
+            "temperature_change"
+          ],
+          "preventive.screening": [
+            "hiv",
+            "hep_c",
+            "sti",
+            "tb",
+            "diabetes",
+            "bp",
+            "cancer",
+            "pregnancy"
+          ],
+          "preventive.vaccines": [
+            "flu",
+            "covid",
+            "tdap",
+            "hep_a",
+            "hep_b",
+            "pneumococcal",
+            "hpv",
+            "shingles"
+          ],
+          "problems.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "psych_observation.affect": [
+            "appropriate"
+          ],
+          "psych_observation.appearance": [
+            "calm",
+            "cooperative"
+          ],
+          "psych_observation.orientation": [
+            "person",
+            "place",
+            "time",
+            "situation"
+          ],
+          "psych_observation.speech": [
+            "normal"
+          ],
+          "psych_observation.thought": [
+            "linear"
+          ],
+          "pulmonary.auscultation.left": [
+            "diminished",
+            "crackles",
+            "wheezes",
+            "rhonchi",
+            "stridor",
+            "bronchial"
+          ],
+          "pulmonary.auscultation.right": [
+            "diminished",
+            "crackles",
+            "wheezes",
+            "rhonchi",
+            "stridor",
+            "bronchial"
+          ],
+          "pulmonary.symptoms": [
+            "cough",
+            "sputum",
+            "hemoptysis",
+            "dyspnea",
+            "orthopnea",
+            "pleuritic_pain"
+          ],
+          "pulmonary.work": [
+            "normal"
+          ],
+          "rectal.exam_type": "external_inspection_only",
+          "rectal.performed": true,
+          "skin.overall": [
+            "warm",
+            "dry"
+          ],
+          "skin_findings.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "skin_findings.e0000001.type": [
+            "rash",
+            "macule",
+            "papule",
+            "plaque",
+            "vesicle",
+            "pustule",
+            "nodule",
+            "ulcer",
+            "blister",
+            "ecchymosis",
+            "petechiae",
+            "purpura",
+            "abscess",
+            "other"
+          ],
+          "vitals.e0000001.entryAt": "2000-01-01T00:00:00Z"
+        },
+        "finishCheck": [
+          {
+            "section": "gu",
+            "path": "gu.consented",
+            "problem": "required"
+          },
+          {
+            "section": "breast",
+            "path": "breast.consented",
+            "problem": "required"
+          },
+          {
+            "section": "rectal",
+            "path": "rectal.consented",
+            "problem": "required"
+          }
+        ],
+        "recapLines": [
+          {
+            "section": "preventive",
+            "text": "Vaccines: Flu, COVID, Tdap, Hep A, Hep B, Pneumococcal, HPV, Shingles; Screening: HIV, Hep C, STI, TB, Diabetes, BP, Cancer, Pregnancy"
+          },
+          {
+            "section": "exam",
+            "text": "What did you examine?: General, HEENT, Cardiac, Pulmonary, Abdomen, MSK, Neuro, Skin, Peripheral Vascular, Foot, Psych, Lymph, Neck / Thyroid, Other"
+          },
+          {
+            "section": "general_appearance",
+            "text": "Quick status: Well appearing, No acute distress; Mental / behavioral appearance: Alert, Calm, Cooperative"
+          },
+          {
+            "section": "eyes",
+            "text": "Pupils: Unequal pupils, Sluggish reaction, Nonreactive, Other; Extraocular movements: Intact; Conjunctiva: Normal; Sclera: Anicteric; Visual symptoms: Vision normal"
+          },
+          {
+            "section": "ears",
+            "text": "External ear, Right: Normal; External ear, Left: Normal; Ear canal, Right: Clear; Ear canal, Left: Clear; Tympanic membrane, Right: Normal; Tympanic membrane, Left: Normal; Hearing: Grossly intact"
+          },
+          {
+            "section": "nose",
+            "text": "Nose: Normal; Sinuses: No tenderness"
+          },
+          {
+            "section": "mouth",
+            "text": "Oral mucosa: Moist; Dentition: Normal; Pharynx: Clear; Airway: Patent"
+          },
+          {
+            "section": "heart",
+            "text": "Rate: Normal; Rhythm: Regular; Heart sounds: Normal S1/S2, Murmur, Rub, Gallop, Other"
+          },
+          {
+            "section": "cv_perfusion",
+            "text": "Pulses, Radial, Right: 2+; Pulses, Radial, Left: 2+; Pulses, Dorsalis pedis (DP), Right: 2+; Pulses, Dorsalis pedis (DP), Left: 2+; Pulses, Posterior tibial (PT), Right: 2+; Pulses, Posterior tibial (PT), Left: 2+; Edema: None; Jugular venous distention (JVD): None"
+          },
+          {
+            "section": "pulmonary",
+            "text": "Work of breathing: Normal; Auscultation, Right: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Auscultation, Left: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Respiratory symptoms: Cough, Sputum, Hemoptysis, Dyspnea, Orthopnea, Pleuritic pain"
+          },
+          {
+            "section": "abdominal",
+            "text": "Inspection: Flat; Bowel sounds: Normal; Tenderness: Right upper quadrant (RUQ), Right lower quadrant (RLQ), Left upper quadrant (LUQ), Left lower quadrant (LLQ), Epigastric, Suprapubic, Periumbilical, Diffuse; Peritoneal signs: None; Mass: None; Organomegaly: None"
+          },
+          {
+            "section": "msk",
+            "text": "Region 1: Where are you examining?: Head / Neck; Inspection: Normal; Palpation: Tenderness, Warmth, Crepitus, Mass, Effusion; Active range of motion: Full; Passive range of motion: Full; Strength, right: 5 of 5; Strength, left: 5 of 5; Sensation: Intact; Pulses: Intact; Capillary refill: Less than 2 seconds"
+          },
+          {
+            "section": "msk_gait",
+            "text": "Gait: Normal"
+          },
+          {
+            "section": "neuro",
+            "text": "Mental status: Alert, Oriented ×4; Cranial nerve screen: Grossly intact"
+          },
+          {
+            "section": "neuro_motor",
+            "text": "Motor strength, Upper extremity, Right: 5 of 5; Motor strength, Upper extremity, Left: 5 of 5; Motor strength, Lower extremity, Right: 5 of 5; Motor strength, Lower extremity, Left: 5 of 5; Sensory: Decreased, Numbness, Tingling, Asymmetric; Coordination: Finger-to-nose normal, Heel-to-shin normal; Gait: Normal"
+          },
+          {
+            "section": "skin",
+            "text": "Overall skin: Warm, Dry"
+          },
+          {
+            "section": "skin_findings",
+            "text": "Finding 1: Type: Rash, Macule, Papule, Plaque, Vesicle, Pustule, Nodule, Ulcer, Blister, Ecchymosis, Petechiae, Purpura, Abscess, Other"
+          },
+          {
+            "section": "lymphatic",
+            "text": "Nodes examined: Cervical, Supraclavicular, Axillary, Inguinal, Other; Findings for each node group, Cervical, Findings: Not enlarged; Findings for each node group, Supraclavicular, Findings: Not enlarged; Findings for each node group, Axillary, Findings: Not enlarged; Findings for each node group, Inguinal, Findings: Not enlarged; Findings for each node group, Other, Findings: Not enlarged"
+          },
+          {
+            "section": "peripheral_vascular",
+            "text": "Pulses, Radial, Right: 2+; Pulses, Radial, Left: 2+; Pulses, Dorsalis pedis (DP), Right: 2+; Pulses, Dorsalis pedis (DP), Left: 2+; Pulses, Posterior tibial (PT), Right: 2+; Pulses, Posterior tibial (PT), Left: 2+; Extremity findings: Warm; Capillary refill: Less than 2 seconds; Vascular symptoms: Claudication, Rest pain, Leg swelling, Unilateral swelling, Color change, Temperature change"
+          },
+          {
+            "section": "psych_observation",
+            "text": "Appearance / behavior: Calm, Cooperative; Speech: Normal; Affect: Appropriate; Thought process: Linear; Oriented to: Person, Place, Time, Situation"
+          },
+          {
+            "section": "diabetic_foot",
+            "text": "Inspection: Intact skin, Callus, Corn, Deformity, Nail abnormality, Erythema, Swelling; Pulses, Dorsalis pedis (DP), Right: 2+; Pulses, Dorsalis pedis (DP), Left: 2+; Pulses, Posterior tibial (PT), Right: 2+; Pulses, Posterior tibial (PT), Left: 2+; Sensation: Intact; Monofilament, Right: Normal; Monofilament, Left: Normal; Temperature: Warm"
+          },
+          {
+            "section": "neck_thyroid",
+            "text": "Neck: Supple; Thyroid: Normal; Carotids, Right: Normal; Carotids, Left: Normal"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "preventive",
+            "label": "Preventative care",
+            "value": "Vaccines: Flu, COVID, Tdap, Hep A, Hep B, Pneumococcal, HPV, Shingles; Screening: HIV, Hep C, STI, TB, Diabetes, BP, Cancer, Pregnancy"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "exam",
+            "label": "Focused exam",
+            "value": "What did you examine?: General, HEENT, Cardiac, Pulmonary, Abdomen, MSK, Neuro, Skin, Peripheral Vascular, Foot, Psych, Lymph, Neck / Thyroid, Other"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "general_appearance",
+            "label": "General appearance",
+            "value": "Quick status: Well appearing, No acute distress; Mental / behavioral appearance: Alert, Calm, Cooperative"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "eyes",
+            "label": "Eyes",
+            "value": "Pupils: Unequal pupils, Sluggish reaction, Nonreactive, Other; Extraocular movements: Intact; Conjunctiva: Normal; Sclera: Anicteric; Visual symptoms: Vision normal"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "ears",
+            "label": "Ears",
+            "value": "External ear, Right: Normal; External ear, Left: Normal; Ear canal, Right: Clear; Ear canal, Left: Clear; Tympanic membrane, Right: Normal; Tympanic membrane, Left: Normal; Hearing: Grossly intact"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "nose",
+            "label": "Nose",
+            "value": "Nose: Normal; Sinuses: No tenderness"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "mouth",
+            "label": "Mouth / throat",
+            "value": "Oral mucosa: Moist; Dentition: Normal; Pharynx: Clear; Airway: Patent"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "heart",
+            "label": "Heart rate, rhythm and sounds",
+            "value": "Rate: Normal; Rhythm: Regular; Heart sounds: Normal S1/S2, Murmur, Rub, Gallop, Other"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "cv_perfusion",
+            "label": "Perfusion, edema and JVD",
+            "value": "Pulses, Radial, Right: 2+; Pulses, Radial, Left: 2+; Pulses, Dorsalis pedis (DP), Right: 2+; Pulses, Dorsalis pedis (DP), Left: 2+; Pulses, Posterior tibial (PT), Right: 2+; Pulses, Posterior tibial (PT), Left: 2+; Edema: None; Jugular venous distention (JVD): None"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "pulmonary",
+            "label": "Pulmonary / respiratory",
+            "value": "Work of breathing: Normal; Auscultation, Right: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Auscultation, Left: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Respiratory symptoms: Cough, Sputum, Hemoptysis, Dyspnea, Orthopnea, Pleuritic pain"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "abdominal",
+            "label": "Abdominal / GI",
+            "value": "Inspection: Flat; Bowel sounds: Normal; Tenderness: Right upper quadrant (RUQ), Right lower quadrant (RLQ), Left upper quadrant (LUQ), Left lower quadrant (LLQ), Epigastric, Suprapubic, Periumbilical, Diffuse; Peritoneal signs: None; Mass: None; Organomegaly: None"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "msk",
+            "label": "Musculoskeletal",
+            "value": "Region 1: Where are you examining?: Head / Neck; Inspection: Normal; Palpation: Tenderness, Warmth, Crepitus, Mass, Effusion; Active range of motion: Full; Passive range of motion: Full; Strength, right: 5 of 5; Strength, left: 5 of 5; Sensation: Intact; Pulses: Intact; Capillary refill: Less than 2 seconds"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "msk_gait",
+            "label": "Gait",
+            "value": "Gait: Normal"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "neuro",
+            "label": "Neurologic: mental status and cranial nerves",
+            "value": "Mental status: Alert, Oriented ×4; Cranial nerve screen: Grossly intact"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "neuro_motor",
+            "label": "Neurologic: strength, sensation, coordination, reflexes and gait",
+            "value": "Motor strength, Upper extremity, Right: 5 of 5; Motor strength, Upper extremity, Left: 5 of 5; Motor strength, Lower extremity, Right: 5 of 5; Motor strength, Lower extremity, Left: 5 of 5; Sensory: Decreased, Numbness, Tingling, Asymmetric; Coordination: Finger-to-nose normal, Heel-to-shin normal; Gait: Normal"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "skin",
+            "label": "Skin",
+            "value": "Overall skin: Warm, Dry"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "skin_findings",
+            "label": "Skin finding",
+            "value": "Finding 1: Type: Rash, Macule, Papule, Plaque, Vesicle, Pustule, Nodule, Ulcer, Blister, Ecchymosis, Petechiae, Purpura, Abscess, Other"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "lymphatic",
+            "label": "Lymphatic",
+            "value": "Nodes examined: Cervical, Supraclavicular, Axillary, Inguinal, Other; Findings for each node group, Cervical, Findings: Not enlarged; Findings for each node group, Supraclavicular, Findings: Not enlarged; Findings for each node group, Axillary, Findings: Not enlarged; Findings for each node group, Inguinal, Findings: Not enlarged; Findings for each node group, Other, Findings: Not enlarged"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "peripheral_vascular",
+            "label": "Peripheral vascular",
+            "value": "Pulses, Radial, Right: 2+; Pulses, Radial, Left: 2+; Pulses, Dorsalis pedis (DP), Right: 2+; Pulses, Dorsalis pedis (DP), Left: 2+; Pulses, Posterior tibial (PT), Right: 2+; Pulses, Posterior tibial (PT), Left: 2+; Extremity findings: Warm; Capillary refill: Less than 2 seconds; Vascular symptoms: Claudication, Rest pain, Leg swelling, Unilateral swelling, Color change, Temperature change"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "psych_observation",
+            "label": "Psychiatric / behavioral observation",
+            "value": "Appearance / behavior: Calm, Cooperative; Speech: Normal; Affect: Appropriate; Thought process: Linear; Oriented to: Person, Place, Time, Situation"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "diabetic_foot",
+            "label": "Foot / diabetic foot exam",
+            "value": "Inspection: Intact skin, Callus, Corn, Deformity, Nail abnormality, Erythema, Swelling; Pulses, Dorsalis pedis (DP), Right: 2+; Pulses, Dorsalis pedis (DP), Left: 2+; Pulses, Posterior tibial (PT), Right: 2+; Pulses, Posterior tibial (PT), Left: 2+; Sensation: Intact; Monofilament, Right: Normal; Monofilament, Left: Normal; Temperature: Warm"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "neck_thyroid",
+            "label": "Neck / thyroid",
+            "value": "Neck: Supple; Thyroid: Normal; Carotids, Right: Normal; Carotids, Left: Normal"
+          }
+        ],
+        "effectiveKeys": [
+          "abdominal.bowel_sounds",
+          "abdominal.inspection",
+          "abdominal.mass",
+          "abdominal.organomegaly",
+          "abdominal.peritoneal",
+          "abdominal.tenderness",
+          "breast.finding",
+          "breast.inspection",
+          "breast.performed",
+          "cv_perfusion.edema",
+          "cv_perfusion.jvd",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.left",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.right",
+          "cv_perfusion.pulses.posterior_tibial_pt.left",
+          "cv_perfusion.pulses.posterior_tibial_pt.right",
+          "cv_perfusion.pulses.radial.left",
+          "cv_perfusion.pulses.radial.right",
+          "diabetic_foot.inspection",
+          "diabetic_foot.monofilament.left",
+          "diabetic_foot.monofilament.right",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.left",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.right",
+          "diabetic_foot.pulses.posterior_tibial_pt.left",
+          "diabetic_foot.pulses.posterior_tibial_pt.right",
+          "diabetic_foot.sensation",
+          "diabetic_foot.temperature",
+          "ears.canal.left",
+          "ears.canal.right",
+          "ears.external.left",
+          "ears.external.right",
+          "ears.hearing",
+          "ears.tympanic.left",
+          "ears.tympanic.right",
+          "exam.systems",
+          "eyes.conjunctiva",
+          "eyes.movements",
+          "eyes.pupils",
+          "eyes.sclera",
+          "eyes.visual",
+          "general_appearance.behavior",
+          "general_appearance.status",
+          "gu.cva",
+          "gu.external",
+          "gu.general",
+          "gu.performed",
+          "heart.rate",
+          "heart.rhythm",
+          "heart.sounds",
+          "lymphatic.node_findings.axillary.findings",
+          "lymphatic.node_findings.cervical.findings",
+          "lymphatic.node_findings.inguinal.findings",
+          "lymphatic.node_findings.other.findings",
+          "lymphatic.node_findings.supraclavicular.findings",
+          "lymphatic.nodes",
+          "mouth.airway",
+          "mouth.dentition",
+          "mouth.mucosa",
+          "mouth.pharynx",
+          "msk.e0000001.capillary_refill",
+          "msk.e0000001.entryAt",
+          "msk.e0000001.inspection",
+          "msk.e0000001.palpation",
+          "msk.e0000001.pulses",
+          "msk.e0000001.region",
+          "msk.e0000001.rom_active",
+          "msk.e0000001.rom_passive",
+          "msk.e0000001.sensation",
+          "msk.e0000001.strength_left",
+          "msk.e0000001.strength_right",
+          "msk_gait.gait",
+          "neck_thyroid.carotids.left",
+          "neck_thyroid.carotids.right",
+          "neck_thyroid.neck",
+          "neck_thyroid.thyroid",
+          "neuro.cn_screen",
+          "neuro.mental_status",
+          "neuro_motor.coordination",
+          "neuro_motor.gait",
+          "neuro_motor.sensory",
+          "neuro_motor.strength.lower_extremity.left",
+          "neuro_motor.strength.lower_extremity.right",
+          "neuro_motor.strength.upper_extremity.left",
+          "neuro_motor.strength.upper_extremity.right",
+          "nose.findings",
+          "nose.sinuses",
+          "peripheral_vascular.extremity",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.left",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.right",
+          "peripheral_vascular.pulses.posterior_tibial_pt.left",
+          "peripheral_vascular.pulses.posterior_tibial_pt.right",
+          "peripheral_vascular.pulses.radial.left",
+          "peripheral_vascular.pulses.radial.right",
+          "peripheral_vascular.refill",
+          "peripheral_vascular.symptoms",
+          "preventive.screening",
+          "preventive.vaccines",
+          "problems.e0000001.entryAt",
+          "psych_observation.affect",
+          "psych_observation.appearance",
+          "psych_observation.orientation",
+          "psych_observation.speech",
+          "psych_observation.thought",
+          "pulmonary.auscultation.left",
+          "pulmonary.auscultation.right",
+          "pulmonary.symptoms",
+          "pulmonary.work",
+          "rectal.exam_type",
+          "rectal.performed",
+          "skin.overall",
+          "skin_findings.e0000001.entryAt",
+          "skin_findings.e0000001.type",
+          "vitals.e0000001.entryAt"
+        ],
+        "readModelHash": "20b6a1cd99fc163a81ffe5cdb3c80d29feef257508ed9785e70944818803182f",
+        "visibleHashes": {
+          "full": "c9c75fe9b93a1c13d2eaabc3ffa997ac546f71a4ee2618e3bf2a2ce0acdf29c4",
+          "noExams": "59831390e272a995908175311bb15c407afb023e65492d0c6ee9e137553d5598",
+          "noSensitive": "59831390e272a995908175311bb15c407afb023e65492d0c6ee9e137553d5598"
+        },
+        "contentHash": "2269e010183e85ea1b6f61747d0b43f1af7b140c081ecc0ec1957293af703204",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "abdominal.bowel_sounds": "unable_to_assess",
+          "abdominal.inspection": [
+            "flat",
+            "scars",
+            "bruising",
+            "visible_masses",
+            "hernia"
+          ],
+          "abdominal.mass": "present",
+          "abdominal.mass_location": "Demo",
+          "abdominal.organomegaly": [
+            "hepatomegaly",
+            "splenomegaly"
+          ],
+          "abdominal.other_findings": [
+            "cva_tenderness",
+            "murphy_sign",
+            "mcburney_tenderness",
+            "other"
+          ],
+          "abdominal.other_findings_other": "Demo",
+          "abdominal.pain": 0,
+          "abdominal.peritoneal": [
+            "guarding",
+            "rebound",
+            "rigidity"
+          ],
+          "abdominal.tenderness": [
+            "right_upper_quadrant_ruq",
+            "right_lower_quadrant_rlq",
+            "left_upper_quadrant_luq",
+            "left_lower_quadrant_llq",
+            "epigastric",
+            "suprapubic",
+            "periumbilical",
+            "diffuse"
+          ],
+          "breast.chaperone": "no",
+          "breast.consented": true,
+          "breast.finding": [
+            "no_mass",
+            "tenderness",
+            "other"
+          ],
+          "breast.finding_other": "Demo",
+          "breast.inspection": [
+            "symmetric",
+            "skin_changes",
+            "retraction",
+            "dimpling",
+            "erythema",
+            "discharge"
+          ],
+          "breast.inspection_side": "bilateral",
+          "breast.mass.characteristics": [
+            "mobile",
+            "tender"
+          ],
+          "breast.mass.location": "central",
+          "breast.mass.side": "left",
+          "breast.mass.size": 0.1,
+          "breast.performed": true,
+          "cv_perfusion.edema": "four_plus",
+          "cv_perfusion.edema_location": [
+            "bilateral_lower_extremities",
+            "right",
+            "left",
+            "upper_extremity",
+            "generalized"
+          ],
+          "cv_perfusion.jvd": "unable_to_assess",
+          "cv_perfusion.more_pulses.brachial.left": "unable_to_assess",
+          "cv_perfusion.more_pulses.brachial.right": "unable_to_assess",
+          "cv_perfusion.more_pulses.femoral.left": "unable_to_assess",
+          "cv_perfusion.more_pulses.femoral.right": "unable_to_assess",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.left": "unable_to_assess",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.right": "unable_to_assess",
+          "cv_perfusion.pulses.posterior_tibial_pt.left": "unable_to_assess",
+          "cv_perfusion.pulses.posterior_tibial_pt.right": "unable_to_assess",
+          "cv_perfusion.pulses.radial.left": "unable_to_assess",
+          "cv_perfusion.pulses.radial.right": "unable_to_assess",
+          "diabetic_foot.inspection": [
+            "intact_skin",
+            "callus",
+            "corn",
+            "deformity",
+            "nail_abnormality",
+            "erythema",
+            "swelling"
+          ],
+          "diabetic_foot.monofilament.left": "abnormal",
+          "diabetic_foot.monofilament.right": "abnormal",
+          "diabetic_foot.notes": "Demo",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.left": "unable_to_assess",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.right": "unable_to_assess",
+          "diabetic_foot.pulses.posterior_tibial_pt.left": "unable_to_assess",
+          "diabetic_foot.pulses.posterior_tibial_pt.right": "unable_to_assess",
+          "diabetic_foot.sensation": "absent",
+          "diabetic_foot.temperature": [
+            "warm",
+            "asymmetric"
+          ],
+          "diabetic_foot.wound": "no",
+          "ears.canal.left": [
+            "cerumen",
+            "erythema",
+            "edema",
+            "discharge",
+            "foreign_body"
+          ],
+          "ears.canal.right": [
+            "cerumen",
+            "erythema",
+            "edema",
+            "discharge",
+            "foreign_body"
+          ],
+          "ears.external.left": [
+            "tender",
+            "swelling",
+            "erythema",
+            "lesion",
+            "drainage"
+          ],
+          "ears.external.right": [
+            "tender",
+            "swelling",
+            "erythema",
+            "lesion",
+            "drainage"
+          ],
+          "ears.hearing": "decreased",
+          "ears.hearing_side": "bilateral",
+          "ears.tympanic.left": [
+            "erythematous",
+            "bulging",
+            "retracted",
+            "perforated",
+            "effusion"
+          ],
+          "ears.tympanic.right": [
+            "erythematous",
+            "bulging",
+            "retracted",
+            "perforated",
+            "effusion"
+          ],
+          "exam.other_findings": "Demo",
+          "exam.systems": [
+            "general_appearance",
+            "heent",
+            "cardiovascular",
+            "pulmonary",
+            "abdominal",
+            "msk",
+            "neurologic",
+            "skin",
+            "peripheral_vascular",
+            "diabetic_foot",
+            "gu",
+            "psych_observation",
+            "lymphatic",
+            "neck_thyroid",
+            "breast",
+            "rectal",
+            "other"
+          ],
+          "exam.systems_other": "Demo",
+          "eyes.conjunctiva": [
+            "injected",
+            "pale",
+            "discharge"
+          ],
+          "eyes.movements": [
+            "limited",
+            "pain_with_movement",
+            "nystagmus",
+            "diplopia"
+          ],
+          "eyes.other": "Demo",
+          "eyes.pupil_reaction.left": "nonreactive",
+          "eyes.pupil_reaction.right": "nonreactive",
+          "eyes.pupil_size.left": 1,
+          "eyes.pupil_size.right": 1,
+          "eyes.pupils": [
+            "unequal_pupils",
+            "sluggish_reaction",
+            "nonreactive",
+            "other"
+          ],
+          "eyes.pupils_other": "Demo",
+          "eyes.sclera": "icteric",
+          "eyes.visual": [
+            "blurred_vision",
+            "vision_loss",
+            "photophobia",
+            "eye_pain",
+            "foreign_body_sensation"
+          ],
+          "general_appearance.additional": "Demo",
+          "general_appearance.behavior": [
+            "alert",
+            "agitated",
+            "cooperative"
+          ],
+          "general_appearance.status": [
+            "well_appearing",
+            "no_acute_distress",
+            "frail",
+            "cachectic",
+            "diaphoretic",
+            "pale",
+            "cyanotic",
+            "other"
+          ],
+          "general_appearance.status_other": "Demo",
+          "gu.chaperone": "no",
+          "gu.consented": true,
+          "gu.cva": "bilateral",
+          "gu.external": [
+            "lesion",
+            "ulcer",
+            "rash",
+            "discharge",
+            "swelling",
+            "tenderness"
+          ],
+          "gu.findings": "Demo",
+          "gu.general": [
+            "dysuria",
+            "frequency",
+            "urgency",
+            "hematuria",
+            "flank_pain",
+            "pelvic_pain",
+            "discharge",
+            "genital_lesion",
+            "testicular_pain_swelling"
+          ],
+          "gu.performed": true,
+          "heart.murmur.character": "continuous",
+          "heart.murmur.intensity": 1,
+          "heart.murmur.location": [
+            "aortic",
+            "pulmonic",
+            "tricuspid",
+            "mitral",
+            "other"
+          ],
+          "heart.murmur.location_other": "Demo",
+          "heart.murmur.radiation": [
+            "carotids",
+            "axilla",
+            "back",
+            "other"
+          ],
+          "heart.murmur.radiation_other": "Demo",
+          "heart.rate": "bradycardic",
+          "heart.rhythm": "irregular",
+          "heart.sounds": [
+            "normal_s1_s2",
+            "murmur",
+            "rub",
+            "gallop",
+            "other"
+          ],
+          "heart.sounds_other": "Demo",
+          "hpi.narrative": "Demo",
+          "lymphatic.node_findings.axillary.findings": [
+            "not_enlarged",
+            "tender",
+            "mobile"
+          ],
+          "lymphatic.node_findings.axillary.size": 0.1,
+          "lymphatic.node_findings.cervical.findings": [
+            "not_enlarged",
+            "tender",
+            "mobile"
+          ],
+          "lymphatic.node_findings.cervical.size": 0.1,
+          "lymphatic.node_findings.inguinal.findings": [
+            "not_enlarged",
+            "tender",
+            "mobile"
+          ],
+          "lymphatic.node_findings.inguinal.size": 0.1,
+          "lymphatic.node_findings.other.findings": [
+            "not_enlarged",
+            "tender",
+            "mobile"
+          ],
+          "lymphatic.node_findings.other.size": 0.1,
+          "lymphatic.node_findings.supraclavicular.findings": [
+            "not_enlarged",
+            "tender",
+            "mobile"
+          ],
+          "lymphatic.node_findings.supraclavicular.size": 0.1,
+          "lymphatic.nodes": [
+            "cervical",
+            "supraclavicular",
+            "axillary",
+            "inguinal",
+            "other"
+          ],
+          "lymphatic.nodes_other": "Demo",
+          "mouth.airway": [
+            "patent",
+            "swelling",
+            "difficulty_managing_secretions"
+          ],
+          "mouth.dentition": [
+            "poor_dentition",
+            "dental_caries",
+            "broken_teeth",
+            "dental_abscess",
+            "tooth_pain",
+            "missing_teeth"
+          ],
+          "mouth.mucosa": [
+            "moist",
+            "pale",
+            "lesions",
+            "ulcers",
+            "thrush",
+            "bleeding"
+          ],
+          "mouth.pharynx": [
+            "erythematous",
+            "exudate",
+            "tonsillar_enlargement",
+            "ulceration",
+            "postnasal_drainage"
+          ],
+          "msk.e0000001.capillary_refill": "greater_than_2_seconds",
+          "msk.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "msk.e0000001.inspection": [
+            "swelling",
+            "erythema",
+            "bruising",
+            "deformity",
+            "atrophy",
+            "wound",
+            "asymmetry"
+          ],
+          "msk.e0000001.pain": 0,
+          "msk.e0000001.palpation": [
+            "tenderness",
+            "warmth",
+            "crepitus",
+            "mass",
+            "effusion"
+          ],
+          "msk.e0000001.pulses": "absent",
+          "msk.e0000001.region": "other",
+          "msk.e0000001.region_other": "Demo",
+          "msk.e0000001.rom_active": [
+            "limited",
+            "painful"
+          ],
+          "msk.e0000001.rom_passive": [
+            "limited",
+            "painful"
+          ],
+          "msk.e0000001.sensation": [
+            "decreased",
+            "numbness",
+            "tingling"
+          ],
+          "msk.e0000001.shoulder_tests.cross_body_adduction": "unable",
+          "msk.e0000001.shoulder_tests.empty_can": "unable",
+          "msk.e0000001.shoulder_tests.external_rotation": "unable",
+          "msk.e0000001.shoulder_tests.hawkins": "unable",
+          "msk.e0000001.shoulder_tests.neer": "unable",
+          "msk.e0000001.side": "bilateral",
+          "msk.e0000001.strength_left": 0,
+          "msk.e0000001.strength_right": 0,
+          "msk.e0000001.tone": "isotonic",
+          "msk_gait.gait": [
+            "antalgic",
+            "unsteady",
+            "ataxic"
+          ],
+          "neck_thyroid.carotids.left": [
+            "bruit",
+            "decreased_pulse"
+          ],
+          "neck_thyroid.carotids.right": [
+            "bruit",
+            "decreased_pulse"
+          ],
+          "neck_thyroid.neck": [
+            "supple",
+            "tender",
+            "mass",
+            "lymphadenopathy",
+            "jvd"
+          ],
+          "neck_thyroid.thyroid": [
+            "enlarged",
+            "nodules",
+            "tender",
+            "asymmetric"
+          ],
+          "neuro.cn_screen": "abnormal",
+          "neuro.cranial_nerves.cn_ii": "visual_deficit",
+          "neuro.cranial_nerves.cn_iii_iv_vi": [
+            "diplopia",
+            "nystagmus",
+            "ptosis"
+          ],
+          "neuro.cranial_nerves.cn_ix_x": [
+            "dysarthria",
+            "dysphagia"
+          ],
+          "neuro.cranial_nerves.cn_v": "decreased_sensation",
+          "neuro.cranial_nerves.cn_vii": "facial_droop",
+          "neuro.cranial_nerves.cn_viii": "hearing_deficit",
+          "neuro.cranial_nerves.cn_xi": "weak",
+          "neuro.cranial_nerves.cn_xii": "deviation",
+          "neuro.mental_status": [
+            "alert",
+            "oriented_4",
+            "confused"
+          ],
+          "neuro.notes": "Demo",
+          "neuro_motor.coordination": [
+            "finger_to_nose_normal",
+            "heel_to_shin_normal",
+            "abnormal"
+          ],
+          "neuro_motor.gait": [
+            "ataxic",
+            "antalgic",
+            "shuffling",
+            "unsteady"
+          ],
+          "neuro_motor.reflexes.achilles.left": "four_plus",
+          "neuro_motor.reflexes.achilles.right": "four_plus",
+          "neuro_motor.reflexes.biceps.left": "four_plus",
+          "neuro_motor.reflexes.biceps.right": "four_plus",
+          "neuro_motor.reflexes.patellar.left": "four_plus",
+          "neuro_motor.reflexes.patellar.right": "four_plus",
+          "neuro_motor.reflexes.triceps.left": "four_plus",
+          "neuro_motor.reflexes.triceps.right": "four_plus",
+          "neuro_motor.sensory": [
+            "decreased",
+            "numbness",
+            "tingling",
+            "asymmetric"
+          ],
+          "neuro_motor.sensory_location.region": "groin",
+          "neuro_motor.sensory_location.side": "bilateral",
+          "neuro_motor.strength.lower_extremity.left": 0,
+          "neuro_motor.strength.lower_extremity.right": 0,
+          "neuro_motor.strength.upper_extremity.left": 0,
+          "neuro_motor.strength.upper_extremity.right": 0,
+          "nose.findings": [
+            "congestion",
+            "rhinorrhea",
+            "epistaxis",
+            "nasal_tenderness",
+            "swelling",
+            "lesion",
+            "septal_abnormality",
+            "purulent_discharge"
+          ],
+          "nose.sinuses": [
+            "frontal_tenderness",
+            "maxillary_tenderness",
+            "ethmoid_tenderness"
+          ],
+          "peripheral_vascular.extremity": [
+            "warm",
+            "edema",
+            "erythema",
+            "cyanosis",
+            "pallor",
+            "hair_loss",
+            "skin_changes"
+          ],
+          "peripheral_vascular.more_pulses.femoral.left": "unable_to_assess",
+          "peripheral_vascular.more_pulses.femoral.right": "unable_to_assess",
+          "peripheral_vascular.more_pulses.popliteal.left": "unable_to_assess",
+          "peripheral_vascular.more_pulses.popliteal.right": "unable_to_assess",
+          "peripheral_vascular.more_pulses.ulnar.left": "unable_to_assess",
+          "peripheral_vascular.more_pulses.ulnar.right": "unable_to_assess",
+          "peripheral_vascular.notes": "Demo",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.left": "unable_to_assess",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.right": "unable_to_assess",
+          "peripheral_vascular.pulses.posterior_tibial_pt.left": "unable_to_assess",
+          "peripheral_vascular.pulses.posterior_tibial_pt.right": "unable_to_assess",
+          "peripheral_vascular.pulses.radial.left": "unable_to_assess",
+          "peripheral_vascular.pulses.radial.right": "unable_to_assess",
+          "peripheral_vascular.refill": "greater_than_2_seconds",
+          "peripheral_vascular.refill_time": 2,
+          "peripheral_vascular.symptoms": [
+            "claudication",
+            "rest_pain",
+            "leg_swelling",
+            "unilateral_swelling",
+            "color_change",
+            "temperature_change"
+          ],
+          "peripheral_vascular.temperature_change": "cool",
+          "preventive.screening": [
+            "hiv",
+            "hep_c",
+            "sti",
+            "tb",
+            "diabetes",
+            "bp",
+            "cancer",
+            "pregnancy"
+          ],
+          "preventive.screening_action.bp": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.screening_action.cancer": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.screening_action.diabetes": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.screening_action.hep_c": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.screening_action.hiv": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.screening_action.pregnancy": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.screening_action.sti": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.screening_action.tb": [
+            "performed",
+            "ordered",
+            "referred",
+            "education"
+          ],
+          "preventive.vaccine_status.covid": "unknown",
+          "preventive.vaccine_status.flu": "unknown",
+          "preventive.vaccine_status.hep_a": "unknown",
+          "preventive.vaccine_status.hep_b": "unknown",
+          "preventive.vaccine_status.hpv": "unknown",
+          "preventive.vaccine_status.pneumococcal": "unknown",
+          "preventive.vaccine_status.shingles": "unknown",
+          "preventive.vaccine_status.tdap": "unknown",
+          "preventive.vaccines": [
+            "flu",
+            "covid",
+            "tdap",
+            "hep_a",
+            "hep_b",
+            "pneumococcal",
+            "hpv",
+            "shingles"
+          ],
+          "problems.e0000001.diagnosis.code": "F11.20",
+          "problems.e0000001.diagnosis.label": "Demo problem",
+          "problems.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "problems.e0000001.interventions": [
+            "education",
+            "medication",
+            "testing",
+            "referral",
+            "supplies",
+            "procedure",
+            "other"
+          ],
+          "problems.e0000001.interventions_other": "Demo",
+          "problems.e0000001.status": "worse",
+          "psych_observation.affect": [
+            "flat",
+            "blunted",
+            "anxious",
+            "tearful",
+            "irritable"
+          ],
+          "psych_observation.appearance": [
+            "calm",
+            "cooperative",
+            "guarded",
+            "tearful",
+            "withdrawn",
+            "disorganized"
+          ],
+          "psych_observation.orientation": [
+            "person",
+            "place",
+            "time",
+            "situation"
+          ],
+          "psych_observation.speech": [
+            "rapid",
+            "pressured",
+            "slurred"
+          ],
+          "psych_observation.thought": [
+            "circumstantial",
+            "tangential",
+            "disorganized"
+          ],
+          "pulmonary.auscultation.left": [
+            "diminished",
+            "crackles",
+            "wheezes",
+            "rhonchi",
+            "stridor",
+            "bronchial"
+          ],
+          "pulmonary.auscultation.right": [
+            "diminished",
+            "crackles",
+            "wheezes",
+            "rhonchi",
+            "stridor",
+            "bronchial"
+          ],
+          "pulmonary.location_left": [
+            "upper",
+            "middle",
+            "lower",
+            "diffuse"
+          ],
+          "pulmonary.location_right": [
+            "upper",
+            "middle",
+            "lower",
+            "diffuse"
+          ],
+          "pulmonary.other_findings": [
+            "pleural_rub",
+            "asymmetric_breath_sounds"
+          ],
+          "pulmonary.sputum_amount": "Demo",
+          "pulmonary.sputum_color": "Demo",
+          "pulmonary.symptoms": [
+            "cough",
+            "sputum",
+            "hemoptysis",
+            "dyspnea",
+            "orthopnea",
+            "pleuritic_pain"
+          ],
+          "pulmonary.work": [
+            "increased",
+            "labored",
+            "accessory_muscle_use",
+            "retractions",
+            "tripoding",
+            "unable_to_speak_full_sentences"
+          ],
+          "reason.concern": "Demo",
+          "reason.reasons": [
+            "new_concern",
+            "follow_up",
+            "chronic_care",
+            "medication",
+            "general_check_in",
+            "acute_care",
+            "other"
+          ],
+          "reason.reasons_other": "Demo",
+          "rectal.chaperone": "no",
+          "rectal.consented": true,
+          "rectal.dre.findings": "Demo",
+          "rectal.dre.result": "abnormal",
+          "rectal.exam_type": "digital_rectal_examination_dre",
+          "rectal.findings": [
+            "hemorrhoids",
+            "fissure",
+            "bleeding",
+            "mass",
+            "tenderness",
+            "other"
+          ],
+          "rectal.findings_other": "Demo",
+          "rectal.performed": true,
+          "skin.overall": [
+            "warm",
+            "dry",
+            "pale",
+            "cyanotic",
+            "jaundiced"
+          ],
+          "skin_findings.e0000001.characteristics": [
+            "erythematous",
+            "warm",
+            "tender",
+            "pruritic",
+            "fluctuant",
+            "indurated",
+            "scaling",
+            "crusting",
+            "draining"
+          ],
+          "skin_findings.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "skin_findings.e0000001.location.region": "groin",
+          "skin_findings.e0000001.location.side": "midline",
+          "skin_findings.e0000001.location.surface": "posterior",
+          "skin_findings.e0000001.same_lesion": "unknown",
+          "skin_findings.e0000001.size.length": 0.1,
+          "skin_findings.e0000001.size.width": 0.1,
+          "skin_findings.e0000001.type": [
+            "rash",
+            "macule",
+            "papule",
+            "plaque",
+            "vesicle",
+            "pustule",
+            "nodule",
+            "ulcer",
+            "blister",
+            "ecchymosis",
+            "petechiae",
+            "purpura",
+            "abscess",
+            "other"
+          ],
+          "skin_findings.e0000001.type_other": "Demo",
+          "vitals.e0000001.bp.diastolic": 0,
+          "vitals.e0000001.bp.systolic": 0,
+          "vitals.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "vitals.e0000001.hr": 0,
+          "vitals.e0000001.pain": 0,
+          "vitals.e0000001.rr": 0,
+          "vitals.e0000001.spo2": 0,
+          "vitals.e0000001.temp": 50
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "reason",
+            "text": "Reason for encounter: New concern, Follow-up, Chronic care, Medication, General check-in, Acute Care, Other: Demo; Chief concern: Demo"
+          },
+          {
+            "section": "hpi",
+            "text": "History of present illness: Demo"
+          },
+          {
+            "section": "preventive",
+            "text": "Vaccines: Flu, COVID, Tdap, Hep A, Hep B, Pneumococcal, HPV, Shingles; Status for each vaccine, Flu: Unknown; Status for each vaccine, COVID: Unknown; Status for each vaccine, Tdap: Unknown; Status for each vaccine, Hep A: Unknown; Status for each vaccine, Hep B: Unknown; Status for each vaccine, Pneumococcal: Unknown; Status for each vaccine, HPV: Unknown; Status for each vaccine, Shingles: Unknown; Screening: HIV, Hep C, STI, TB, Diabetes, BP, Cancer, Pregnancy; Action for each screening, HIV: Performed, Ordered, Referred, Education; Action for each screening, Hep C: Performed, Ordered, Referred, Education; Action for each screening, STI: Performed, Ordered, Referred, Education; Action for each screening, TB: Performed, Ordered, Referred, Education; Action for each screening, Diabetes: Performed, Ordered, Referred, Education; Action for each screening, BP: Performed, Ordered, Referred, Education; Action for each screening, Cancer: Performed, Ordered, Referred, Education; Action for each screening, Pregnancy: Performed, Ordered, Referred, Education"
+          },
+          {
+            "section": "vitals",
+            "text": "Vitals 1: Blood pressure, Systolic: 0 mmHg; Blood pressure, Diastolic: 0 mmHg; Heart rate: 0 bpm; SpO₂: 0 %; Respiratory rate: 0 breaths/min; Temperature: 50.0 °F; Pain: 0 of 10"
+          },
+          {
+            "section": "exam",
+            "text": "What did you examine?: General, HEENT, Cardiac, Pulmonary, Abdomen, MSK, Neuro, Skin, Peripheral Vascular, Foot, Psych, Lymph, Neck / Thyroid, Other: Demo; Other exam findings: Demo"
+          },
+          {
+            "section": "general_appearance",
+            "text": "Quick status: Well appearing, No acute distress, Frail, Cachectic, Diaphoretic, Pale, Cyanotic, Other: Demo; Mental / behavioral appearance: Alert, Agitated, Cooperative; Additional findings: Demo"
+          },
+          {
+            "section": "eyes",
+            "text": "Pupils: Unequal pupils, Sluggish reaction, Nonreactive, Other: Demo; Pupil size, Right: 1.0 mm; Pupil size, Left: 1.0 mm; Pupil reaction, Right: Nonreactive; Pupil reaction, Left: Nonreactive; Extraocular movements: Limited, Pain with movement, Nystagmus, Diplopia; Conjunctiva: Injected, Pale, Discharge; Sclera: Icteric; Visual symptoms: Blurred vision, Vision loss, Photophobia, Eye pain, Foreign body sensation; Other eye findings: Demo"
+          },
+          {
+            "section": "ears",
+            "text": "External ear, Right: Tender, Swelling, Erythema, Lesion, Drainage; External ear, Left: Tender, Swelling, Erythema, Lesion, Drainage; Ear canal, Right: Cerumen, Erythema, Edema, Discharge, Foreign body; Ear canal, Left: Cerumen, Erythema, Edema, Discharge, Foreign body; Tympanic membrane, Right: Erythematous, Bulging, Retracted, Perforated, Effusion; Tympanic membrane, Left: Erythematous, Bulging, Retracted, Perforated, Effusion; Hearing: Decreased; Hearing decreased on: Bilateral"
+          },
+          {
+            "section": "nose",
+            "text": "Nose: Congestion, Rhinorrhea, Epistaxis, Nasal tenderness, Swelling, Lesion, Septal abnormality, Purulent discharge; Sinuses: Frontal tenderness, Maxillary tenderness, Ethmoid tenderness"
+          },
+          {
+            "section": "mouth",
+            "text": "Oral mucosa: Moist, Pale, Lesions, Ulcers, Thrush, Bleeding; Dentition: Poor dentition, Dental caries, Broken teeth, Dental abscess, Tooth pain, Missing teeth; Pharynx: Erythematous, Exudate, Tonsillar enlargement, Ulceration, Postnasal drainage; Airway: Patent, Swelling, Difficulty managing secretions"
+          },
+          {
+            "section": "heart",
+            "text": "Rate: Bradycardic; Rhythm: Irregular; Heart sounds: Normal S1/S2, Murmur, Rub, Gallop, Other: Demo; Murmur, Location: Aortic, Pulmonic, Tricuspid, Mitral, Other: Demo; Murmur, Character: Continuous; Murmur, Intensity: 1 of 6; Murmur, Radiation: Carotids, Axilla, Back, Other: Demo"
+          },
+          {
+            "section": "cv_perfusion",
+            "text": "Pulses, Radial, Right: Unable to assess; Pulses, Radial, Left: Unable to assess; Pulses, Dorsalis pedis (DP), Right: Unable to assess; Pulses, Dorsalis pedis (DP), Left: Unable to assess; Pulses, Posterior tibial (PT), Right: Unable to assess; Pulses, Posterior tibial (PT), Left: Unable to assess; More pulse sites, Brachial, Right: Unable to assess; More pulse sites, Brachial, Left: Unable to assess; More pulse sites, Femoral, Right: Unable to assess; More pulse sites, Femoral, Left: Unable to assess; Edema: 4+; Edema location: Bilateral lower extremities, Right, Left, Upper extremity, Generalized; Jugular venous distention (JVD): Unable to assess"
+          },
+          {
+            "section": "pulmonary",
+            "text": "Work of breathing: Increased, Labored, Accessory muscle use, Retractions, Tripoding, Unable to speak full sentences; Auscultation, Right: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Auscultation, Left: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Location, right lung: Upper, Middle, Lower, Diffuse; Location, left lung: Upper, Middle, Lower, Diffuse; Other findings: Pleural rub, Asymmetric breath sounds; Respiratory symptoms: Cough, Sputum, Hemoptysis, Dyspnea, Orthopnea, Pleuritic pain; Sputum color: Demo; Sputum amount: Demo"
+          },
+          {
+            "section": "abdominal",
+            "text": "Inspection: Flat, Scars, Bruising, Visible masses, Hernia; Bowel sounds: Unable to assess; Tenderness: Right upper quadrant (RUQ), Right lower quadrant (RLQ), Left upper quadrant (LUQ), Left lower quadrant (LLQ), Epigastric, Suprapubic, Periumbilical, Diffuse; Pain severity: 0 of 10; Peritoneal signs: Guarding, Rebound, Rigidity; Mass: Present; Mass location: Demo; Organomegaly: Hepatomegaly, Splenomegaly; Other findings: CVA tenderness, Murphy sign, McBurney tenderness, Other: Demo"
+          },
+          {
+            "section": "msk",
+            "text": "Region 1: Where are you examining?: Other: Demo; Side: Bilateral; Inspection: Swelling, Erythema, Bruising, Deformity, Atrophy, Wound, Asymmetry; Palpation: Tenderness, Warmth, Crepitus, Mass, Effusion; Pain: 0 of 10; Active range of motion: Limited, Painful; Passive range of motion: Limited, Painful; Strength, right: 0 of 5; Strength, left: 0 of 5; Tone: Isotonic; Sensation: Decreased, Numbness, Tingling; Pulses: Absent; Capillary refill: Greater than 2 seconds"
+          },
+          {
+            "section": "msk_gait",
+            "text": "Gait: Antalgic, Unsteady, Ataxic"
+          },
+          {
+            "section": "neuro",
+            "text": "Mental status: Alert, Oriented ×4, Confused; Cranial nerve screen: Abnormal; Cranial nerves, CN II: Visual deficit; Cranial nerves, CN III / IV / VI: Diplopia, Nystagmus, Ptosis; Cranial nerves, CN V: Decreased sensation; Cranial nerves, CN VII: Facial droop; Cranial nerves, CN VIII: Hearing deficit; Cranial nerves, CN IX / X: Dysarthria, Dysphagia; Cranial nerves, CN XI: Weak; Cranial nerves, CN XII: Deviation; Notes: Demo"
+          },
+          {
+            "section": "neuro_motor",
+            "text": "Motor strength, Upper extremity, Right: 0 of 5; Motor strength, Upper extremity, Left: 0 of 5; Motor strength, Lower extremity, Right: 0 of 5; Motor strength, Lower extremity, Left: 0 of 5; Sensory: Decreased, Numbness, Tingling, Asymmetric; Location: Groin, Bilateral; Coordination: Finger-to-nose normal, Heel-to-shin normal, Abnormal; Reflexes, Biceps, Right: 4+; Reflexes, Biceps, Left: 4+; Reflexes, Triceps, Right: 4+; Reflexes, Triceps, Left: 4+; Reflexes, Patellar, Right: 4+; Reflexes, Patellar, Left: 4+; Reflexes, Achilles, Right: 4+; Reflexes, Achilles, Left: 4+; Gait: Ataxic, Antalgic, Shuffling, Unsteady"
+          },
+          {
+            "section": "skin",
+            "text": "Overall skin: Warm, Dry, Pale, Cyanotic, Jaundiced"
+          },
+          {
+            "section": "skin_findings",
+            "text": "Finding 1: Location: Groin, Midline, Posterior; Type: Rash, Macule, Papule, Plaque, Vesicle, Pustule, Nodule, Ulcer, Blister, Ecchymosis, Petechiae, Purpura, Abscess, Other: Demo; Is this the same lesion/wound documented previously?: Unknown"
+          },
+          {
+            "section": "lymphatic",
+            "text": "Nodes examined: Cervical, Supraclavicular, Axillary, Inguinal, Other: Demo; Findings for each node group, Cervical, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Cervical, Size: 0.1 cm; Findings for each node group, Supraclavicular, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Supraclavicular, Size: 0.1 cm; Findings for each node group, Axillary, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Axillary, Size: 0.1 cm; Findings for each node group, Inguinal, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Inguinal, Size: 0.1 cm; Findings for each node group, Other, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Other, Size: 0.1 cm"
+          },
+          {
+            "section": "peripheral_vascular",
+            "text": "Pulses, Radial, Right: Unable to assess; Pulses, Radial, Left: Unable to assess; Pulses, Dorsalis pedis (DP), Right: Unable to assess; Pulses, Dorsalis pedis (DP), Left: Unable to assess; Pulses, Posterior tibial (PT), Right: Unable to assess; Pulses, Posterior tibial (PT), Left: Unable to assess; More pulse sites, Ulnar, Right: Unable to assess; More pulse sites, Ulnar, Left: Unable to assess; More pulse sites, Femoral, Right: Unable to assess; More pulse sites, Femoral, Left: Unable to assess; More pulse sites, Popliteal, Right: Unable to assess; More pulse sites, Popliteal, Left: Unable to assess; Extremity findings: Warm, Edema, Erythema, Cyanosis, Pallor, Hair loss, Skin changes; Capillary refill: Greater than 2 seconds; Capillary refill time: 2.0 seconds; Vascular symptoms: Claudication, Rest pain, Leg swelling, Unilateral swelling, Color change, Temperature change; Temperature change: Cool; Notes: Demo"
+          },
+          {
+            "section": "psych_observation",
+            "text": "Appearance / behavior: Calm, Cooperative, Guarded, Tearful, Withdrawn, Disorganized; Speech: Rapid, Pressured, Slurred; Affect: Flat, Blunted, Anxious, Tearful, Irritable; Thought process: Circumstantial, Tangential, Disorganized; Oriented to: Person, Place, Time, Situation"
+          },
+          {
+            "section": "diabetic_foot",
+            "text": "Inspection: Intact skin, Callus, Corn, Deformity, Nail abnormality, Erythema, Swelling; Pulses, Dorsalis pedis (DP), Right: Unable to assess; Pulses, Dorsalis pedis (DP), Left: Unable to assess; Pulses, Posterior tibial (PT), Right: Unable to assess; Pulses, Posterior tibial (PT), Left: Unable to assess; Sensation: Absent; Monofilament, Right: Abnormal; Monofilament, Left: Abnormal; Temperature: Warm, Asymmetric; Notes: Demo"
+          },
+          {
+            "section": "neck_thyroid",
+            "text": "Neck: Supple, Tender, Mass, Lymphadenopathy, JVD; Thyroid: Enlarged, Nodules, Tender, Asymmetric; Carotids, Right: Bruit, Decreased pulse; Carotids, Left: Bruit, Decreased pulse"
+          },
+          {
+            "section": "problems",
+            "text": "Problem 1: Diagnosis or problem: Demo problem (F11.20); Status: Worse; Intervention: Education, Medication, Testing, Referral, Supplies, Procedure, Other: Demo"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "reason",
+            "label": "Chief concern",
+            "value": "Demo"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals 1, Blood pressure, Systolic",
+            "value": "0 mmHg"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals 1, Blood pressure, Diastolic",
+            "value": "0 mmHg"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals 1, Heart rate",
+            "value": "0 bpm"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals 1, SpO₂",
+            "value": "0 %"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals 1, Respiratory rate",
+            "value": "0 breaths/min"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals 1, Temperature",
+            "value": "50.0 °F"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals 1, Pain",
+            "value": "0 of 10"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "reason",
+            "label": "Reason for encounter",
+            "value": "Reason for encounter: New concern, Follow-up, Chronic care, Medication, General check-in, Acute Care, Other: Demo; Chief concern: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "hpi",
+            "label": "History of present illness",
+            "value": "History of present illness: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "preventive",
+            "label": "Preventative care",
+            "value": "Vaccines: Flu, COVID, Tdap, Hep A, Hep B, Pneumococcal, HPV, Shingles; Status for each vaccine, Flu: Unknown; Status for each vaccine, COVID: Unknown; Status for each vaccine, Tdap: Unknown; Status for each vaccine, Hep A: Unknown; Status for each vaccine, Hep B: Unknown; Status for each vaccine, Pneumococcal: Unknown; Status for each vaccine, HPV: Unknown; Status for each vaccine, Shingles: Unknown; Screening: HIV, Hep C, STI, TB, Diabetes, BP, Cancer, Pregnancy; Action for each screening, HIV: Performed, Ordered, Referred, Education; Action for each screening, Hep C: Performed, Ordered, Referred, Education; Action for each screening, STI: Performed, Ordered, Referred, Education; Action for each screening, TB: Performed, Ordered, Referred, Education; Action for each screening, Diabetes: Performed, Ordered, Referred, Education; Action for each screening, BP: Performed, Ordered, Referred, Education; Action for each screening, Cancer: Performed, Ordered, Referred, Education; Action for each screening, Pregnancy: Performed, Ordered, Referred, Education"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "vitals",
+            "label": "Vitals",
+            "value": "Vitals 1: Blood pressure, Systolic: 0 mmHg; Blood pressure, Diastolic: 0 mmHg; Heart rate: 0 bpm; SpO₂: 0 %; Respiratory rate: 0 breaths/min; Temperature: 50.0 °F; Pain: 0 of 10"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "exam",
+            "label": "Focused exam",
+            "value": "What did you examine?: General, HEENT, Cardiac, Pulmonary, Abdomen, MSK, Neuro, Skin, Peripheral Vascular, Foot, Psych, Lymph, Neck / Thyroid, Other: Demo; Other exam findings: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "general_appearance",
+            "label": "General appearance",
+            "value": "Quick status: Well appearing, No acute distress, Frail, Cachectic, Diaphoretic, Pale, Cyanotic, Other: Demo; Mental / behavioral appearance: Alert, Agitated, Cooperative; Additional findings: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "eyes",
+            "label": "Eyes",
+            "value": "Pupils: Unequal pupils, Sluggish reaction, Nonreactive, Other: Demo; Pupil size, Right: 1.0 mm; Pupil size, Left: 1.0 mm; Pupil reaction, Right: Nonreactive; Pupil reaction, Left: Nonreactive; Extraocular movements: Limited, Pain with movement, Nystagmus, Diplopia; Conjunctiva: Injected, Pale, Discharge; Sclera: Icteric; Visual symptoms: Blurred vision, Vision loss, Photophobia, Eye pain, Foreign body sensation; Other eye findings: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "ears",
+            "label": "Ears",
+            "value": "External ear, Right: Tender, Swelling, Erythema, Lesion, Drainage; External ear, Left: Tender, Swelling, Erythema, Lesion, Drainage; Ear canal, Right: Cerumen, Erythema, Edema, Discharge, Foreign body; Ear canal, Left: Cerumen, Erythema, Edema, Discharge, Foreign body; Tympanic membrane, Right: Erythematous, Bulging, Retracted, Perforated, Effusion; Tympanic membrane, Left: Erythematous, Bulging, Retracted, Perforated, Effusion; Hearing: Decreased; Hearing decreased on: Bilateral"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "nose",
+            "label": "Nose",
+            "value": "Nose: Congestion, Rhinorrhea, Epistaxis, Nasal tenderness, Swelling, Lesion, Septal abnormality, Purulent discharge; Sinuses: Frontal tenderness, Maxillary tenderness, Ethmoid tenderness"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "mouth",
+            "label": "Mouth / throat",
+            "value": "Oral mucosa: Moist, Pale, Lesions, Ulcers, Thrush, Bleeding; Dentition: Poor dentition, Dental caries, Broken teeth, Dental abscess, Tooth pain, Missing teeth; Pharynx: Erythematous, Exudate, Tonsillar enlargement, Ulceration, Postnasal drainage; Airway: Patent, Swelling, Difficulty managing secretions"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "heart",
+            "label": "Heart rate, rhythm and sounds",
+            "value": "Rate: Bradycardic; Rhythm: Irregular; Heart sounds: Normal S1/S2, Murmur, Rub, Gallop, Other: Demo; Murmur, Location: Aortic, Pulmonic, Tricuspid, Mitral, Other: Demo; Murmur, Character: Continuous; Murmur, Intensity: 1 of 6; Murmur, Radiation: Carotids, Axilla, Back, Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "cv_perfusion",
+            "label": "Perfusion, edema and JVD",
+            "value": "Pulses, Radial, Right: Unable to assess; Pulses, Radial, Left: Unable to assess; Pulses, Dorsalis pedis (DP), Right: Unable to assess; Pulses, Dorsalis pedis (DP), Left: Unable to assess; Pulses, Posterior tibial (PT), Right: Unable to assess; Pulses, Posterior tibial (PT), Left: Unable to assess; More pulse sites, Brachial, Right: Unable to assess; More pulse sites, Brachial, Left: Unable to assess; More pulse sites, Femoral, Right: Unable to assess; More pulse sites, Femoral, Left: Unable to assess; Edema: 4+; Edema location: Bilateral lower extremities, Right, Left, Upper extremity, Generalized; Jugular venous distention (JVD): Unable to assess"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "pulmonary",
+            "label": "Pulmonary / respiratory",
+            "value": "Work of breathing: Increased, Labored, Accessory muscle use, Retractions, Tripoding, Unable to speak full sentences; Auscultation, Right: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Auscultation, Left: Diminished, Crackles, Wheezes, Rhonchi, Stridor, Bronchial; Location, right lung: Upper, Middle, Lower, Diffuse; Location, left lung: Upper, Middle, Lower, Diffuse; Other findings: Pleural rub, Asymmetric breath sounds; Respiratory symptoms: Cough, Sputum, Hemoptysis, Dyspnea, Orthopnea, Pleuritic pain; Sputum color: Demo; Sputum amount: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "abdominal",
+            "label": "Abdominal / GI",
+            "value": "Inspection: Flat, Scars, Bruising, Visible masses, Hernia; Bowel sounds: Unable to assess; Tenderness: Right upper quadrant (RUQ), Right lower quadrant (RLQ), Left upper quadrant (LUQ), Left lower quadrant (LLQ), Epigastric, Suprapubic, Periumbilical, Diffuse; Pain severity: 0 of 10; Peritoneal signs: Guarding, Rebound, Rigidity; Mass: Present; Mass location: Demo; Organomegaly: Hepatomegaly, Splenomegaly; Other findings: CVA tenderness, Murphy sign, McBurney tenderness, Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "msk",
+            "label": "Musculoskeletal",
+            "value": "Region 1: Where are you examining?: Other: Demo; Side: Bilateral; Inspection: Swelling, Erythema, Bruising, Deformity, Atrophy, Wound, Asymmetry; Palpation: Tenderness, Warmth, Crepitus, Mass, Effusion; Pain: 0 of 10; Active range of motion: Limited, Painful; Passive range of motion: Limited, Painful; Strength, right: 0 of 5; Strength, left: 0 of 5; Tone: Isotonic; Sensation: Decreased, Numbness, Tingling; Pulses: Absent; Capillary refill: Greater than 2 seconds"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "msk_gait",
+            "label": "Gait",
+            "value": "Gait: Antalgic, Unsteady, Ataxic"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "neuro",
+            "label": "Neurologic: mental status and cranial nerves",
+            "value": "Mental status: Alert, Oriented ×4, Confused; Cranial nerve screen: Abnormal; Cranial nerves, CN II: Visual deficit; Cranial nerves, CN III / IV / VI: Diplopia, Nystagmus, Ptosis; Cranial nerves, CN V: Decreased sensation; Cranial nerves, CN VII: Facial droop; Cranial nerves, CN VIII: Hearing deficit; Cranial nerves, CN IX / X: Dysarthria, Dysphagia; Cranial nerves, CN XI: Weak; Cranial nerves, CN XII: Deviation; Notes: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "neuro_motor",
+            "label": "Neurologic: strength, sensation, coordination, reflexes and gait",
+            "value": "Motor strength, Upper extremity, Right: 0 of 5; Motor strength, Upper extremity, Left: 0 of 5; Motor strength, Lower extremity, Right: 0 of 5; Motor strength, Lower extremity, Left: 0 of 5; Sensory: Decreased, Numbness, Tingling, Asymmetric; Location: Groin, Bilateral; Coordination: Finger-to-nose normal, Heel-to-shin normal, Abnormal; Reflexes, Biceps, Right: 4+; Reflexes, Biceps, Left: 4+; Reflexes, Triceps, Right: 4+; Reflexes, Triceps, Left: 4+; Reflexes, Patellar, Right: 4+; Reflexes, Patellar, Left: 4+; Reflexes, Achilles, Right: 4+; Reflexes, Achilles, Left: 4+; Gait: Ataxic, Antalgic, Shuffling, Unsteady"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "skin",
+            "label": "Skin",
+            "value": "Overall skin: Warm, Dry, Pale, Cyanotic, Jaundiced"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "skin_findings",
+            "label": "Skin finding",
+            "value": "Finding 1: Location: Groin, Midline, Posterior; Type: Rash, Macule, Papule, Plaque, Vesicle, Pustule, Nodule, Ulcer, Blister, Ecchymosis, Petechiae, Purpura, Abscess, Other: Demo; Is this the same lesion/wound documented previously?: Unknown"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "lymphatic",
+            "label": "Lymphatic",
+            "value": "Nodes examined: Cervical, Supraclavicular, Axillary, Inguinal, Other: Demo; Findings for each node group, Cervical, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Cervical, Size: 0.1 cm; Findings for each node group, Supraclavicular, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Supraclavicular, Size: 0.1 cm; Findings for each node group, Axillary, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Axillary, Size: 0.1 cm; Findings for each node group, Inguinal, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Inguinal, Size: 0.1 cm; Findings for each node group, Other, Findings: Not enlarged, Tender, Mobile; Findings for each node group, Other, Size: 0.1 cm"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "peripheral_vascular",
+            "label": "Peripheral vascular",
+            "value": "Pulses, Radial, Right: Unable to assess; Pulses, Radial, Left: Unable to assess; Pulses, Dorsalis pedis (DP), Right: Unable to assess; Pulses, Dorsalis pedis (DP), Left: Unable to assess; Pulses, Posterior tibial (PT), Right: Unable to assess; Pulses, Posterior tibial (PT), Left: Unable to assess; More pulse sites, Ulnar, Right: Unable to assess; More pulse sites, Ulnar, Left: Unable to assess; More pulse sites, Femoral, Right: Unable to assess; More pulse sites, Femoral, Left: Unable to assess; More pulse sites, Popliteal, Right: Unable to assess; More pulse sites, Popliteal, Left: Unable to assess; Extremity findings: Warm, Edema, Erythema, Cyanosis, Pallor, Hair loss, Skin changes; Capillary refill: Greater than 2 seconds; Capillary refill time: 2.0 seconds; Vascular symptoms: Claudication, Rest pain, Leg swelling, Unilateral swelling, Color change, Temperature change; Temperature change: Cool; Notes: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "psych_observation",
+            "label": "Psychiatric / behavioral observation",
+            "value": "Appearance / behavior: Calm, Cooperative, Guarded, Tearful, Withdrawn, Disorganized; Speech: Rapid, Pressured, Slurred; Affect: Flat, Blunted, Anxious, Tearful, Irritable; Thought process: Circumstantial, Tangential, Disorganized; Oriented to: Person, Place, Time, Situation"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "diabetic_foot",
+            "label": "Foot / diabetic foot exam",
+            "value": "Inspection: Intact skin, Callus, Corn, Deformity, Nail abnormality, Erythema, Swelling; Pulses, Dorsalis pedis (DP), Right: Unable to assess; Pulses, Dorsalis pedis (DP), Left: Unable to assess; Pulses, Posterior tibial (PT), Right: Unable to assess; Pulses, Posterior tibial (PT), Left: Unable to assess; Sensation: Absent; Monofilament, Right: Abnormal; Monofilament, Left: Abnormal; Temperature: Warm, Asymmetric; Notes: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "neck_thyroid",
+            "label": "Neck / thyroid",
+            "value": "Neck: Supple, Tender, Mass, Lymphadenopathy, JVD; Thyroid: Enlarged, Nodules, Tender, Asymmetric; Carotids, Right: Bruit, Decreased pulse; Carotids, Left: Bruit, Decreased pulse"
+          }
+        ],
+        "effectiveKeys": [
+          "abdominal.bowel_sounds",
+          "abdominal.inspection",
+          "abdominal.mass",
+          "abdominal.mass_location",
+          "abdominal.organomegaly",
+          "abdominal.other_findings",
+          "abdominal.other_findings_other",
+          "abdominal.pain",
+          "abdominal.peritoneal",
+          "abdominal.tenderness",
+          "breast.chaperone",
+          "breast.consented",
+          "breast.finding",
+          "breast.finding_other",
+          "breast.inspection",
+          "breast.inspection_side",
+          "breast.performed",
+          "cv_perfusion.edema",
+          "cv_perfusion.edema_location",
+          "cv_perfusion.jvd",
+          "cv_perfusion.more_pulses.brachial.left",
+          "cv_perfusion.more_pulses.brachial.right",
+          "cv_perfusion.more_pulses.femoral.left",
+          "cv_perfusion.more_pulses.femoral.right",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.left",
+          "cv_perfusion.pulses.dorsalis_pedis_dp.right",
+          "cv_perfusion.pulses.posterior_tibial_pt.left",
+          "cv_perfusion.pulses.posterior_tibial_pt.right",
+          "cv_perfusion.pulses.radial.left",
+          "cv_perfusion.pulses.radial.right",
+          "diabetic_foot.inspection",
+          "diabetic_foot.monofilament.left",
+          "diabetic_foot.monofilament.right",
+          "diabetic_foot.notes",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.left",
+          "diabetic_foot.pulses.dorsalis_pedis_dp.right",
+          "diabetic_foot.pulses.posterior_tibial_pt.left",
+          "diabetic_foot.pulses.posterior_tibial_pt.right",
+          "diabetic_foot.sensation",
+          "diabetic_foot.temperature",
+          "ears.canal.left",
+          "ears.canal.right",
+          "ears.external.left",
+          "ears.external.right",
+          "ears.hearing",
+          "ears.hearing_side",
+          "ears.tympanic.left",
+          "ears.tympanic.right",
+          "exam.other_findings",
+          "exam.systems",
+          "exam.systems_other",
+          "eyes.conjunctiva",
+          "eyes.movements",
+          "eyes.other",
+          "eyes.pupil_reaction.left",
+          "eyes.pupil_reaction.right",
+          "eyes.pupil_size.left",
+          "eyes.pupil_size.right",
+          "eyes.pupils",
+          "eyes.pupils_other",
+          "eyes.sclera",
+          "eyes.visual",
+          "general_appearance.additional",
+          "general_appearance.behavior",
+          "general_appearance.status",
+          "general_appearance.status_other",
+          "gu.chaperone",
+          "gu.consented",
+          "gu.cva",
+          "gu.external",
+          "gu.findings",
+          "gu.general",
+          "gu.performed",
+          "heart.murmur.character",
+          "heart.murmur.intensity",
+          "heart.murmur.location",
+          "heart.murmur.location_other",
+          "heart.murmur.radiation",
+          "heart.murmur.radiation_other",
+          "heart.rate",
+          "heart.rhythm",
+          "heart.sounds",
+          "heart.sounds_other",
+          "hpi.narrative",
+          "lymphatic.node_findings.axillary.findings",
+          "lymphatic.node_findings.axillary.size",
+          "lymphatic.node_findings.cervical.findings",
+          "lymphatic.node_findings.cervical.size",
+          "lymphatic.node_findings.inguinal.findings",
+          "lymphatic.node_findings.inguinal.size",
+          "lymphatic.node_findings.other.findings",
+          "lymphatic.node_findings.other.size",
+          "lymphatic.node_findings.supraclavicular.findings",
+          "lymphatic.node_findings.supraclavicular.size",
+          "lymphatic.nodes",
+          "lymphatic.nodes_other",
+          "mouth.airway",
+          "mouth.dentition",
+          "mouth.mucosa",
+          "mouth.pharynx",
+          "msk.e0000001.capillary_refill",
+          "msk.e0000001.entryAt",
+          "msk.e0000001.inspection",
+          "msk.e0000001.pain",
+          "msk.e0000001.palpation",
+          "msk.e0000001.pulses",
+          "msk.e0000001.region",
+          "msk.e0000001.region_other",
+          "msk.e0000001.rom_active",
+          "msk.e0000001.rom_passive",
+          "msk.e0000001.sensation",
+          "msk.e0000001.side",
+          "msk.e0000001.strength_left",
+          "msk.e0000001.strength_right",
+          "msk.e0000001.tone",
+          "msk_gait.gait",
+          "neck_thyroid.carotids.left",
+          "neck_thyroid.carotids.right",
+          "neck_thyroid.neck",
+          "neck_thyroid.thyroid",
+          "neuro.cn_screen",
+          "neuro.cranial_nerves.cn_ii",
+          "neuro.cranial_nerves.cn_iii_iv_vi",
+          "neuro.cranial_nerves.cn_ix_x",
+          "neuro.cranial_nerves.cn_v",
+          "neuro.cranial_nerves.cn_vii",
+          "neuro.cranial_nerves.cn_viii",
+          "neuro.cranial_nerves.cn_xi",
+          "neuro.cranial_nerves.cn_xii",
+          "neuro.mental_status",
+          "neuro.notes",
+          "neuro_motor.coordination",
+          "neuro_motor.gait",
+          "neuro_motor.reflexes.achilles.left",
+          "neuro_motor.reflexes.achilles.right",
+          "neuro_motor.reflexes.biceps.left",
+          "neuro_motor.reflexes.biceps.right",
+          "neuro_motor.reflexes.patellar.left",
+          "neuro_motor.reflexes.patellar.right",
+          "neuro_motor.reflexes.triceps.left",
+          "neuro_motor.reflexes.triceps.right",
+          "neuro_motor.sensory",
+          "neuro_motor.sensory_location.region",
+          "neuro_motor.sensory_location.side",
+          "neuro_motor.strength.lower_extremity.left",
+          "neuro_motor.strength.lower_extremity.right",
+          "neuro_motor.strength.upper_extremity.left",
+          "neuro_motor.strength.upper_extremity.right",
+          "nose.findings",
+          "nose.sinuses",
+          "peripheral_vascular.extremity",
+          "peripheral_vascular.more_pulses.femoral.left",
+          "peripheral_vascular.more_pulses.femoral.right",
+          "peripheral_vascular.more_pulses.popliteal.left",
+          "peripheral_vascular.more_pulses.popliteal.right",
+          "peripheral_vascular.more_pulses.ulnar.left",
+          "peripheral_vascular.more_pulses.ulnar.right",
+          "peripheral_vascular.notes",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.left",
+          "peripheral_vascular.pulses.dorsalis_pedis_dp.right",
+          "peripheral_vascular.pulses.posterior_tibial_pt.left",
+          "peripheral_vascular.pulses.posterior_tibial_pt.right",
+          "peripheral_vascular.pulses.radial.left",
+          "peripheral_vascular.pulses.radial.right",
+          "peripheral_vascular.refill",
+          "peripheral_vascular.refill_time",
+          "peripheral_vascular.symptoms",
+          "peripheral_vascular.temperature_change",
+          "preventive.screening",
+          "preventive.screening_action.bp",
+          "preventive.screening_action.cancer",
+          "preventive.screening_action.diabetes",
+          "preventive.screening_action.hep_c",
+          "preventive.screening_action.hiv",
+          "preventive.screening_action.pregnancy",
+          "preventive.screening_action.sti",
+          "preventive.screening_action.tb",
+          "preventive.vaccine_status.covid",
+          "preventive.vaccine_status.flu",
+          "preventive.vaccine_status.hep_a",
+          "preventive.vaccine_status.hep_b",
+          "preventive.vaccine_status.hpv",
+          "preventive.vaccine_status.pneumococcal",
+          "preventive.vaccine_status.shingles",
+          "preventive.vaccine_status.tdap",
+          "preventive.vaccines",
+          "problems.e0000001.diagnosis.code",
+          "problems.e0000001.diagnosis.label",
+          "problems.e0000001.entryAt",
+          "problems.e0000001.interventions",
+          "problems.e0000001.interventions_other",
+          "problems.e0000001.status",
+          "psych_observation.affect",
+          "psych_observation.appearance",
+          "psych_observation.orientation",
+          "psych_observation.speech",
+          "psych_observation.thought",
+          "pulmonary.auscultation.left",
+          "pulmonary.auscultation.right",
+          "pulmonary.location_left",
+          "pulmonary.location_right",
+          "pulmonary.other_findings",
+          "pulmonary.sputum_amount",
+          "pulmonary.sputum_color",
+          "pulmonary.symptoms",
+          "pulmonary.work",
+          "reason.concern",
+          "reason.reasons",
+          "reason.reasons_other",
+          "rectal.chaperone",
+          "rectal.consented",
+          "rectal.dre.findings",
+          "rectal.dre.result",
+          "rectal.exam_type",
+          "rectal.findings",
+          "rectal.findings_other",
+          "rectal.performed",
+          "skin.overall",
+          "skin_findings.e0000001.entryAt",
+          "skin_findings.e0000001.location.region",
+          "skin_findings.e0000001.location.side",
+          "skin_findings.e0000001.location.surface",
+          "skin_findings.e0000001.same_lesion",
+          "skin_findings.e0000001.type",
+          "skin_findings.e0000001.type_other",
+          "vitals.e0000001.bp.diastolic",
+          "vitals.e0000001.bp.systolic",
+          "vitals.e0000001.entryAt",
+          "vitals.e0000001.hr",
+          "vitals.e0000001.pain",
+          "vitals.e0000001.rr",
+          "vitals.e0000001.spo2",
+          "vitals.e0000001.temp"
+        ],
+        "readModelHash": "c16deb09460ec6e09e4a7b657bbbfd84fd1057f5907b31577f26ea897a8485c7",
+        "visibleHashes": {
+          "full": "af29598ca301a16b5e11ab2764b269b0dc12e35bc6a7e751d73a3deb86d313d1",
+          "noExams": "9a9d2ceb3982636015fc0da7240c69abf743f58861164f185a3c0b3142553a88",
+          "noSensitive": "1e67a9b6fe080bf2f5318cb6d5022d0c0f2e0016bdf68453058056d116e96a57"
+        },
+        "contentHash": "4622d65d38461d758b2802cbee605f95f78402e4f34fe68a3baa9681d979a099",
+        "expansions": []
+      }
+    ]
+  },
+  {
+    "key": "harm_reduction",
+    "version": 1,
+    "hash": "0f43b84876ddd99da9c6400c5581e29ab526d38c0dd58e5a56085d060b7ebd90",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "cbc70010a0f78c7c9ef10eb9c1cd3e140062b8726a6872594610e9024e86bc32",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "cbc70010a0f78c7c9ef10eb9c1cd3e140062b8726a6872594610e9024e86bc32",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "provided.education": [
+            "overdose_response"
+          ],
+          "provided.naloxone": "offered",
+          "provided.supplies": [
+            "fentanyl_strips"
+          ],
+          "treatment.discussed": "yes",
+          "treatment.interested": "yes",
+          "treatment.interested_in": [
+            "buprenorphine"
+          ],
+          "treatment.receiving": "yes",
+          "use.last_use": "today",
+          "use.overdose_history": "never",
+          "use.risk_factors": [
+            "using_alone"
+          ],
+          "use.substances": [
+            "opioids"
+          ]
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "use",
+            "text": "Substances: Opioids; Last use: Today; Overdose history: Never; Risk factors: Using alone"
+          },
+          {
+            "section": "provided",
+            "text": "Naloxone: Offered; Supplies: Fentanyl strips; Education: Overdose response"
+          },
+          {
+            "section": "treatment",
+            "text": "Currently receiving treatment?: Yes; Treatment discussed?: Yes; Interested in treatment?: Yes; Which treatment?: Buprenorphine"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "use",
+            "label": "Substance use",
+            "value": "Substances: Opioids; Last use: Today; Overdose history: Never; Risk factors: Using alone"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "provided",
+            "label": "Harm reduction provided",
+            "value": "Naloxone: Offered; Supplies: Fentanyl strips; Education: Overdose response"
+          }
+        ],
+        "effectiveKeys": [
+          "provided.education",
+          "provided.naloxone",
+          "provided.supplies",
+          "treatment.discussed",
+          "treatment.interested",
+          "treatment.interested_in",
+          "treatment.receiving",
+          "use.last_use",
+          "use.overdose_history",
+          "use.risk_factors",
+          "use.substances"
+        ],
+        "readModelHash": "c3fd714db57b96b183ba3e9d57ca5e460e50dc5cb85ee173e8a4844454d4216b",
+        "visibleHashes": {
+          "full": "a84f79857f77487a59250836e38e97aef5f0554a29dc85eef0ccafe7d88d1dc4",
+          "noExams": "29d2189363990d87f56dbfe0669537251536524dda6257de9e6a0bc67caddb5b",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "bb9b9a16ff6d72327d2c745cd61aecae7f35fe11bb8a4d1a18617db506f2b857",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "provided.naloxone": "offered",
+          "treatment.interested": "yes"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "provided",
+            "text": "Naloxone: Offered"
+          },
+          {
+            "section": "treatment",
+            "text": "Interested in treatment?: Yes"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "provided",
+            "label": "Harm reduction provided",
+            "value": "Naloxone: Offered"
+          }
+        ],
+        "effectiveKeys": [
+          "provided.naloxone",
+          "treatment.interested"
+        ],
+        "readModelHash": "51a0dd050ee5e5a5affa7e2b4b1b2f8d68a558152b64dc3958114926a4082132",
+        "visibleHashes": {
+          "full": "835c0b9ca22b3b9047f7844275ed3eeb4a9c8e23e4c0b187f69eb437c0889c83",
+          "noExams": "b6ea3f6ea7ea42a9173f96c923b2488547c3c1f03eba85b41539f87cefa5fab6",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "1b46bd4c308266f6dcd82ea467d2d8139d95bbd3a4a96b9de8a16a1e3c6c15ff",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "provided.education": [
+            "overdose_response",
+            "safer_use",
+            "never_use_alone",
+            "moud",
+            "other"
+          ],
+          "provided.education_other": "Demo",
+          "provided.naloxone": "already_has",
+          "provided.naloxone_doses": 1,
+          "provided.supplies": [
+            "fentanyl_strips",
+            "safer_use_supplies",
+            "sharps",
+            "safer_smoking_supplies",
+            "condoms",
+            "other"
+          ],
+          "provided.supplies_other": "Demo",
+          "treatment.discussed": "no",
+          "treatment.interested": "no",
+          "treatment.interested_in": [
+            "buprenorphine",
+            "methadone",
+            "naltrexone",
+            "other"
+          ],
+          "treatment.interested_in_other": "Demo",
+          "treatment.receiving": "unknown",
+          "use.last_use": "unknown",
+          "use.overdose_history": "unknown",
+          "use.risk_factors": [
+            "using_alone",
+            "mixing_substances",
+            "reduced_tolerance",
+            "fentanyl_exposure",
+            "other"
+          ],
+          "use.risk_factors_other": "Demo",
+          "use.substances": [
+            "opioids",
+            "fentanyl",
+            "stimulants",
+            "alcohol",
+            "benzodiazepines",
+            "cannabis",
+            "tobacco",
+            "other"
+          ],
+          "use.substances_other": "Demo"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "use",
+            "text": "Substances: Opioids, Fentanyl, Stimulants, Alcohol, Benzodiazepines, Cannabis, Tobacco, Other: Demo; Last use: Unknown; Overdose history: Unknown; Risk factors: Using alone, Mixing substances, Reduced tolerance, Fentanyl exposure, Other: Demo"
+          },
+          {
+            "section": "provided",
+            "text": "Naloxone: Already has; Supplies: Fentanyl strips, Safer-use supplies, Sharps, Safer smoking supplies, Condoms, Other: Demo; Education: Overdose response, Safer use, Never use alone, MOUD, Other: Demo"
+          },
+          {
+            "section": "treatment",
+            "text": "Currently receiving treatment?: Unknown; Treatment discussed?: No; Interested in treatment?: No"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "use",
+            "label": "Substance use",
+            "value": "Substances: Opioids, Fentanyl, Stimulants, Alcohol, Benzodiazepines, Cannabis, Tobacco, Other: Demo; Last use: Unknown; Overdose history: Unknown; Risk factors: Using alone, Mixing substances, Reduced tolerance, Fentanyl exposure, Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "provided",
+            "label": "Harm reduction provided",
+            "value": "Naloxone: Already has; Supplies: Fentanyl strips, Safer-use supplies, Sharps, Safer smoking supplies, Condoms, Other: Demo; Education: Overdose response, Safer use, Never use alone, MOUD, Other: Demo"
+          }
+        ],
+        "effectiveKeys": [
+          "provided.education",
+          "provided.education_other",
+          "provided.naloxone",
+          "provided.supplies",
+          "provided.supplies_other",
+          "treatment.discussed",
+          "treatment.interested",
+          "treatment.receiving",
+          "use.last_use",
+          "use.overdose_history",
+          "use.risk_factors",
+          "use.risk_factors_other",
+          "use.substances",
+          "use.substances_other"
+        ],
+        "readModelHash": "a93388a76c5c537e8032df7ad2873bf1e038d90c052a1017281d8729c13e6525",
+        "visibleHashes": {
+          "full": "7b936f749a11bfa85ab417e0d027746665517a8d0d775d19063fe900691748cc",
+          "noExams": "f856268b5c1996e4bad9b64f49791b5d13ca5ab8b5e69375bc14600da2014da1",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "9df21b861bbcdfca817bf27fd64f99bffefc02490bf8e4de960c109819e274c6",
+        "expansions": []
+      }
+    ]
+  },
+  {
+    "key": "outreach",
+    "version": 1,
+    "hash": "619326cde374d2f40be98f49d653f37a80335b8ed2ddfb00ba0b073084b2393b",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "20d27f2841abf9a3b75667b7c6fa4af098bae18b34b38f204bae3d841388e9ab",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "20d27f2841abf9a3b75667b7c6fa4af098bae18b34b38f204bae3d841388e9ab",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "outreach.follow_up": "none",
+          "outreach.interaction": "spoke_with_patient",
+          "outreach.new_need": [
+            "no"
+          ],
+          "outreach.support": [
+            "food"
+          ],
+          "outreach.type": "outreach"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "outreach",
+            "text": "Type: Outreach; Interaction: Spoke with patient; Support provided: Food; New need identified: No; Follow-up: None"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "outreach",
+            "label": "Outreach / community encounter",
+            "value": "Type: Outreach; Interaction: Spoke with patient; Support provided: Food; New need identified: No; Follow-up: None"
+          }
+        ],
+        "effectiveKeys": [
+          "outreach.follow_up",
+          "outreach.interaction",
+          "outreach.new_need",
+          "outreach.support",
+          "outreach.type"
+        ],
+        "readModelHash": "1591d50e758f52ae9639490a07471ae5f2b1e37ab8420afc5a6979934e7b894a",
+        "visibleHashes": {
+          "full": "e4ff0e0db4991b2e6aebe2304a5e56026f2ced4411c5c173c9159d0bbbeaf839",
+          "noExams": "e4ff0e0db4991b2e6aebe2304a5e56026f2ced4411c5c173c9159d0bbbeaf839",
+          "noSensitive": "e4ff0e0db4991b2e6aebe2304a5e56026f2ced4411c5c173c9159d0bbbeaf839"
+        },
+        "contentHash": "339acd6eb463a58954714d499de0110d87edfad5e6fa59ff58b163128b45ec08",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "outreach.new_need": [
+            "medical",
+            "behavioral",
+            "social",
+            "emergency"
+          ]
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "outreach",
+            "text": "New need identified: Medical, Behavioral, Social, Emergency"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "outreach",
+            "label": "Outreach / community encounter",
+            "value": "New need identified: Medical, Behavioral, Social, Emergency"
+          }
+        ],
+        "effectiveKeys": [
+          "outreach.new_need"
+        ],
+        "readModelHash": "fb4432ebf5e595df12fa602001edb91cfff35919ed88d26388800815bb465600",
+        "visibleHashes": {
+          "full": "d5b9530889d90d43635b19aafe9dbabedcf32532a9687ab6aff4f20eb461615d",
+          "noExams": "d5b9530889d90d43635b19aafe9dbabedcf32532a9687ab6aff4f20eb461615d",
+          "noSensitive": "d5b9530889d90d43635b19aafe9dbabedcf32532a9687ab6aff4f20eb461615d"
+        },
+        "contentHash": "a0e5b253d050ca9b31e0f01e957155d7bcd4fa9824acd70eb3258cc7293077a8",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "outreach.follow_up": "team_follow_up",
+          "outreach.interaction": "spoke_with_collateral",
+          "outreach.new_need": [
+            "medical",
+            "behavioral",
+            "social",
+            "emergency"
+          ],
+          "outreach.notes": "Demo",
+          "outreach.support": [
+            "food",
+            "clothing",
+            "hygiene",
+            "phone",
+            "charging",
+            "transportation",
+            "supplies",
+            "information"
+          ],
+          "outreach.type": "relationship"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "outreach",
+            "text": "Type: Relationship; Interaction: Spoke with collateral; Support provided: Food, Clothing, Hygiene, Phone, Charging, Transportation, Supplies, Information; New need identified: Medical, Behavioral, Social, Emergency; Notes: Demo; Follow-up: Team follow-up"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "outreach",
+            "label": "Outreach / community encounter",
+            "value": "Type: Relationship; Interaction: Spoke with collateral; Support provided: Food, Clothing, Hygiene, Phone, Charging, Transportation, Supplies, Information; New need identified: Medical, Behavioral, Social, Emergency; Notes: Demo; Follow-up: Team follow-up"
+          }
+        ],
+        "effectiveKeys": [
+          "outreach.follow_up",
+          "outreach.interaction",
+          "outreach.new_need",
+          "outreach.notes",
+          "outreach.support",
+          "outreach.type"
+        ],
+        "readModelHash": "a14744fbd268f443539404e3ae704df251758e84b7c70d4b01d4891b400d8891",
+        "visibleHashes": {
+          "full": "37f7b887511de6a87f43456c41d6b193ad7e74f799ae7e5a612a3b16df9ea827",
+          "noExams": "37f7b887511de6a87f43456c41d6b193ad7e74f799ae7e5a612a3b16df9ea827",
+          "noSensitive": "37f7b887511de6a87f43456c41d6b193ad7e74f799ae7e5a612a3b16df9ea827"
+        },
+        "contentHash": "a56283f5424c608996817867c443b62f9e28b67373aadc233097f638d8401cda",
+        "expansions": []
+      }
+    ]
+  },
+  {
+    "key": "psychological",
+    "version": 1,
+    "hash": "fa25dd91fe2b6627a36dcb170d4c0d4c6870de533341c53a1a3a35e6d2c73513",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "3a48c83d38fb700e53b10a0401f34003145cfbc7e6b1b1851adc0e4b9e6663c8",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "3a48c83d38fb700e53b10a0401f34003145cfbc7e6b1b1851adc0e4b9e6663c8",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "plan.intervention": [
+            "supportive_counseling"
+          ],
+          "plan.outcome": [
+            "patient_engaged"
+          ],
+          "reason.reasons": [
+            "check_in"
+          ],
+          "safety.homicidal": "denies",
+          "safety.immediate": "no",
+          "safety.suicidal": "denies"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "reason",
+            "text": "Reason for visit: Check-in"
+          },
+          {
+            "section": "safety",
+            "text": "Suicidal thoughts: Denies; Homicidal thoughts: Denies; Immediate safety concern: No"
+          },
+          {
+            "section": "plan",
+            "text": "Intervention: Supportive counseling; Outcome: Patient engaged"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "reason",
+            "label": "Reason for visit",
+            "value": "Reason for visit: Check-in"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "safety",
+            "label": "Safety",
+            "value": "Suicidal thoughts: Denies; Homicidal thoughts: Denies; Immediate safety concern: No"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "plan",
+            "label": "Intervention and outcome",
+            "value": "Intervention: Supportive counseling; Outcome: Patient engaged"
+          }
+        ],
+        "effectiveKeys": [
+          "plan.intervention",
+          "plan.outcome",
+          "reason.reasons",
+          "safety.homicidal",
+          "safety.immediate",
+          "safety.suicidal"
+        ],
+        "readModelHash": "489f13262e44e7cad311175534a5c0238632de402efaeb738d021d620a0ef40f",
+        "visibleHashes": {
+          "full": "5c216f20d2f16d8e5802f5c8ff7f30064b7c7b3337ac042ea2fdca7112a46775",
+          "noExams": "5c216f20d2f16d8e5802f5c8ff7f30064b7c7b3337ac042ea2fdca7112a46775",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "63ebed27f810be6d2475770c4deca131396ef6e681cd5c98edfa852bd3948371",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "safety.homicidal": "denies",
+          "safety.immediate": "no",
+          "safety.suicidal": "denies"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "safety",
+            "text": "Suicidal thoughts: Denies; Homicidal thoughts: Denies; Immediate safety concern: No"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "safety",
+            "label": "Safety",
+            "value": "Suicidal thoughts: Denies; Homicidal thoughts: Denies; Immediate safety concern: No"
+          }
+        ],
+        "effectiveKeys": [
+          "safety.homicidal",
+          "safety.immediate",
+          "safety.suicidal"
+        ],
+        "readModelHash": "27d153b96b2dbd4a041aa58c3a06631891f4b3f30d815b4e6e3554ea229dfecf",
+        "visibleHashes": {
+          "full": "ad8f2c5b34158081a39128ab13f3ad262b5f62e9296193ccce3cbd7b7a705b55",
+          "noExams": "ad8f2c5b34158081a39128ab13f3ad262b5f62e9296193ccce3cbd7b7a705b55",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "141c40a4d238cd6f28e5b6a2fff9a1fa6d1b72dddd56fa80652c16c2a2bf1112",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "mse.notes": "Demo",
+          "plan.intervention": [
+            "supportive_counseling",
+            "motivational_interviewing",
+            "grounding",
+            "crisis_intervention",
+            "safety_planning",
+            "psychoeducation",
+            "medication_discussion",
+            "warm_handoff",
+            "referral"
+          ],
+          "plan.outcome": [
+            "patient_engaged",
+            "follow_up_scheduled",
+            "referral_accepted",
+            "declined",
+            "crisis_response"
+          ],
+          "reason.concern": "Demo",
+          "reason.reasons": [
+            "check_in",
+            "anxiety",
+            "depression",
+            "psychosis",
+            "sleep",
+            "trauma",
+            "substance_use",
+            "crisis",
+            "medication",
+            "other"
+          ],
+          "reason.reasons_other": "Demo",
+          "safety.assessment": "Demo",
+          "safety.homicidal": "unable_to_assess",
+          "safety.immediate": "yes",
+          "safety.suicidal": "unable_to_assess"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "reason",
+            "text": "Reason for visit: Check-in, Anxiety, Depression, Psychosis, Sleep, Trauma, Substance Use, Crisis, Medication, Other: Demo; Current concern: Demo"
+          },
+          {
+            "section": "safety",
+            "text": "Suicidal thoughts: Unable to assess; Homicidal thoughts: Unable to assess; Immediate safety concern: Yes; Safety assessment: Demo"
+          },
+          {
+            "section": "mse",
+            "text": "Mental status exam: Demo"
+          },
+          {
+            "section": "plan",
+            "text": "Intervention: Supportive counseling, Motivational interviewing, Grounding, Crisis intervention, Safety planning, Psychoeducation, Medication discussion, Warm handoff, Referral; Outcome: Patient engaged, Follow-up scheduled, Referral accepted, Declined, Crisis response"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "reason",
+            "label": "Reason for visit",
+            "value": "Reason for visit: Check-in, Anxiety, Depression, Psychosis, Sleep, Trauma, Substance Use, Crisis, Medication, Other: Demo; Current concern: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "safety",
+            "label": "Safety",
+            "value": "Suicidal thoughts: Unable to assess; Homicidal thoughts: Unable to assess; Immediate safety concern: Yes; Safety assessment: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "mse",
+            "label": "Mental status exam",
+            "value": "Mental status exam: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "plan",
+            "label": "Intervention and outcome",
+            "value": "Intervention: Supportive counseling, Motivational interviewing, Grounding, Crisis intervention, Safety planning, Psychoeducation, Medication discussion, Warm handoff, Referral; Outcome: Patient engaged, Follow-up scheduled, Referral accepted, Declined, Crisis response"
+          }
+        ],
+        "effectiveKeys": [
+          "mse.notes",
+          "plan.intervention",
+          "plan.outcome",
+          "reason.concern",
+          "reason.reasons",
+          "reason.reasons_other",
+          "safety.assessment",
+          "safety.homicidal",
+          "safety.immediate",
+          "safety.suicidal"
+        ],
+        "readModelHash": "38a40616df3471af351ad854a2e5d4b6e0daa0c34b0e1e86c2670d94cca938b0",
+        "visibleHashes": {
+          "full": "68d3ef344bf81d7243961bdbef806a915770fb44094fe36398d7ce71fb933761",
+          "noExams": "68d3ef344bf81d7243961bdbef806a915770fb44094fe36398d7ce71fb933761",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "27fbd9f8bded2bd5f416ea93b755a3acfa3ba92798fcdc0eb1856916e1542652",
+        "expansions": []
+      }
+    ]
+  },
+  {
+    "key": "quick_encounter",
+    "version": 1,
+    "hash": "98984fab8f4dea4765e90a3a2c39ffcd189f16d1ca85d73a73ec4905e29b7820",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "f9e5cdbae7c341141c83b029286b85093896aadf5545a11e5a330438b29b9f49",
+        "expansions": [
+          {
+            "key": "general_primary_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "social_needs",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "wound_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          }
+        ]
+      },
+      {
+        "name": "normal",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "f9e5cdbae7c341141c83b029286b85093896aadf5545a11e5a330438b29b9f49",
+        "expansions": [
+          {
+            "key": "general_primary_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "social_needs",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "wound_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          }
+        ]
+      },
+      {
+        "name": "first",
+        "answers": {
+          "general.hpi": "yes",
+          "medication.delivery": "yes",
+          "medication.order": [
+            "otc"
+          ],
+          "social.needs": [
+            "housing"
+          ],
+          "social.referral": "yes",
+          "social.support": [
+            "water"
+          ],
+          "visit.parts": [
+            "general"
+          ],
+          "wound.drainage": "none",
+          "wound.dressing": [
+            "gauze"
+          ],
+          "wound.location.region": "head",
+          "wound.location.side": "right",
+          "wound.type": "venous"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "visit",
+            "text": "What does this visit cover?: GENERAL"
+          },
+          {
+            "section": "general",
+            "text": "History of present illness: Yes"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "visit",
+            "label": "Visit",
+            "value": "What does this visit cover?: GENERAL"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "general",
+            "label": "General",
+            "value": "History of present illness: Yes"
+          }
+        ],
+        "effectiveKeys": [
+          "general.hpi",
+          "visit.parts"
+        ],
+        "readModelHash": "bf856650ed069762748167cc7b0e14828d8b9040bb8f94f016253e0739af208c",
+        "visibleHashes": {
+          "full": "b30b3fc0ac3095a67bbcca22d48a22b2f584e3c1ad318d2895d3128f79eb4aa7",
+          "noExams": "b30b3fc0ac3095a67bbcca22d48a22b2f584e3c1ad318d2895d3128f79eb4aa7",
+          "noSensitive": "b30b3fc0ac3095a67bbcca22d48a22b2f584e3c1ad318d2895d3128f79eb4aa7"
+        },
+        "contentHash": "c3585798c5ad1944979ab5bbc0676c29de38acea3ee901d1ef388f7839e5204a",
+        "expansions": [
+          {
+            "key": "general_primary_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "social_needs",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "wound_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          }
+        ]
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "general.hpi": "yes",
+          "medication.delivery": "yes",
+          "social.referral": "yes",
+          "visit.parts": [
+            "general",
+            "wound",
+            "social_needs",
+            "medication"
+          ]
+        },
+        "finishCheck": [
+          {
+            "section": "social",
+            "path": "social.referral_details",
+            "problem": "required"
+          },
+          {
+            "section": "medication",
+            "path": "medication.instructions",
+            "problem": "required"
+          }
+        ],
+        "recapLines": [
+          {
+            "section": "visit",
+            "text": "What does this visit cover?: GENERAL, WOUND, SOCIAL NEEDS, MEDICATION"
+          },
+          {
+            "section": "general",
+            "text": "History of present illness: Yes"
+          },
+          {
+            "section": "social",
+            "text": "Referral: Yes"
+          },
+          {
+            "section": "medication",
+            "text": "Delivery: YES"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "visit",
+            "label": "Visit",
+            "value": "What does this visit cover?: GENERAL, WOUND, SOCIAL NEEDS, MEDICATION"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "general",
+            "label": "General",
+            "value": "History of present illness: Yes"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "social",
+            "label": "Social needs",
+            "value": "Referral: Yes"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "medication",
+            "label": "Medication",
+            "value": "Delivery: YES"
+          }
+        ],
+        "effectiveKeys": [
+          "general.hpi",
+          "medication.delivery",
+          "social.referral",
+          "visit.parts"
+        ],
+        "readModelHash": "d1d1aae27afc6452da97b7252d6089a022982b48cbd536731c3441d3ff83c432",
+        "visibleHashes": {
+          "full": "21ad0d624d2013efbc4bb6cbf9955e7ce934f2cce9caae7ed850997bc6bb93cc",
+          "noExams": "21ad0d624d2013efbc4bb6cbf9955e7ce934f2cce9caae7ed850997bc6bb93cc",
+          "noSensitive": "21ad0d624d2013efbc4bb6cbf9955e7ce934f2cce9caae7ed850997bc6bb93cc"
+        },
+        "contentHash": "02957373f18703dab624687bea856ac4cba88859a06fcc198e31473f176fb1ef",
+        "expansions": [
+          {
+            "key": "general_primary_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "social_needs",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          },
+          {
+            "key": "wound_care",
+            "version": 1,
+            "answers": {},
+            "leftOut": []
+          }
+        ]
+      },
+      {
+        "name": "every",
+        "answers": {
+          "general.assessment": "Demo",
+          "general.bp.diastolic": 0,
+          "general.bp.systolic": 0,
+          "general.concern": "Demo",
+          "general.hpi": "unknown",
+          "general.hpi_details": "Demo",
+          "general.hr": 0,
+          "general.temp": 50,
+          "medication.delivery": "no",
+          "medication.instructions": "Demo",
+          "medication.order": [
+            "otc",
+            "prescription"
+          ],
+          "social.needs": [
+            "housing",
+            "transportation",
+            "id",
+            "phone",
+            "benefits"
+          ],
+          "social.referral": "no",
+          "social.referral_details": "Demo",
+          "social.support": [
+            "water",
+            "food",
+            "hygiene_kit",
+            "socks",
+            "handwarmers",
+            "ride_arranged"
+          ],
+          "visit.parts": [
+            "general",
+            "wound",
+            "social_needs",
+            "medication"
+          ],
+          "wound.dimensions.depth": 0,
+          "wound.dimensions.length": 0.1,
+          "wound.dimensions.width": 0.1,
+          "wound.drainage": "large",
+          "wound.dressing": [
+            "gauze",
+            "abd",
+            "xeroform",
+            "compression",
+            "other"
+          ],
+          "wound.dressing_other": "Demo",
+          "wound.location.region": "groin",
+          "wound.location.side": "bilateral",
+          "wound.type": "other",
+          "wound.type_other": "Demo"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "visit",
+            "text": "What does this visit cover?: GENERAL, WOUND, SOCIAL NEEDS, MEDICATION"
+          },
+          {
+            "section": "general",
+            "text": "Chief concern: Demo; History of present illness: Unknown; Blood pressure, Systolic: 0 mmHg; Blood pressure, Diastolic: 0 mmHg; Heart rate: 0 bpm; Temperature: 50.0 °F; Assessment: Demo"
+          },
+          {
+            "section": "wound",
+            "text": "Wound type: Other: Demo; Location: Groin, Bilateral; Dimensions (L × W × D), Length: 0.1 cm; Dimensions (L × W × D), Width: 0.1 cm; Dimensions (L × W × D), Depth: 0.0 cm; Drainage: Large; Dressing applied: Gauze, ABD, Xeroform, Compression, Other: Demo"
+          },
+          {
+            "section": "social",
+            "text": "Support: Water, Food, Hygiene Kit, Socks, Handwarmers, Ride arranged; Needs: Housing, Transportation, ID Documents, Phone, Benefits; Referral: No"
+          },
+          {
+            "section": "medication",
+            "text": "Order: OTC, Prescription; Delivery: NO"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "general",
+            "label": "Chief concern",
+            "value": "Demo"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "general",
+            "label": "Blood pressure, Systolic",
+            "value": "0 mmHg"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "general",
+            "label": "Blood pressure, Diastolic",
+            "value": "0 mmHg"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "general",
+            "label": "Heart rate",
+            "value": "0 bpm"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "general",
+            "label": "Temperature",
+            "value": "50.0 °F"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "visit",
+            "label": "Visit",
+            "value": "What does this visit cover?: GENERAL, WOUND, SOCIAL NEEDS, MEDICATION"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "general",
+            "label": "General",
+            "value": "Chief concern: Demo; History of present illness: Unknown; Blood pressure, Systolic: 0 mmHg; Blood pressure, Diastolic: 0 mmHg; Heart rate: 0 bpm; Temperature: 50.0 °F; Assessment: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "wound",
+            "label": "Wound",
+            "value": "Wound type: Other: Demo; Location: Groin, Bilateral; Dimensions (L × W × D), Length: 0.1 cm; Dimensions (L × W × D), Width: 0.1 cm; Dimensions (L × W × D), Depth: 0.0 cm; Drainage: Large; Dressing applied: Gauze, ABD, Xeroform, Compression, Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "social",
+            "label": "Social needs",
+            "value": "Support: Water, Food, Hygiene Kit, Socks, Handwarmers, Ride arranged; Needs: Housing, Transportation, ID Documents, Phone, Benefits; Referral: No"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "medication",
+            "label": "Medication",
+            "value": "Order: OTC, Prescription; Delivery: NO"
+          }
+        ],
+        "effectiveKeys": [
+          "general.assessment",
+          "general.bp.diastolic",
+          "general.bp.systolic",
+          "general.concern",
+          "general.hpi",
+          "general.hr",
+          "general.temp",
+          "medication.delivery",
+          "medication.order",
+          "social.needs",
+          "social.referral",
+          "social.support",
+          "visit.parts",
+          "wound.dimensions.depth",
+          "wound.dimensions.length",
+          "wound.dimensions.width",
+          "wound.drainage",
+          "wound.dressing",
+          "wound.dressing_other",
+          "wound.location.region",
+          "wound.location.side",
+          "wound.type",
+          "wound.type_other"
+        ],
+        "readModelHash": "b7451301c84de74e09aa0b991f33fcb1259ef823908c11e2ce9865cfa4e0119b",
+        "visibleHashes": {
+          "full": "a352f71958ea610722a3d4341f7fcd0df7764aaa9ae105f4915fcc53e7492ca9",
+          "noExams": "a352f71958ea610722a3d4341f7fcd0df7764aaa9ae105f4915fcc53e7492ca9",
+          "noSensitive": "a352f71958ea610722a3d4341f7fcd0df7764aaa9ae105f4915fcc53e7492ca9"
+        },
+        "contentHash": "b933eabf7f3467d0799a623c30a1c65bc1cf039232f9396ef8e2e9b46cbd9f50",
+        "expansions": [
+          {
+            "key": "general_primary_care",
+            "version": 1,
+            "answers": {
+              "reason.concern": "Demo",
+              "vitals.e0000002.bp.diastolic": 0,
+              "vitals.e0000002.bp.systolic": 0,
+              "vitals.e0000002.entryAt": "2000-01-02T00:00:00Z",
+              "vitals.e0000002.hr": 0,
+              "vitals.e0000002.temp": 50
+            },
+            "leftOut": []
+          },
+          {
+            "key": "social_needs",
+            "version": 1,
+            "answers": {
+              "needs.needs": [
+                "housing",
+                "phone",
+                "transportation",
+                "id",
+                "benefits"
+              ]
+            },
+            "leftOut": []
+          },
+          {
+            "key": "wound_care",
+            "version": 1,
+            "answers": {
+              "wound.e0000002.drainage_amount": "large",
+              "wound.e0000002.entryAt": "2000-01-02T00:00:00Z",
+              "wound.e0000002.location.region": "groin",
+              "wound.e0000002.location.side": "bilateral",
+              "wound.e0000002.measurements.depth": 0,
+              "wound.e0000002.measurements.length": 0.1,
+              "wound.e0000002.measurements.width": 0.1,
+              "wound.e0000002.treatment.dressing": [
+                "gauze",
+                "xeroform",
+                "abd",
+                "compression",
+                "other"
+              ],
+              "wound.e0000002.treatment.dressing_other": "Demo",
+              "wound.e0000002.type": "other",
+              "wound.e0000002.type_other": "Demo"
+            },
+            "leftOut": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "key": "red_flags_disposition",
+    "version": 1,
+    "hash": "2405d5dfd7c1f4be42cea45a81d634a76ced05189aff3e9f67dd78f7ed49c41c",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [
+          {
+            "section": "red_flags",
+            "path": "red_flags.emergency",
+            "problem": "required"
+          }
+        ],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "8c428bf06f92297253d069f790e0e32b106cac0194b66498049f843ab621e183",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {},
+        "finishCheck": [
+          {
+            "section": "red_flags",
+            "path": "red_flags.emergency",
+            "problem": "required"
+          }
+        ],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "8c428bf06f92297253d069f790e0e32b106cac0194b66498049f843ab621e183",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "disposition.disposition": [
+            "follow_up"
+          ],
+          "follow_up.when": "next_street_clinic",
+          "red_flags.emergency": "no",
+          "red_flags.ems_activated": "yes",
+          "red_flags.no_transport_reason": "patient_declined",
+          "red_flags.transport": "yes"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "red_flags",
+            "text": "Does the patient require emergency evaluation?: NO"
+          },
+          {
+            "section": "disposition",
+            "text": "Disposition: Follow-up"
+          },
+          {
+            "section": "follow_up",
+            "text": "Follow up: Next street clinic"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Does the patient require emergency evaluation?",
+            "value": "NO"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Red flags",
+            "value": "Does the patient require emergency evaluation?: NO"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "disposition",
+            "label": "Disposition",
+            "value": "Disposition: Follow-up"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "follow_up",
+            "label": "Follow up",
+            "value": "Follow up: Next street clinic"
+          }
+        ],
+        "effectiveKeys": [
+          "disposition.disposition",
+          "follow_up.when",
+          "red_flags.emergency"
+        ],
+        "readModelHash": "caa70491986d0a628285252c69e1e1de7fd78197e44c9746de26765840b3875a",
+        "visibleHashes": {
+          "full": "0598b392f7b9100d4002c72cbdabc471d480ed4ea9a2c13ba0cfd33ec94ecd53",
+          "noExams": "0598b392f7b9100d4002c72cbdabc471d480ed4ea9a2c13ba0cfd33ec94ecd53",
+          "noSensitive": "0598b392f7b9100d4002c72cbdabc471d480ed4ea9a2c13ba0cfd33ec94ecd53"
+        },
+        "contentHash": "b1ad6433456eacbda15b402de3a8ae548bb9aadc16183ba310e454f434dd42c4",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "follow_up.when": "next_street_clinic",
+          "red_flags.emergency": "no",
+          "red_flags.ems_activated": "yes",
+          "red_flags.transport": "yes"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "red_flags",
+            "text": "Does the patient require emergency evaluation?: NO"
+          },
+          {
+            "section": "follow_up",
+            "text": "Follow up: Next street clinic"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Does the patient require emergency evaluation?",
+            "value": "NO"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Red flags",
+            "value": "Does the patient require emergency evaluation?: NO"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "follow_up",
+            "label": "Follow up",
+            "value": "Follow up: Next street clinic"
+          }
+        ],
+        "effectiveKeys": [
+          "follow_up.when",
+          "red_flags.emergency"
+        ],
+        "readModelHash": "9a387fe5043f2792e42f51c911728077afa0615c5021d83912570a7845b04d9c",
+        "visibleHashes": {
+          "full": "3b19ae5570ba783365d34fa390ed9e8903ba6733b00fd8120abe460d2d1d4224",
+          "noExams": "3b19ae5570ba783365d34fa390ed9e8903ba6733b00fd8120abe460d2d1d4224",
+          "noSensitive": "3b19ae5570ba783365d34fa390ed9e8903ba6733b00fd8120abe460d2d1d4224"
+        },
+        "contentHash": "4c5a94225fa0d97c77f63b03f78eaea4201fe8beb1f46d1ea214fcf2b1d99e4e",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "disposition.disposition": [
+            "follow_up",
+            "pcp",
+            "specialty",
+            "declined"
+          ],
+          "follow_up.date": "2000-01-01",
+          "follow_up.details": "Demo",
+          "follow_up.when": "prn",
+          "red_flags.emergency": "yes",
+          "red_flags.ems_activated": "no",
+          "red_flags.ems_time": "12:00",
+          "red_flags.no_transport_reason": "other",
+          "red_flags.no_transport_reason_other": "Demo",
+          "red_flags.transport": "no"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "red_flags",
+            "text": "Does the patient require emergency evaluation?: YES; EMS activated?: NO; Patient agrees to transport?: NO; Reason not transported: Other: Demo"
+          },
+          {
+            "section": "disposition",
+            "text": "Disposition: Follow-up, PCP, Specialty, Declined"
+          },
+          {
+            "section": "follow_up",
+            "text": "Follow up: PRN; Follow-up details: Demo"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Does the patient require emergency evaluation?",
+            "value": "YES"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "red_flags",
+            "label": "EMS activated?",
+            "value": "NO"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Patient agrees to transport?",
+            "value": "NO"
+          },
+          {
+            "kind": "field",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Reason not transported",
+            "value": "Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "red_flags",
+            "label": "Red flags",
+            "value": "Does the patient require emergency evaluation?: YES; EMS activated?: NO; Patient agrees to transport?: NO; Reason not transported: Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "disposition",
+            "label": "Disposition",
+            "value": "Disposition: Follow-up, PCP, Specialty, Declined"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "follow_up",
+            "label": "Follow up",
+            "value": "Follow up: PRN; Follow-up details: Demo"
+          }
+        ],
+        "effectiveKeys": [
+          "disposition.disposition",
+          "follow_up.details",
+          "follow_up.when",
+          "red_flags.emergency",
+          "red_flags.ems_activated",
+          "red_flags.no_transport_reason",
+          "red_flags.no_transport_reason_other",
+          "red_flags.transport"
+        ],
+        "readModelHash": "e5cbde4ba9beb9ce0e38d5b19a6b55667fd44f9a8365633170c745a3d696ef4b",
+        "visibleHashes": {
+          "full": "2c8c79c13c2a49e4466b07c1713430097eb887bc6141041c964416eb83c334af",
+          "noExams": "2c8c79c13c2a49e4466b07c1713430097eb887bc6141041c964416eb83c334af",
+          "noSensitive": "2c8c79c13c2a49e4466b07c1713430097eb887bc6141041c964416eb83c334af"
+        },
+        "contentHash": "ed6900a819e85cd02ddac9f13fac7db23444a0ed7465b8b14bec58f522ffb2b4",
+        "expansions": []
+      }
+    ]
+  },
+  {
+    "key": "sexual_reproductive",
+    "version": 1,
+    "hash": "f78359bdfb79abae99ad42967138e029b0890a0e5de702279b6f76f93d7d2f89",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "b5cf81f84c7e20a49745379df6e507bbd47e60e999b5107d7f2fdfc0871efa39",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {
+          "testing.e0000001.entryAt": "2000-01-01T00:00:00Z"
+        },
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [
+          "testing.e0000001.entryAt"
+        ],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "38110bbdd1fb12121df291ae366150358119a9e3ab023d44e595e5045c9aa084",
+          "noExams": "38110bbdd1fb12121df291ae366150358119a9e3ab023d44e595e5045c9aa084",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "c905bbbc2a9e200f6993bb3d76d1be1644147e3a15b7000b57c9aca6acda4500",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "contraception.change": "yes",
+          "contraception.method": "none",
+          "follow_up.plan": [
+            "results_needed"
+          ],
+          "menstrual.heavy": "no",
+          "menstrual.status": "regular",
+          "pregnancy.desired": "yes",
+          "pregnancy.possible": "no",
+          "pregnancy.test": "positive",
+          "pregnant.history": [
+            "gestational_diabetes"
+          ],
+          "pregnant.symptoms": [
+            "vaginal_bleeding"
+          ],
+          "prevention.provided": [
+            "condoms_provided"
+          ],
+          "reason.reasons": [
+            "sti_concern"
+          ],
+          "symptoms.reported": [
+            "none"
+          ],
+          "testing.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "testing.e0000001.result": "positive",
+          "testing.e0000001.test": "hiv"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "reason",
+            "text": "Reason: STI concern"
+          },
+          {
+            "section": "symptoms",
+            "text": "Symptoms: None"
+          },
+          {
+            "section": "testing",
+            "text": "Test 1: Test: HIV; Result: Positive"
+          },
+          {
+            "section": "prevention",
+            "text": "Prevention: Condoms provided"
+          },
+          {
+            "section": "follow_up",
+            "text": "Follow-up: Results needed"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "reason",
+            "label": "Reason",
+            "value": "Reason: STI concern"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "symptoms",
+            "label": "Symptoms",
+            "value": "Symptoms: None"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "testing",
+            "label": "Testing history",
+            "value": "Test 1: Test: HIV; Result: Positive"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "prevention",
+            "label": "Prevention",
+            "value": "Prevention: Condoms provided"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "follow_up",
+            "label": "Follow-up",
+            "value": "Follow-up: Results needed"
+          }
+        ],
+        "effectiveKeys": [
+          "follow_up.plan",
+          "prevention.provided",
+          "reason.reasons",
+          "symptoms.reported",
+          "testing.e0000001.entryAt",
+          "testing.e0000001.result",
+          "testing.e0000001.test"
+        ],
+        "readModelHash": "7fa270bac4daf122ec1d3c6537573ba68fdf88e0ddb6da83b32caf9f81e6085a",
+        "visibleHashes": {
+          "full": "9575d2c8f1999cb179d5150f91f6e9b75992908c7f505ea485b8eaf4ef3a532e",
+          "noExams": "9575d2c8f1999cb179d5150f91f6e9b75992908c7f505ea485b8eaf4ef3a532e",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "c8105be87f481287b1beda88c642f3b504e1359752df56ee365977e1219056e9",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "pregnancy.known": true,
+          "pregnancy.test": "positive",
+          "reason.reasons": [
+            "sti_concern",
+            "sti_exposure",
+            "testing",
+            "pregnancy",
+            "contraception",
+            "prep",
+            "pep",
+            "menstrual",
+            "symptoms",
+            "other"
+          ],
+          "testing.e0000001.entryAt": "2000-01-01T00:00:00Z"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "reason",
+            "text": "Reason: STI concern, STI exposure, Testing, Pregnancy, Contraception, PrEP, PEP, Menstrual, Symptoms, Other"
+          },
+          {
+            "section": "pregnancy",
+            "text": "Known pregnancy, no test today: Yes"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "reason",
+            "label": "Reason",
+            "value": "Reason: STI concern, STI exposure, Testing, Pregnancy, Contraception, PrEP, PEP, Menstrual, Symptoms, Other"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "pregnancy",
+            "label": "Pregnancy",
+            "value": "Known pregnancy, no test today: Yes"
+          }
+        ],
+        "effectiveKeys": [
+          "pregnancy.known",
+          "reason.reasons",
+          "testing.e0000001.entryAt"
+        ],
+        "readModelHash": "98ef3743b7ed31ef182b0fc5210e947d6c6afac8691f73378b9ca96fe69772f6",
+        "visibleHashes": {
+          "full": "1e1d531489db9aa9a30be1af233d85ec00c423ba7c3f449b36d3c64869066143",
+          "noExams": "1e1d531489db9aa9a30be1af233d85ec00c423ba7c3f449b36d3c64869066143",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "758228bfff0398ee99d50ef6bcbe20b82c7fa7f2887950be9c2ed789b4cae25d",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "contraception.change": "unsure",
+          "contraception.method": "other",
+          "contraception.method_other": "Demo",
+          "follow_up.plan": [
+            "results_needed",
+            "referral",
+            "pcp"
+          ],
+          "lmp.approximate": true,
+          "lmp.date": "2000-01-01",
+          "menstrual.cycle": 1,
+          "menstrual.duration": 1,
+          "menstrual.heavy": "yes",
+          "menstrual.pain": 0,
+          "menstrual.status": "postmenopausal",
+          "pregnancy.desired": "no",
+          "pregnancy.known": true,
+          "pregnancy.possible": "unsure",
+          "pregnancy.test": "negative",
+          "pregnant.due_date": "2000-01-01",
+          "pregnant.gestational_age": 10,
+          "pregnant.gravida": 1,
+          "pregnant.history": [
+            "gestational_diabetes",
+            "gestational_hypertension",
+            "preeclampsia",
+            "eclampsia",
+            "preterm_birth",
+            "preterm_labor",
+            "placental_problems",
+            "ectopic_pregnancy",
+            "miscarriage",
+            "stillbirth",
+            "cesarean_delivery",
+            "postpartum_hemorrhage",
+            "other"
+          ],
+          "pregnant.history_other": "Demo",
+          "pregnant.para": 0,
+          "pregnant.symptoms": [
+            "vaginal_bleeding",
+            "pelvic_abdominal_pain",
+            "severe_nausea_vomiting",
+            "fever",
+            "dizziness_syncope",
+            "headache",
+            "vision_changes",
+            "swelling",
+            "leakage_of_fluid",
+            "decreased_fetal_movement",
+            "contractions",
+            "other"
+          ],
+          "pregnant.symptoms_other": "Demo",
+          "prevention.provided": [
+            "condoms_provided",
+            "prep_discussed",
+            "pep_discussed",
+            "vaccine",
+            "safer_sex_counseling"
+          ],
+          "reason.reasons": [
+            "sti_concern",
+            "sti_exposure",
+            "testing",
+            "pregnancy",
+            "contraception",
+            "prep",
+            "pep",
+            "menstrual",
+            "symptoms",
+            "other"
+          ],
+          "reason.reasons_other": "Demo",
+          "symptoms.reported": [
+            "discharge",
+            "dysuria",
+            "lesion",
+            "pelvic_pain",
+            "testicular_pain",
+            "rash"
+          ],
+          "testing.e0000001.date": "2000-01-01",
+          "testing.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "testing.e0000001.result": "unknown",
+          "testing.e0000001.test": "pregnancy"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "reason",
+            "text": "Reason: STI concern, STI exposure, Testing, Pregnancy, Contraception, PrEP, PEP, Menstrual, Symptoms, Other: Demo"
+          },
+          {
+            "section": "pregnancy",
+            "text": "Known pregnancy, no test today: Yes; Pregnancy possible?: Unsure; Pregnancy desired?: No"
+          },
+          {
+            "section": "lmp",
+            "text": "Date of last menstrual period: 2000-01-01; Approximate: Yes"
+          },
+          {
+            "section": "contraception",
+            "text": "Current method: Other: Demo; Interested in changing method?: Unsure"
+          },
+          {
+            "section": "menstrual",
+            "text": "Status: Postmenopausal; Typical cycle: 1 days; Typical duration: 1 days; Heavy bleeding?: Yes; Pain: 0 of 10"
+          },
+          {
+            "section": "pregnant",
+            "text": "Gestational age: 1 week 3 days; Estimated due date: 2000-01-01; Gravida: 1; Para: 0; Pregnancy history / current complications: Gestational diabetes, Gestational hypertension, Preeclampsia, Eclampsia, Preterm birth, Preterm labor, Placental Problems, Ectopic pregnancy, Miscarriage, Stillbirth, Cesarean delivery, Postpartum hemorrhage, Other: Demo; Current symptoms: Vaginal bleeding, Pelvic / Abdominal pain, Severe nausea / vomiting, Fever, Dizziness / syncope, Headache, Vision changes, Swelling, Leakage of fluid, Decreased fetal movement, Contractions, Other: Demo"
+          },
+          {
+            "section": "symptoms",
+            "text": "Symptoms: Discharge, Dysuria, Lesion, Pelvic pain, Testicular pain, Rash"
+          },
+          {
+            "section": "testing",
+            "text": "Test 1: Test: Pregnancy; Date: 2000-01-01; Result: Unknown"
+          },
+          {
+            "section": "prevention",
+            "text": "Prevention: Condoms provided, PrEP discussed, PEP discussed, Vaccine, Safer sex counseling"
+          },
+          {
+            "section": "follow_up",
+            "text": "Follow-up: Results needed, Referral, PCP"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "reason",
+            "label": "Reason",
+            "value": "Reason: STI concern, STI exposure, Testing, Pregnancy, Contraception, PrEP, PEP, Menstrual, Symptoms, Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "pregnancy",
+            "label": "Pregnancy",
+            "value": "Known pregnancy, no test today: Yes; Pregnancy possible?: Unsure; Pregnancy desired?: No"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "lmp",
+            "label": "Last menstrual period",
+            "value": "Date of last menstrual period: 2000-01-01; Approximate: Yes"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "contraception",
+            "label": "Contraception",
+            "value": "Current method: Other: Demo; Interested in changing method?: Unsure"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "menstrual",
+            "label": "Menstrual health",
+            "value": "Status: Postmenopausal; Typical cycle: 1 days; Typical duration: 1 days; Heavy bleeding?: Yes; Pain: 0 of 10"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "pregnant",
+            "label": "Current pregnancy",
+            "value": "Gestational age: 1 week 3 days; Estimated due date: 2000-01-01; Gravida: 1; Para: 0; Pregnancy history / current complications: Gestational diabetes, Gestational hypertension, Preeclampsia, Eclampsia, Preterm birth, Preterm labor, Placental Problems, Ectopic pregnancy, Miscarriage, Stillbirth, Cesarean delivery, Postpartum hemorrhage, Other: Demo; Current symptoms: Vaginal bleeding, Pelvic / Abdominal pain, Severe nausea / vomiting, Fever, Dizziness / syncope, Headache, Vision changes, Swelling, Leakage of fluid, Decreased fetal movement, Contractions, Other: Demo"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "symptoms",
+            "label": "Symptoms",
+            "value": "Symptoms: Discharge, Dysuria, Lesion, Pelvic pain, Testicular pain, Rash"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "testing",
+            "label": "Testing history",
+            "value": "Test 1: Test: Pregnancy; Date: 2000-01-01; Result: Unknown"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "prevention",
+            "label": "Prevention",
+            "value": "Prevention: Condoms provided, PrEP discussed, PEP discussed, Vaccine, Safer sex counseling"
+          },
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "follow_up",
+            "label": "Follow-up",
+            "value": "Follow-up: Results needed, Referral, PCP"
+          }
+        ],
+        "effectiveKeys": [
+          "contraception.change",
+          "contraception.method",
+          "contraception.method_other",
+          "follow_up.plan",
+          "lmp.approximate",
+          "lmp.date",
+          "menstrual.cycle",
+          "menstrual.duration",
+          "menstrual.heavy",
+          "menstrual.pain",
+          "menstrual.status",
+          "pregnancy.desired",
+          "pregnancy.known",
+          "pregnancy.possible",
+          "pregnant.due_date",
+          "pregnant.gestational_age",
+          "pregnant.gravida",
+          "pregnant.history",
+          "pregnant.history_other",
+          "pregnant.para",
+          "pregnant.symptoms",
+          "pregnant.symptoms_other",
+          "prevention.provided",
+          "reason.reasons",
+          "reason.reasons_other",
+          "symptoms.reported",
+          "testing.e0000001.date",
+          "testing.e0000001.entryAt",
+          "testing.e0000001.result",
+          "testing.e0000001.test"
+        ],
+        "readModelHash": "e785abf9665c2e1e35b29414a8a9d2b0691a7146dcc80d7906f619539368e43b",
+        "visibleHashes": {
+          "full": "a70e6c22544aa7c26a788d2b5801691565288dba530c75e06151371d87f2d079",
+          "noExams": "a70e6c22544aa7c26a788d2b5801691565288dba530c75e06151371d87f2d079",
+          "noSensitive": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "contentHash": "80fa70c41d88e278945063c5096f23d9ce9f5f619fb843f7958b8b488d339e35",
+        "expansions": []
+      }
+    ]
+  },
+  {
+    "key": "social_needs",
+    "version": 1,
+    "hash": "bf1a01244f72273f90bef73fded1bb814f4c762bba90b204583a3257d9ca007e",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "dbd491e9136f359405b6424759047b472628e2211cae45836899411bb4452b60",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "dbd491e9136f359405b6424759047b472628e2211cae45836899411bb4452b60",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "needs.housing": "unsheltered",
+          "needs.needs": [
+            "housing"
+          ]
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "needs",
+            "text": "Current needs: Housing; Housing status: Unsheltered"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "needs",
+            "label": "Social needs",
+            "value": "Current needs: Housing; Housing status: Unsheltered"
+          }
+        ],
+        "effectiveKeys": [
+          "needs.housing",
+          "needs.needs"
+        ],
+        "readModelHash": "5558264d1f68bad2fdc9b487a6437ed64e12403235d7501b2eb60a8876266f4d",
+        "visibleHashes": {
+          "full": "68e0bde8603d077bdaae7909c558ded9766c6047d71a2a5e4f675204f6b8d920",
+          "noExams": "68e0bde8603d077bdaae7909c558ded9766c6047d71a2a5e4f675204f6b8d920",
+          "noSensitive": "68e0bde8603d077bdaae7909c558ded9766c6047d71a2a5e4f675204f6b8d920"
+        },
+        "contentHash": "bcb97db388ad35e2d37863a286757b01f89d2ab37cd6425dc8a11f3ca107ef45",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "dbd491e9136f359405b6424759047b472628e2211cae45836899411bb4452b60",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "needs.housing": "other",
+          "needs.housing_other": "Demo",
+          "needs.needs": [
+            "housing",
+            "food",
+            "hygiene",
+            "clothing",
+            "phone",
+            "charging",
+            "transportation",
+            "medication",
+            "id",
+            "financial",
+            "legal",
+            "pet",
+            "benefits",
+            "other"
+          ],
+          "needs.needs_other": "Demo"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "needs",
+            "text": "Current needs: Housing, Food, Hygiene, Clothing, Phone, Charging, Transportation, Medication, ID, Financial, Legal, Pet, Benefits, Other: Demo; Housing status: Other: Demo"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "needs",
+            "label": "Social needs",
+            "value": "Current needs: Housing, Food, Hygiene, Clothing, Phone, Charging, Transportation, Medication, ID, Financial, Legal, Pet, Benefits, Other: Demo; Housing status: Other: Demo"
+          }
+        ],
+        "effectiveKeys": [
+          "needs.housing",
+          "needs.housing_other",
+          "needs.needs",
+          "needs.needs_other"
+        ],
+        "readModelHash": "f25a8f7f0558823e06412827cc1cca3084537b31df7dc7b9d8e78b36a1f4b816",
+        "visibleHashes": {
+          "full": "9ef2f4dcea121fcf4000ed952540b517b438d781e2de7ad351719a20b42b132f",
+          "noExams": "9ef2f4dcea121fcf4000ed952540b517b438d781e2de7ad351719a20b42b132f",
+          "noSensitive": "9ef2f4dcea121fcf4000ed952540b517b438d781e2de7ad351719a20b42b132f"
+        },
+        "contentHash": "dd2812c68919c08c48ec07e7572fd13b7e7e10076d75c5c4e7e24a19a1ab01f3",
+        "expansions": []
+      }
+    ]
+  },
+  {
+    "key": "wound_care",
+    "version": 1,
+    "hash": "a0eebdfe0226c49671853bb36f694145eb229a9f7bf6b7eeb2cd9921f2490758",
+    "cases": [
+      {
+        "name": "blank",
+        "answers": {},
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noExams": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "noSensitive": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "contentHash": "6c0326e2bcd1c353b63aea36095f30ebc2002ab1791e7cfb08d156a160ccfb1b",
+        "expansions": []
+      },
+      {
+        "name": "normal",
+        "answers": {
+          "wound.e0000001.entryAt": "2000-01-01T00:00:00Z"
+        },
+        "finishCheck": [],
+        "recapLines": [],
+        "handoffLines": [],
+        "effectiveKeys": [
+          "wound.e0000001.entryAt"
+        ],
+        "readModelHash": "777b5863d801327b008f5610aa3eb3a4fb47554f056e0961b393075db17a4274",
+        "visibleHashes": {
+          "full": "dba79eea708f34583d8cef06aacae23fe3af74a057e8633d07a3b272ffc70043",
+          "noExams": "dba79eea708f34583d8cef06aacae23fe3af74a057e8633d07a3b272ffc70043",
+          "noSensitive": "dba79eea708f34583d8cef06aacae23fe3af74a057e8633d07a3b272ffc70043"
+        },
+        "contentHash": "49c3bd713c3ec09b24901215b264d7de46ff918169dcb6b5b7d899af17b5db33",
+        "expansions": []
+      },
+      {
+        "name": "first",
+        "answers": {
+          "wound.e0000001.bed": [
+            "granulation"
+          ],
+          "wound.e0000001.drainage_amount": "none",
+          "wound.e0000001.drainage_type": "none",
+          "wound.e0000001.duration": "under_1_wk",
+          "wound.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "wound.e0000001.infection.findings": [
+            "increasing_redness"
+          ],
+          "wound.e0000001.infection.systemic": [
+            "none"
+          ],
+          "wound.e0000001.infection_concern": "no",
+          "wound.e0000001.location.region": "head",
+          "wound.e0000001.location.side": "right",
+          "wound.e0000001.location.surface": "anterior",
+          "wound.e0000001.periwound": [
+            "intact"
+          ],
+          "wound.e0000001.treatment.cleansing": [
+            "none"
+          ],
+          "wound.e0000001.treatment.dressing": [
+            "gauze"
+          ],
+          "wound.e0000001.treatment.follow_up": "tomorrow",
+          "wound.e0000001.treatment.medication": [
+            "topical"
+          ],
+          "wound.e0000001.treatment.procedure": [
+            "none"
+          ],
+          "wound.e0000001.type": "venous"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "wound",
+            "text": "Wound 1: Location: Head, Right, Anterior; Wound type: Venous; Duration: <1 wk; Wound bed: Granulation; Drainage amount: None; Periwound: Intact; Infection concern: No; Infection details, Infection findings: Increasing Redness; Infection details, Systemic symptoms: None; Wound treatment, Cleansing: None; Wound treatment, Procedure: None; Wound treatment, Dressing: Gauze; Wound treatment, Medication: Topical; Wound treatment, Follow-up: Tomorrow"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "wound",
+            "label": "Wound",
+            "value": "Wound 1: Location: Head, Right, Anterior; Wound type: Venous; Duration: <1 wk; Wound bed: Granulation; Drainage amount: None; Periwound: Intact; Infection concern: No; Infection details, Infection findings: Increasing Redness; Infection details, Systemic symptoms: None; Wound treatment, Cleansing: None; Wound treatment, Procedure: None; Wound treatment, Dressing: Gauze; Wound treatment, Medication: Topical; Wound treatment, Follow-up: Tomorrow"
+          }
+        ],
+        "effectiveKeys": [
+          "wound.e0000001.bed",
+          "wound.e0000001.drainage_amount",
+          "wound.e0000001.duration",
+          "wound.e0000001.entryAt",
+          "wound.e0000001.infection.findings",
+          "wound.e0000001.infection.systemic",
+          "wound.e0000001.infection_concern",
+          "wound.e0000001.location.region",
+          "wound.e0000001.location.side",
+          "wound.e0000001.location.surface",
+          "wound.e0000001.periwound",
+          "wound.e0000001.treatment.cleansing",
+          "wound.e0000001.treatment.dressing",
+          "wound.e0000001.treatment.follow_up",
+          "wound.e0000001.treatment.medication",
+          "wound.e0000001.treatment.procedure",
+          "wound.e0000001.type"
+        ],
+        "readModelHash": "c1690f023627943f7597c7f4cf0e304b81e75094db8dbee80b94ba8b9c075df8",
+        "visibleHashes": {
+          "full": "78ae629695c932bf224addc8b7010e85b513ea169ca9f0006dc5ab1f358afb7a",
+          "noExams": "78ae629695c932bf224addc8b7010e85b513ea169ca9f0006dc5ab1f358afb7a",
+          "noSensitive": "78ae629695c932bf224addc8b7010e85b513ea169ca9f0006dc5ab1f358afb7a"
+        },
+        "contentHash": "65912659e702879fcc3b2473e542037a30815ef82d4c54231be57fd809840cd9",
+        "expansions": []
+      },
+      {
+        "name": "systems",
+        "answers": {
+          "wound.e0000001.drainage_amount": "none",
+          "wound.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "wound.e0000001.infection_concern": "no"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "wound",
+            "text": "Wound 1: Drainage amount: None; Infection concern: No"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "wound",
+            "label": "Wound",
+            "value": "Wound 1: Drainage amount: None; Infection concern: No"
+          }
+        ],
+        "effectiveKeys": [
+          "wound.e0000001.drainage_amount",
+          "wound.e0000001.entryAt",
+          "wound.e0000001.infection_concern"
+        ],
+        "readModelHash": "9886c312bdf40ebb1a5c476cc35f28989cebbb4a35b7c405f49b92f6840132f4",
+        "visibleHashes": {
+          "full": "c3710ca8b7da40e4ea7a7499783726f02f09eb12af2a3a2ed7a1a08917afc408",
+          "noExams": "c3710ca8b7da40e4ea7a7499783726f02f09eb12af2a3a2ed7a1a08917afc408",
+          "noSensitive": "c3710ca8b7da40e4ea7a7499783726f02f09eb12af2a3a2ed7a1a08917afc408"
+        },
+        "contentHash": "10803312224641ef6d79bc0a974d22be9a857a6bedf2a28076172378d0d79b44",
+        "expansions": []
+      },
+      {
+        "name": "every",
+        "answers": {
+          "wound.e0000001.bed": [
+            "granulation",
+            "slough",
+            "eschar",
+            "necrotic",
+            "exposed_tissue",
+            "other"
+          ],
+          "wound.e0000001.bed_other": "Demo",
+          "wound.e0000001.drainage_amount": "large",
+          "wound.e0000001.drainage_type": "purulent",
+          "wound.e0000001.duration": "unknown",
+          "wound.e0000001.entryAt": "2000-01-01T00:00:00Z",
+          "wound.e0000001.infection.findings": [
+            "increasing_redness",
+            "increasing_warmth",
+            "increasing_swelling",
+            "purulent_drainage",
+            "foul_odor",
+            "increasing_pain",
+            "fever",
+            "chills",
+            "lymphangitic_streaking"
+          ],
+          "wound.e0000001.infection.systemic": [
+            "fever",
+            "chills",
+            "malaise",
+            "other"
+          ],
+          "wound.e0000001.infection.systemic_other": "Demo",
+          "wound.e0000001.infection_concern": "urgent",
+          "wound.e0000001.location.region": "groin",
+          "wound.e0000001.location.side": "bilateral",
+          "wound.e0000001.location.surface": "posterior",
+          "wound.e0000001.measurements.depth": 0,
+          "wound.e0000001.measurements.length": 0.1,
+          "wound.e0000001.measurements.unable": true,
+          "wound.e0000001.measurements.width": 0.1,
+          "wound.e0000001.periwound": [
+            "intact",
+            "erythema",
+            "warmth",
+            "edema",
+            "maceration",
+            "induration",
+            "excoriation"
+          ],
+          "wound.e0000001.treatment.cleansing": [
+            "soap_water",
+            "ns",
+            "antiseptic",
+            "irrigation"
+          ],
+          "wound.e0000001.treatment.dressing": [
+            "gauze",
+            "xeroform",
+            "mepilex",
+            "abd",
+            "hydrocolloid",
+            "aquacel",
+            "compression",
+            "other"
+          ],
+          "wound.e0000001.treatment.dressing_other": "Demo",
+          "wound.e0000001.treatment.follow_up": "ed",
+          "wound.e0000001.treatment.medication": [
+            "topical",
+            "antibiotic",
+            "pain_medication"
+          ],
+          "wound.e0000001.treatment.procedure": [
+            "debridement",
+            "drainage",
+            "packing"
+          ],
+          "wound.e0000001.type": "other",
+          "wound.e0000001.type_other": "Demo"
+        },
+        "finishCheck": [],
+        "recapLines": [
+          {
+            "section": "wound",
+            "text": "Wound 1: Location: Groin, Bilateral, Posterior; Wound type: Other: Demo; Duration: Unknown; Measurements, Unable to measure: Yes; Wound bed: Granulation, Slough, Eschar, Necrotic, Exposed tissue, Other: Demo; Drainage amount: Large; Drainage type: Purulent; Periwound: Intact, Erythema, Warmth, Edema, Maceration, Induration, Excoriation; Infection concern: Urgent; Infection details, Infection findings: Increasing Redness, Increasing Warmth, Increasing Swelling, Purulent Drainage, Foul Odor, Increasing Pain, Fever, Chills, Lymphangitic Streaking; Infection details, Systemic symptoms: Fever, Chills, Malaise, Other: Demo; Wound treatment, Cleansing: Soap/Water, NS, Antiseptic, Irrigation; Wound treatment, Procedure: Debridement, Drainage, Packing; Wound treatment, Dressing: Gauze, Xeroform, Mepilex, ABD, Hydrocolloid, Aquacel, Compression, Other: Demo; Wound treatment, Medication: Topical, Antibiotic, Pain medication; Wound treatment, Follow-up: ED"
+          }
+        ],
+        "handoffLines": [
+          {
+            "kind": "recap",
+            "note": 0,
+            "section": "wound",
+            "label": "Wound",
+            "value": "Wound 1: Location: Groin, Bilateral, Posterior; Wound type: Other: Demo; Duration: Unknown; Measurements, Unable to measure: Yes; Wound bed: Granulation, Slough, Eschar, Necrotic, Exposed tissue, Other: Demo; Drainage amount: Large; Drainage type: Purulent; Periwound: Intact, Erythema, Warmth, Edema, Maceration, Induration, Excoriation; Infection concern: Urgent; Infection details, Infection findings: Increasing Redness, Increasing Warmth, Increasing Swelling, Purulent Drainage, Foul Odor, Increasing Pain, Fever, Chills, Lymphangitic Streaking; Infection details, Systemic symptoms: Fever, Chills, Malaise, Other: Demo; Wound treatment, Cleansing: Soap/Water, NS, Antiseptic, Irrigation; Wound treatment, Procedure: Debridement, Drainage, Packing; Wound treatment, Dressing: Gauze, Xeroform, Mepilex, ABD, Hydrocolloid, Aquacel, Compression, Other: Demo; Wound treatment, Medication: Topical, Antibiotic, Pain medication; Wound treatment, Follow-up: ED"
+          }
+        ],
+        "effectiveKeys": [
+          "wound.e0000001.bed",
+          "wound.e0000001.bed_other",
+          "wound.e0000001.drainage_amount",
+          "wound.e0000001.drainage_type",
+          "wound.e0000001.duration",
+          "wound.e0000001.entryAt",
+          "wound.e0000001.infection.findings",
+          "wound.e0000001.infection.systemic",
+          "wound.e0000001.infection.systemic_other",
+          "wound.e0000001.infection_concern",
+          "wound.e0000001.location.region",
+          "wound.e0000001.location.side",
+          "wound.e0000001.location.surface",
+          "wound.e0000001.measurements.unable",
+          "wound.e0000001.periwound",
+          "wound.e0000001.treatment.cleansing",
+          "wound.e0000001.treatment.dressing",
+          "wound.e0000001.treatment.dressing_other",
+          "wound.e0000001.treatment.follow_up",
+          "wound.e0000001.treatment.medication",
+          "wound.e0000001.treatment.procedure",
+          "wound.e0000001.type",
+          "wound.e0000001.type_other"
+        ],
+        "readModelHash": "e85e9f3afbbba7efe8115c6b4ecbcd7100194eb17c3ee8ade1e9a8c763bf6693",
+        "visibleHashes": {
+          "full": "34169a619b96e711c7526d5169a794fc165c55075969a7566aacacd0b4322e15",
+          "noExams": "34169a619b96e711c7526d5169a794fc165c55075969a7566aacacd0b4322e15",
+          "noSensitive": "34169a619b96e711c7526d5169a794fc165c55075969a7566aacacd0b4322e15"
+        },
+        "contentHash": "91c2b8928ef9eec4c986085b88f87675778e8a032768d6da83d074d160eae062",
+        "expansions": []
+      }
+    ]
+  }
+]

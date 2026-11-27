@@ -1,0 +1,195 @@
+{
+  "note": "Hand-written (phase 4 design, lifecycle 3.5). signedUnder in services/api/src/encounters/signed-under.ts must give every answer; the reader is services/api/test/encounter-rules.test.ts. Server-only: the phone never decides this. In each case the signature is at signedAt on the phone and reaches the server at receivedAt; notBefore is when the server received the note's create. laterChanges are the membership_changes rows of kind credential or restored made after the signature, each with its old_value. expected.fields are the fields of the credential found, without the NPI; an expected of { throws } is an error with that message. Made-up people and numbers only.",
+  "cases": [
+    {
+      "name": "an attending, no change since: signs with nothing held",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "a resident, no change since: signed, attestation needed",
+      "input": {"current": {"credential": "resident", "fields": {"npi": "1234567893", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1234567893", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "an NP needs attestation",
+      "input": {"current": {"credential": "np", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0002", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "np"},
+      "expected": {"credential": "np", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0002", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "a PA signs like an NP: attestation needed",
+      "input": {"current": {"credential": "pa", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0003", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "pa"},
+      "expected": {"credential": "pa", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0003", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "a student cannot sign and has no NPI",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "student"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": false, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "a community health worker cannot sign",
+      "input": {"current": {"credential": "chw", "fields": {}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "chw"},
+      "expected": {"credential": "chw", "npi": null, "fields": {}, "timeTrusted": true, "canSign": false, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "no credential cannot sign",
+      "input": {"current": {"credential": "none", "fields": {}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "none"},
+      "expected": {"credential": "none", "npi": null, "fields": {}, "timeTrusted": true, "canSign": false, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "signed Monday as a resident, made an attending Tuesday, synced Wednesday: signed as a resident",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1000000001", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "signed Monday as an attending, lowered to student Tuesday: the signature stands as an attending’s",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "two changes since signing: what the person held until the first of them",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}, {"changedAt": "2026-11-10T16:00:00.000Z", "oldValue": {"credential": "np", "fields": {"npi": "1000000002", "licenseNumber": "DEMO-0002", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1000000001", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "the rows in the wrong order: still the first change after the signature",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T16:00:00.000Z", "oldValue": {"credential": "np", "fields": {"npi": "1000000002", "licenseNumber": "DEMO-0002", "licenseState": "MI"}}}, {"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1000000001", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "a change made before the signature is not a later change",
+      "input": {"current": {"credential": "resident", "fields": {"npi": "1234567893", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-08T10:00:00.000Z", "oldValue": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1234567893", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "a change at the very moment of the signature is not after it",
+      "input": {"current": {"credential": "resident", "fields": {"npi": "1234567893", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-09T15:00:00.000Z", "oldValue": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1234567893", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "a change a millisecond after the signature is a later change",
+      "input": {"current": {"credential": "resident", "fields": {"npi": "1234567893", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-09T15:00:00.001Z", "oldValue": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a removed signer with no later change: the membership’s last credential",
+      "input": {"current": {"credential": "np", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0002", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "np"},
+      "expected": {"credential": "np", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0002", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "signed Monday as a resident, removed and invited again as an attending Tuesday, synced Wednesday: signed as a resident",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "resident", "npi": "1000000001", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "signed Monday as an attending, removed and invited again as a student Tuesday: the signature stands as an attending’s",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "the NPI and licence corrected after the signature: the ones held when signing",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1000000003", "licenseNumber": "DEMO-0002", "licenseState": "OH"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1000000003", "fields": {"licenseNumber": "DEMO-0002", "licenseState": "OH"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "lowered to resident and made an attending again since signing: the attending’s fields of the first change",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T16:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}, {"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1000000003", "licenseNumber": "DEMO-0002", "licenseState": "OH"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1000000003", "fields": {"licenseNumber": "DEMO-0002", "licenseState": "OH"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "a later change whose time cannot be read is a fault of the server, never passed over",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "not a time", "oldValue": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"throws": "a credential change has a time that cannot be read"}
+    },
+    {
+      "name": "the phone’s clock was not verified: the history is not consulted",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": false, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": false, "canSign": true, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "an unverified time cannot date a signature to before a credential was lowered",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": false, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": false, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a time before the server knew the note is not believed",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-11T08:59:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": false, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a time at the very moment the server received the note is believed",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T15:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "a time a millisecond before the server received the note is not believed",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T15:00:00.001Z", "claimed": "attending"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": false, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a time exactly 5 minutes after the receipt is within the clock limit",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-11T09:05:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "a time more than 5 minutes after the receipt is not trusted",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-11T09:05:00.001Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": false, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "a time ahead of the receipt is not trusted, so a change after it is not consulted",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [{"changedAt": "2026-11-11T10:00:00.000Z", "oldValue": {"credential": "resident", "fields": {"npi": "1000000001", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}}], "signedAt": "2026-11-11T09:30:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": false, "canSign": true, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a time that cannot be read is not trusted",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "yesterday", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": false, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a signature is not trusted when the note’s first receipt cannot be read",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "unknown", "claimed": "attending"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": false, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a signature is not trusted when its own receipt time cannot be read",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [{"changedAt": "2026-11-10T10:00:00.000Z", "oldValue": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}}], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "unknown", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": false, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "the claim makes the answer more careful: the phone showed resident, the server finds attending",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "resident"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "the claim never makes it less careful: the phone showed attending, the server finds resident",
+      "input": {"current": {"credential": "resident", "fields": {"npi": "1234567893", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "resident", "npi": "1234567893", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "a claimed student makes an attending’s signature wait for attestation",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "student"},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "no claim (a complete, or an online act): the credential found decides alone",
+      "input": {"current": {"credential": "attending", "fields": {"npi": "1234567893", "licenseNumber": "DEMO-0001", "licenseState": "MI"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": null},
+      "expected": {"credential": "attending", "npi": "1234567893", "fields": {"licenseNumber": "DEMO-0001", "licenseState": "MI"}, "timeTrusted": true, "canSign": true, "needsAttestation": false, "claimDiffers": false}
+    },
+    {
+      "name": "no claim, a resident",
+      "input": {"current": {"credential": "resident", "fields": {"npi": "1234567893", "program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": null},
+      "expected": {"credential": "resident", "npi": "1234567893", "fields": {"program": "Demo Internal Medicine", "supervisingAttending": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": true, "needsAttestation": true, "claimDiffers": false}
+    },
+    {
+      "name": "lowered to student before signing, the phone still showed attending: cannot sign",
+      "input": {"current": {"credential": "student", "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "student", "npi": null, "fields": {"school": "Demo School of Medicine", "supervisingPhysician": "Jordan Lee (demo)"}, "timeTrusted": true, "canSign": false, "needsAttestation": true, "claimDiffers": true}
+    },
+    {
+      "name": "the claim cannot make a credential sign: found none, claimed attending",
+      "input": {"current": {"credential": "none", "fields": {}}, "laterChanges": [], "signedAt": "2026-11-09T15:00:00.000Z", "receivedAt": "2026-11-11T09:00:00.000Z", "clockVerified": true, "notBefore": "2026-11-09T14:00:00.000Z", "claimed": "attending"},
+      "expected": {"credential": "none", "npi": null, "fields": {}, "timeTrusted": true, "canSign": false, "needsAttestation": false, "claimDiffers": true}
+    }
+  ]
+}

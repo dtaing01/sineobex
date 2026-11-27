@@ -1,0 +1,1363 @@
+{
+  "note": "Hand-written (phase 5 design 4.4, 5.3; D128, D132). The body of each of the eight preset kinds. TypeScript: BODY_SCHEMAS[kind] in packages/presets/src/schemas.ts (zod); the reader is packages/presets/test/schemas.test.ts. Dart: parsePreset(kind, json) in apps/mobile/lib/presets/models.dart, whose test (apps/mobile/test/presets/models_test.dart) reads every case: it refuses what the schemas refuse, at the same field, so a body a later server widened is skipped by an older phone, never misread, and that phone's copy is pulled whole again once its app reads it (presetsReader). A valid body parses to itself, with `filled` added where it leaves a field out that has a default: a bundle's prompt and a flag's criteria default to the empty string, which means none. An invalid body fails its schema, and each issue's path (its parts joined by dots, an array index as its number, '' for the body itself) lies at or under one of `paths`, each of which has an issue at or under it: the field at fault, whatever union branch or refinement reports it. Every object is strict: a key the schema does not name is refused on the server, as an unrecognized key at the path of the object that holds it (`unknownFields`, one case for each object a body can hold: `at` and `key`), and ignored by the phone, which reads such a body as `known` (with `filled`), so an older phone reads a body a later phase grew. A kind the phone does not know (`unknownKinds`: phase 10 adds billing_code_map) is skipped by its parser and has no schema here. The rules: every text is trimmed (one that starts or ends with white space is refused, never trimmed for you), and its length is counted in Unicode code points, as the API's other schemas (zod) and the database's length() count it, and as the phone's text boxes cut it. name: 1 to 80. An id is a UUID as the API's Uuid takes it. order_category: behaviour supply, medication or lab; sort a whole number from 0 to 1,000,000. item: categoryId; unit 1 to 20; medical and captureLot true or false; result null (no result), {type: choice, options: 2 to 12 texts of 1 to 40, no two the same ignoring case (the later one is refused)} or {type: number, unit: 1 to 20}. bundle: medical true or false (the Medical or Non-Medical tag); prompt 0 to 300; lines 1 to 40 of {itemId, qty 1 to 99, core true or false}, no item twice (the later line's itemId is refused). flag: tier primary or secondary; criteria 0 to 500; color one of the keys of `colors`, each with the plain name a pill shows before the flag's own (\"Red · High\"); rank a whole number from 0 to 1,000,000; sensitive true or false. field_supply_map: noteTypeKey a note type key (^[a-z][a-z0-9_]{1,60}$); path and when both there or both left out, the one that is missing refused (left out, the map fires once for every note of the type); a path is 2 to 4 parts joined by dots, each ^[a-z][a-zA-Z0-9_]{0,60}$, written without an entry part; when is exactly one of {equals: an option code (^[a-z][a-z0-9_]{0,40}$), a number or true}, {includes: an option code} or {answered: true}; lines 1 to 10 of {itemId, qty: a whole number from 1 to 99, or {fromPath: a path}}, an item allowed twice. condition_supply_map: codes 1 to 20 ICD-10-CM codes in the shape of 0010_problems.sql (^[A-Z][0-9][0-9A-Z](\\.[0-9A-Z]{1,4})?$), exact codes only; lines 1 to 10 of {itemId, qtyPerPatient 1 to 99}. bag: minimums 0 to 200 of {itemId, min 1 to 999}, no item twice. settings: name exactly 'Team settings'; bagMinimumsOn true or false; newBagMinimums as a bag's minimums; problemCheckDays a whole number from 7 to 365. Ids are made up; no body here is checked against a team's presets or a note type, which validatePreset does (preset-validate.json). Some cases are written so the two readers decode them each their own way and must answer alike: a whole number written with a fraction or an exponent (3.0, 1e2, 1E6, -0.0), which Dart's jsonDecode reads as a double; a number too big for a double (1e400), which both read as Infinity and refuse; texts beside what JavaScript's trim takes off (not U+0085, which Dart's does; a lone surrogate counts as one code point); ids as zod's uuid() takes them (versions 1 to 8, variants 8 to b, either case, the nil and max ids); null as a value, never a field left out; and choice options told apart as JavaScript's toLowerCase folds them. So the numbers stay as they are written here: a tool that rewrites this file must keep them.",
+  "kinds": ["order_category", "item", "bundle", "flag", "field_supply_map", "condition_supply_map", "bag", "settings"],
+  "colors": [{"color": "red", "name": "Red"}, {"color": "orange", "name": "Orange"}, {"color": "yellow", "name": "Yellow"}, {"color": "green", "name": "Green"}, {"color": "teal", "name": "Teal"}, {"color": "blue", "name": "Blue"}, {"color": "purple", "name": "Purple"}, {"color": "grey", "name": "Grey"}],
+  "valid": [
+    {
+      "name": "a supply category at sort 0",
+      "kind": "order_category",
+      "body": {"name": "Demo: Supplies", "behaviour": "supply", "sort": 0}
+    },
+    {
+      "name": "a medication category",
+      "kind": "order_category",
+      "body": {"name": "Demo: OTC", "behaviour": "medication", "sort": 10}
+    },
+    {
+      "name": "a lab category at the highest sort",
+      "kind": "order_category",
+      "body": {"name": "Demo: Labs", "behaviour": "lab", "sort": 1000000}
+    },
+    {
+      "name": "a name of 80 characters",
+      "kind": "order_category",
+      "body": {"name": "Demo: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "behaviour": "supply", "sort": 5}
+    },
+    {
+      "name": "a name of 80 code points, 154 UTF-16 code units",
+      "kind": "order_category",
+      "body": {"name": "Demo: 🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹", "behaviour": "supply", "sort": 5}
+    },
+    {
+      "name": "a one-character name",
+      "kind": "order_category",
+      "body": {"name": "X", "behaviour": "supply", "sort": 5}
+    },
+    {
+      "name": "a supply item with no result",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": null}
+    },
+    {
+      "name": "a medical supply: the switch is free in a supply category",
+      "kind": "item",
+      "body": {"name": "Demo: Suture kit", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "kit", "medical": true, "captureLot": false, "result": null}
+    },
+    {
+      "name": "a medication counted in tablets, lot and expiry captured",
+      "kind": "item",
+      "body": {"name": "Demo: Doxycycline 100 mg", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "tablet", "medical": true, "captureLot": true, "result": null}
+    },
+    {
+      "name": "a lab test whose result is a choice of two",
+      "kind": "item",
+      "body": {"name": "Demo: Pregnancy test", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Negative"]}}
+    },
+    {
+      "name": "a lab test whose result is a choice of twelve",
+      "kind": "item",
+      "body": {"name": "Demo: Urine dipstick", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "strip", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Demo 1", "Demo 2", "Demo 3", "Demo 4", "Demo 5", "Demo 6", "Demo 7", "Demo 8", "Demo 9", "Demo 10", "Demo 11", "Demo 12"]}}
+    },
+    {
+      "name": "a lab test whose result is a number with a unit",
+      "kind": "item",
+      "body": {"name": "Demo: Glucose test", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "number", "unit": "mg/dL"}}
+    },
+    {
+      "name": "a unit of 20 characters and a one-character result unit",
+      "kind": "item",
+      "body": {"name": "Demo: Long unit", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "uuuuuuuuuuuuuuuuuuuu", "medical": true, "captureLot": false, "result": {"type": "number", "unit": "%"}}
+    },
+    {
+      "name": "a one-character unit and a result option of 40 characters",
+      "kind": "item",
+      "body": {"name": "Demo: Short unit", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "g", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["oooooooooooooooooooooooooooooooooooooooo", "Demo: other"]}}
+    },
+    {
+      "name": "result options that differ only past their first letters",
+      "kind": "item",
+      "body": {"name": "Demo: Strep test", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Positive, faint"]}}
+    },
+    {
+      "name": "a bundle with a prompt, a core line and an optional one",
+      "kind": "bundle",
+      "body": {"name": "Demo: Basic wound care", "medical": true, "prompt": "Check for signs of infection before giving this bundle.", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 2, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qty": 1, "core": false}]}
+    },
+    {
+      "name": "a bundle whose prompt is empty asks nothing",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]}
+    },
+    {
+      "name": "a bundle with no prompt parses with an empty one",
+      "kind": "bundle",
+      "body": {"name": "Demo: Foot protection", "medical": false, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]},
+      "filled": {"prompt": ""}
+    },
+    {
+      "name": "a prompt of 300 characters",
+      "kind": "bundle",
+      "body": {"name": "Demo: Long prompt", "medical": false, "prompt": "Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Dem", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]}
+    },
+    {
+      "name": "a line of 99",
+      "kind": "bundle",
+      "body": {"name": "Demo: Many socks", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 99, "core": true}]}
+    },
+    {
+      "name": "40 lines, each item once",
+      "kind": "bundle",
+      "body": {"name": "Demo: Forty lines", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a000c", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000d", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a000e", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000f", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0010", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0011", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0012", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0013", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0014", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0015", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0016", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0017", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0018", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0019", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a001a", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001b", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a001c", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001d", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a001e", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001f", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0020", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0021", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0022", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0023", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0024", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0025", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0026", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0027", "qty": 1, "core": false}, {"itemId": "00000000-0000-4000-8000-0000000a0028", "qty": 1, "core": true}]}
+    },
+    {
+      "name": "a primary flag with criteria",
+      "kind": "flag",
+      "body": {"name": "High", "tier": "primary", "criteria": "Demo: recent hospital discharge.", "color": "red", "rank": 10, "sensitive": false}
+    },
+    {
+      "name": "a flag with no criteria parses with empty criteria",
+      "kind": "flag",
+      "body": {"name": "Demo: Medium", "tier": "primary", "color": "yellow", "rank": 20, "sensitive": false},
+      "filled": {"criteria": ""}
+    },
+    {
+      "name": "a sensitive secondary flag with empty criteria at rank 0",
+      "kind": "flag",
+      "body": {"name": "Demo: Pregnancy", "tier": "secondary", "criteria": "", "color": "purple", "rank": 0, "sensitive": true}
+    },
+    {
+      "name": "criteria of 500 characters at the highest rank",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demox", "color": "blue", "rank": 1000000, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Red",
+      "kind": "flag",
+      "body": {"name": "Demo: Red flag", "tier": "secondary", "criteria": "", "color": "red", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Orange",
+      "kind": "flag",
+      "body": {"name": "Demo: Orange flag", "tier": "secondary", "criteria": "", "color": "orange", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Yellow",
+      "kind": "flag",
+      "body": {"name": "Demo: Yellow flag", "tier": "secondary", "criteria": "", "color": "yellow", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Green",
+      "kind": "flag",
+      "body": {"name": "Demo: Green flag", "tier": "secondary", "criteria": "", "color": "green", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Teal",
+      "kind": "flag",
+      "body": {"name": "Demo: Teal flag", "tier": "secondary", "criteria": "", "color": "teal", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Blue",
+      "kind": "flag",
+      "body": {"name": "Demo: Blue flag", "tier": "secondary", "criteria": "", "color": "blue", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Purple",
+      "kind": "flag",
+      "body": {"name": "Demo: Purple flag", "tier": "secondary", "criteria": "", "color": "purple", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a flag coloured Grey",
+      "kind": "flag",
+      "body": {"name": "Demo: Grey flag", "tier": "secondary", "criteria": "", "color": "grey", "rank": 30, "sensitive": false}
+    },
+    {
+      "name": "a map on a grid cell when it equals a code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Flu vaccine given", "noteTypeKey": "general_primary_care", "path": "preventive.vaccine_status.flu", "when": {"equals": "given_today"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "a map when a choose-many includes a code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Xeroform applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"includes": "xeroform"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0002", "qty": 1}]}
+    },
+    {
+      "name": "a map whenever a field is answered, two lines",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qty": 1}]}
+    },
+    {
+      "name": "a map when a number equals a value",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Two given", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 2}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "a map when a number equals a decimal value",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Half given", "noteTypeKey": "demo_supplies", "path": "supplies.amount", "when": {"equals": 2.5}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "a map when a tick is set",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Kit given", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "a map on every note of a type: no path and no when",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Every visit", "noteTypeKey": "outreach", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "a line whose quantity is read from a number in the note",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Packets from the count", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": {"fromPath": "supplies.count"}}]}
+    },
+    {
+      "name": "a path of four parts, to a group cell of a grid",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Node finding", "noteTypeKey": "general_primary_care", "path": "lymphatic.node_findings.cervical.findings", "when": {"includes": "enlarged"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": {"fromPath": "lymphatic.node_findings.cervical.size"}}]}
+    },
+    {
+      "name": "ten lines, one item twice",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Ten lines", "noteTypeKey": "outreach", "path": "outreach.support", "when": {"includes": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "qty": 1}]}
+    },
+    {
+      "name": "a quantity of 99",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Many", "noteTypeKey": "outreach", "path": "outreach.support", "when": {"includes": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 99}]}
+    },
+    {
+      "name": "a condition map with two codes, one with a dot",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R21", "L30.9"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]}
+    },
+    {
+      "name": "a code with a letter third and four characters after the dot",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Odd codes", "codes": ["O9A", "Z71.4111"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 99}]}
+    },
+    {
+      "name": "a sensitive code may be mapped",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Sensitive code", "codes": ["F11.20"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]}
+    },
+    {
+      "name": "20 codes and 10 lines",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Twenty codes", "codes": ["L00", "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11", "L12", "L13", "L14", "L15", "L16", "L17", "L18", "L19"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "qtyPerPatient": 1}]}
+    },
+    {
+      "name": "a bag with no minimums",
+      "kind": "bag",
+      "body": {"name": "Demo: Wound care bag", "minimums": []}
+    },
+    {
+      "name": "minimums of 1 and 999",
+      "kind": "bag",
+      "body": {"name": "Demo: Foot care bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 999}]}
+    },
+    {
+      "name": "200 minimums, each item once",
+      "kind": "bag",
+      "body": {"name": "Demo: Big bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0010", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0011", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0012", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0013", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0014", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0015", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0016", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0017", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0018", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0019", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0020", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0021", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0022", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0023", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0024", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0025", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0026", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0027", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0028", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0029", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0030", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0031", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0032", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0033", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0034", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0035", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0036", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0037", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0038", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0039", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0040", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0041", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0042", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0043", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0044", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0045", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0046", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0047", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0048", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0049", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0050", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0051", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0052", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0053", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0054", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0055", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0056", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0057", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0058", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0059", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0060", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0061", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0062", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0063", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0064", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0065", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0066", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0067", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0068", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0069", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0070", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0071", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0072", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0073", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0074", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0075", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0076", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0077", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0078", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0079", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0080", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0081", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0082", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0083", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0084", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0085", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0086", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0087", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0088", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0089", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0090", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0091", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0092", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0093", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0094", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0095", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0096", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0097", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0098", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0099", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a9", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00aa", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ab", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ac", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ad", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ae", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00af", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b9", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ba", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bb", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bc", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bd", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00be", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bf", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c8", "min": 1}]}
+    },
+    {
+      "name": "the platform settings: minimums off, no template, 90 days",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90}
+    },
+    {
+      "name": "minimums on with a template, the shortest window",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": true, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 999}], "problemCheckDays": 7}
+    },
+    {
+      "name": "the longest window and a template of 200 lines",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": true, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a000c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a000d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a000e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a000f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0010", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0011", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0012", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0013", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0014", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0015", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0016", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0017", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0018", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0019", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a001a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a001b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a001c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a001d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a001e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a001f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0020", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0021", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0022", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0023", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0024", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0025", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0026", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0027", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0028", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0029", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a002a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a002b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a002c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a002d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a002e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a002f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0030", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0031", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0032", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0033", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0034", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0035", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0036", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0037", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0038", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0039", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a003a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a003b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a003c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a003d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a003e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a003f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0040", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0041", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0042", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0043", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0044", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0045", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0046", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0047", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0048", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0049", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a004a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a004b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a004c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a004d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a004e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a004f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0050", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0051", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0052", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0053", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0054", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0055", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0056", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0057", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0058", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0059", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a005a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a005b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a005c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a005d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a005e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a005f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0060", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0061", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0062", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0063", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0064", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0065", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0066", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0067", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0068", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0069", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a006a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a006b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a006c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a006d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a006e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a006f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0070", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0071", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0072", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0073", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0074", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0075", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0076", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0077", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0078", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0079", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a007a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a007b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a007c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a007d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a007e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a007f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0080", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0081", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0082", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0083", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0084", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0085", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0086", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0087", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0088", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0089", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a008a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a008b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a008c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a008d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a008e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a008f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0090", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0091", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0092", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0093", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0094", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0095", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0096", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0097", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0098", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a0099", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a009a", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a009b", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a009c", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a009d", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a009e", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a009f", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a0", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a1", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a2", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a3", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a4", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a5", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a6", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a7", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a8", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00a9", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00aa", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00ab", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00ac", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00ad", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00ae", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00af", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b0", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b1", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b2", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b3", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b4", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b5", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b6", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b7", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b8", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00b9", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00ba", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00bb", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00bc", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00bd", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00be", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00bf", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c0", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c1", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c2", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c3", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c4", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c5", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c6", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c7", "min": 2}, {"itemId": "00000000-0000-4000-8000-0000000a00c8", "min": 2}], "problemCheckDays": 365}
+    },
+    {
+      "name": "a name ending in U+0085, which is no white space to JavaScript",
+      "kind": "order_category",
+      "body": {"name": "Demo: A\u0085", "behaviour": "supply", "sort": 0}
+    },
+    {
+      "name": "a name starting with U+0085",
+      "kind": "order_category",
+      "body": {"name": "\u0085Demo: A", "behaviour": "supply", "sort": 0}
+    },
+    {
+      "name": "a name ending in U+180E, no longer white space",
+      "kind": "order_category",
+      "body": {"name": "Demo: A᠎", "behaviour": "supply", "sort": 0}
+    },
+    {
+      "name": "a name ending in a zero width space, never white space",
+      "kind": "order_category",
+      "body": {"name": "Demo: A​", "behaviour": "supply", "sort": 0}
+    },
+    {
+      "name": "a no-break space inside a name",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": 0}
+    },
+    {
+      "name": "a name of 80 lone surrogates",
+      "kind": "order_category",
+      "body": {"name": "\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d", "behaviour": "supply", "sort": 0}
+    },
+    {
+      "name": "a sort of 3.0",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": 3.0}
+    },
+    {
+      "name": "a sort of 1e2",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": 1e2}
+    },
+    {
+      "name": "a sort of 1E6, the highest",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": 1E6}
+    },
+    {
+      "name": "a sort of -0.0",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": -0.0}
+    },
+    {
+      "name": "a sort of 10e-1",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": 10e-1}
+    },
+    {
+      "name": "a window of 3.65e2",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 3.65e2}
+    },
+    {
+      "name": "a quantity of 99.0",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 99.0}]}
+    },
+    {
+      "name": "equals a negative number",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": -3}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]}
+    },
+    {
+      "name": "equals a small decimal",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 1e-7}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]}
+    },
+    {
+      "name": "an id with capitals",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "D05E0000-0000-4000-B000-00000000A001", "unit": "each", "medical": false, "captureLot": false, "result": null}
+    },
+    {
+      "name": "the nil id",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-0000-0000-000000000000", "unit": "each", "medical": false, "captureLot": false, "result": null}
+    },
+    {
+      "name": "the max id",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "ffffffff-ffff-ffff-ffff-ffffffffffff", "unit": "each", "medical": false, "captureLot": false, "result": null}
+    },
+    {
+      "name": "an id of version 8 and variant b",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-8000-b000-000000000001", "unit": "each", "medical": false, "captureLot": false, "result": null}
+    },
+    {
+      "name": "ids that differ only in case name two items",
+      "kind": "bag",
+      "body": {"name": "Demo: Bag", "minimums": [{"itemId": "00000000-0000-4000-8000-00000000a001", "min": 1}, {"itemId": "00000000-0000-4000-8000-00000000A001", "min": 1}]}
+    },
+    {
+      "name": "a dotted capital I is not an i",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["İ", "i"]}}
+    },
+    {
+      "name": "a capital sigma that ends a word is not a sigma that starts one",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["ΑΣ", "ασ"]}}
+    },
+    {
+      "name": "a sharp s is not two s",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Straße", "STRASSE"]}}
+    }
+  ],
+  "invalid": [
+    {
+      "name": "an empty name",
+      "kind": "order_category",
+      "body": {"name": "", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name of 81 characters",
+      "kind": "order_category",
+      "body": {"name": "Demo: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name of 81 code points",
+      "kind": "order_category",
+      "body": {"name": "Demo: 🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹🩹", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name with a space before it",
+      "kind": "order_category",
+      "body": {"name": " Demo: Supplies", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name with a line break after it",
+      "kind": "order_category",
+      "body": {"name": "Demo: Supplies\n", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name of spaces only",
+      "kind": "order_category",
+      "body": {"name": "   ", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name that is not text",
+      "kind": "order_category",
+      "body": {"name": 7, "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a behaviour that is not one of the three",
+      "kind": "order_category",
+      "body": {"name": "Demo: Supplies", "behaviour": "drug", "sort": 0},
+      "paths": ["behaviour"]
+    },
+    {
+      "name": "no behaviour",
+      "kind": "order_category",
+      "body": {"name": "Demo: Supplies", "sort": 0},
+      "paths": ["behaviour"]
+    },
+    {
+      "name": "a sort that is not whole",
+      "kind": "order_category",
+      "body": {"name": "Demo: Supplies", "behaviour": "supply", "sort": 1.5},
+      "paths": ["sort"]
+    },
+    {
+      "name": "a sort below 0",
+      "kind": "order_category",
+      "body": {"name": "Demo: Supplies", "behaviour": "supply", "sort": -1},
+      "paths": ["sort"]
+    },
+    {
+      "name": "a sort above 1,000,000",
+      "kind": "order_category",
+      "body": {"name": "Demo: Supplies", "behaviour": "supply", "sort": 1000001},
+      "paths": ["sort"]
+    },
+    {
+      "name": "a body that is null",
+      "kind": "order_category",
+      "body": null,
+      "paths": [""]
+    },
+    {
+      "name": "a body that is a list",
+      "kind": "bag",
+      "body": [],
+      "paths": [""]
+    },
+    {
+      "name": "a category id that is not a UUID",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "otc", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "no category",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an empty unit",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "", "medical": false, "captureLot": false, "result": null},
+      "paths": ["unit"]
+    },
+    {
+      "name": "a unit of 21 characters",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "uuuuuuuuuuuuuuuuuuuuu", "medical": false, "captureLot": false, "result": null},
+      "paths": ["unit"]
+    },
+    {
+      "name": "a unit with a space after it",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each ", "medical": false, "captureLot": false, "result": null},
+      "paths": ["unit"]
+    },
+    {
+      "name": "medical that is not true or false",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": "yes", "captureLot": false, "result": null},
+      "paths": ["medical"]
+    },
+    {
+      "name": "no captureLot",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "result": null},
+      "paths": ["captureLot"]
+    },
+    {
+      "name": "no result at all: null says there is none",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false},
+      "paths": ["result"]
+    },
+    {
+      "name": "a choice result of one option",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["Positive"]}},
+      "paths": ["result.options"]
+    },
+    {
+      "name": "a choice result of thirteen options",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["Demo 1", "Demo 2", "Demo 3", "Demo 4", "Demo 5", "Demo 6", "Demo 7", "Demo 8", "Demo 9", "Demo 10", "Demo 11", "Demo 12", "Demo 13"]}},
+      "paths": ["result.options"]
+    },
+    {
+      "name": "an empty result option",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["Positive", ""]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "a result option of 41 characters",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["ooooooooooooooooooooooooooooooooooooooooo", "Negative"]}},
+      "paths": ["result.options.0"]
+    },
+    {
+      "name": "a result option with a space before it",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["Positive", " Negative"]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "a result option twice",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Negative", "Positive"]}},
+      "paths": ["result.options.2"]
+    },
+    {
+      "name": "a result option twice in another case",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "positive"]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "a result type that is neither choice nor number",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "text"}},
+      "paths": ["result"]
+    },
+    {
+      "name": "a number result with no unit",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "number"}},
+      "paths": ["result.unit"]
+    },
+    {
+      "name": "a number result with an empty unit",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "number", "unit": ""}},
+      "paths": ["result.unit"]
+    },
+    {
+      "name": "a number result with a unit of 21 characters",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "number", "unit": "uuuuuuuuuuuuuuuuuuuuu"}},
+      "paths": ["result.unit"]
+    },
+    {
+      "name": "a bundle with no lines",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": []},
+      "paths": ["lines"]
+    },
+    {
+      "name": "a bundle of 41 lines",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000c", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000d", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000e", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a000f", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0010", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0011", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0012", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0013", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0014", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0015", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0016", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0017", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0018", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0019", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001a", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001b", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001c", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001d", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001e", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a001f", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0020", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0021", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0022", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0023", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0024", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0025", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0026", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0027", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0028", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0029", "qty": 1, "core": true}]},
+      "paths": ["lines"]
+    },
+    {
+      "name": "a line of 0",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 0, "core": true}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "a line of 100",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 100, "core": true}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "a line that is not whole",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1.5, "core": true}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "an item twice: the second line is refused",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 2, "core": false}]},
+      "paths": ["lines.2.itemId"]
+    },
+    {
+      "name": "a line with no core",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["lines.0.core"]
+    },
+    {
+      "name": "a line whose item id is not a UUID",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "gauze", "qty": 1, "core": true}]},
+      "paths": ["lines.0.itemId"]
+    },
+    {
+      "name": "a prompt of 301 characters",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]},
+      "paths": ["prompt"]
+    },
+    {
+      "name": "a prompt with a space after it",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "Ask first. ", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]},
+      "paths": ["prompt"]
+    },
+    {
+      "name": "a prompt of null",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": null, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]},
+      "paths": ["prompt"]
+    },
+    {
+      "name": "no Medical or Non-Medical tag",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]},
+      "paths": ["medical"]
+    },
+    {
+      "name": "a tier that is neither primary nor secondary",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "tertiary", "criteria": "", "color": "blue", "rank": 10, "sensitive": false},
+      "paths": ["tier"]
+    },
+    {
+      "name": "a colour outside the palette",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "pink", "rank": 10, "sensitive": false},
+      "paths": ["color"]
+    },
+    {
+      "name": "a colour written as a hex code",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "#d32f2f", "rank": 10, "sensitive": false},
+      "paths": ["color"]
+    },
+    {
+      "name": "a colour written as its name, not its key",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "Red", "rank": 10, "sensitive": false},
+      "paths": ["color"]
+    },
+    {
+      "name": "criteria of 501 characters",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo text. Demo t", "color": "blue", "rank": 10, "sensitive": false},
+      "paths": ["criteria"]
+    },
+    {
+      "name": "criteria with a line break after them",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "Demo: frostbite risk.\n", "color": "blue", "rank": 10, "sensitive": false},
+      "paths": ["criteria"]
+    },
+    {
+      "name": "a rank that is not whole",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "blue", "rank": 1.5, "sensitive": false},
+      "paths": ["rank"]
+    },
+    {
+      "name": "a rank below 0",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "blue", "rank": -10, "sensitive": false},
+      "paths": ["rank"]
+    },
+    {
+      "name": "a rank above 1,000,000",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "blue", "rank": 1000001, "sensitive": false},
+      "paths": ["rank"]
+    },
+    {
+      "name": "no sensitive",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "blue", "rank": 10},
+      "paths": ["sensitive"]
+    },
+    {
+      "name": "a note type key that is not a key",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "Wound care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["noteTypeKey"]
+    },
+    {
+      "name": "a note type key of one letter",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "w", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["noteTypeKey"]
+    },
+    {
+      "name": "a path with no when",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a when with no path",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["path"]
+    },
+    {
+      "name": "a path of one part",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["path"]
+    },
+    {
+      "name": "a path of five parts",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "a.b.c.d.e", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["path"]
+    },
+    {
+      "name": "a path with a part that starts with a capital",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.Treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["path"]
+    },
+    {
+      "name": "a path with an empty part",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound..dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["path"]
+    },
+    {
+      "name": "a when with two tests",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"equals": "gauze", "includes": "gauze"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a when that is answered false",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": false}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a when that equals false",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"equals": false}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a when that equals null",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"equals": null}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a when that equals a label, not a code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"equals": "Given today"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a when that includes an empty code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"includes": ""}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a when with no test",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a map with no lines",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": []},
+      "paths": ["lines"]
+    },
+    {
+      "name": "a map of 11 lines",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "qty": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "qty": 1}]},
+      "paths": ["lines"]
+    },
+    {
+      "name": "a quantity of 0",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 0}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "a quantity of 100",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 100}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "a quantity written as text",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": "2"}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "a quantity read from a path of one part",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": {"fromPath": "count"}}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "a line with no quantity",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001"}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "a condition map with no codes",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": [], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]},
+      "paths": ["codes"]
+    },
+    {
+      "name": "a condition map of 21 codes",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["L00", "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "L11", "L12", "L13", "L14", "L15", "L16", "L17", "L18", "L19", "L20"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]},
+      "paths": ["codes"]
+    },
+    {
+      "name": "a code in lower case",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["r21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]},
+      "paths": ["codes.0"]
+    },
+    {
+      "name": "a code of two characters",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R2"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]},
+      "paths": ["codes.0"]
+    },
+    {
+      "name": "a code with five characters after the dot",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R21.12345"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]},
+      "paths": ["codes.0"]
+    },
+    {
+      "name": "a code with a dot and nothing after it",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R21", "L30."], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]},
+      "paths": ["codes.1"]
+    },
+    {
+      "name": "a code family written with a star",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["L30*"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}]},
+      "paths": ["codes.0"]
+    },
+    {
+      "name": "a condition map with no lines",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R21"], "lines": []},
+      "paths": ["lines"]
+    },
+    {
+      "name": "a condition map of 11 lines",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "qtyPerPatient": 1}]},
+      "paths": ["lines"]
+    },
+    {
+      "name": "a quantity per patient of 0",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 0}]},
+      "paths": ["lines.0.qtyPerPatient"]
+    },
+    {
+      "name": "a quantity per patient of 100",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash or dermatitis", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0004", "qtyPerPatient": 100}]},
+      "paths": ["lines.0.qtyPerPatient"]
+    },
+    {
+      "name": "a minimum of 0",
+      "kind": "bag",
+      "body": {"name": "Demo: Wound care bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 0}]},
+      "paths": ["minimums.0.min"]
+    },
+    {
+      "name": "a minimum of 1000",
+      "kind": "bag",
+      "body": {"name": "Demo: Wound care bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1000}]},
+      "paths": ["minimums.0.min"]
+    },
+    {
+      "name": "201 minimums",
+      "kind": "bag",
+      "body": {"name": "Demo: Wound care bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0010", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0011", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0012", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0013", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0014", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0015", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0016", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0017", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0018", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0019", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0020", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0021", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0022", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0023", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0024", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0025", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0026", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0027", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0028", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0029", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0030", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0031", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0032", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0033", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0034", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0035", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0036", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0037", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0038", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0039", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0040", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0041", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0042", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0043", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0044", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0045", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0046", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0047", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0048", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0049", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0050", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0051", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0052", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0053", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0054", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0055", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0056", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0057", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0058", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0059", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0060", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0061", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0062", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0063", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0064", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0065", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0066", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0067", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0068", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0069", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0070", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0071", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0072", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0073", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0074", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0075", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0076", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0077", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0078", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0079", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0080", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0081", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0082", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0083", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0084", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0085", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0086", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0087", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0088", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0089", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0090", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0091", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0092", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0093", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0094", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0095", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0096", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0097", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0098", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0099", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a9", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00aa", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ab", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ac", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ad", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ae", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00af", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b9", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ba", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bb", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bc", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bd", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00be", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bf", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c9", "min": 1}]},
+      "paths": ["minimums"]
+    },
+    {
+      "name": "an item twice: the second minimum is refused",
+      "kind": "bag",
+      "body": {"name": "Demo: Wound care bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 3}]},
+      "paths": ["minimums.1.itemId"]
+    },
+    {
+      "name": "no minimums at all",
+      "kind": "bag",
+      "body": {"name": "Demo: Wound care bag"},
+      "paths": ["minimums"]
+    },
+    {
+      "name": "settings under another name",
+      "kind": "settings",
+      "body": {"name": "Demo: Settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90},
+      "paths": ["name"]
+    },
+    {
+      "name": "a window of 6 days",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 6},
+      "paths": ["problemCheckDays"]
+    },
+    {
+      "name": "a window of 366 days",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 366},
+      "paths": ["problemCheckDays"]
+    },
+    {
+      "name": "a window that is not whole",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90.5},
+      "paths": ["problemCheckDays"]
+    },
+    {
+      "name": "a window written as text",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": "90"},
+      "paths": ["problemCheckDays"]
+    },
+    {
+      "name": "no switch for bag minimums",
+      "kind": "settings",
+      "body": {"name": "Team settings", "newBagMinimums": [], "problemCheckDays": 90},
+      "paths": ["bagMinimumsOn"]
+    },
+    {
+      "name": "a template minimum of 0",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 0}], "problemCheckDays": 90},
+      "paths": ["newBagMinimums.0.min"]
+    },
+    {
+      "name": "a template of 201 lines",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0003", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0004", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0005", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0006", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0007", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0008", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0009", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a000f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0010", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0011", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0012", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0013", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0014", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0015", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0016", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0017", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0018", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0019", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a001f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0020", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0021", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0022", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0023", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0024", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0025", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0026", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0027", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0028", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0029", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a002f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0030", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0031", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0032", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0033", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0034", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0035", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0036", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0037", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0038", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0039", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a003f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0040", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0041", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0042", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0043", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0044", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0045", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0046", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0047", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0048", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0049", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a004f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0050", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0051", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0052", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0053", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0054", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0055", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0056", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0057", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0058", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0059", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a005f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0060", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0061", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0062", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0063", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0064", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0065", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0066", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0067", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0068", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0069", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a006f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0070", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0071", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0072", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0073", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0074", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0075", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0076", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0077", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0078", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0079", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a007f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0080", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0081", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0082", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0083", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0084", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0085", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0086", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0087", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0088", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0089", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a008f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0090", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0091", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0092", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0093", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0094", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0095", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0096", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0097", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0098", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0099", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009a", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009b", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009c", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009d", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009e", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a009f", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00a9", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00aa", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ab", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ac", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ad", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ae", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00af", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00b9", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00ba", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bb", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bc", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bd", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00be", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00bf", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c0", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c1", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c2", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c3", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c4", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c5", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c6", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c7", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c8", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a00c9", "min": 1}], "problemCheckDays": 90},
+      "paths": ["newBagMinimums"]
+    },
+    {
+      "name": "an item twice in the template: the second is refused",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 1}, {"itemId": "00000000-0000-4000-8000-0000000a0002", "min": 4}], "problemCheckDays": 90},
+      "paths": ["newBagMinimums.2.itemId"]
+    },
+    {
+      "name": "a field map line whose item id is not a UUID",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "gauze", "qty": 1}]},
+      "paths": ["lines.0.itemId"]
+    },
+    {
+      "name": "a condition map line whose item id is not a UUID",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash", "codes": ["R21"], "lines": [{"itemId": "hydrocortisone", "qtyPerPatient": 1}]},
+      "paths": ["lines.0.itemId"]
+    },
+    {
+      "name": "a bag minimum whose item id is not a UUID",
+      "kind": "bag",
+      "body": {"name": "Demo: Day bag", "minimums": [{"itemId": "gauze", "min": 2}]},
+      "paths": ["minimums.0.itemId"]
+    },
+    {
+      "name": "a template minimum whose item id is not a UUID",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": true, "newBagMinimums": [{"itemId": "gauze", "min": 2}], "problemCheckDays": 90},
+      "paths": ["newBagMinimums.0.itemId"]
+    },
+    {
+      "name": "a name starting with a no-break space",
+      "kind": "order_category",
+      "body": {"name": " Demo: A", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name ending in a byte order mark",
+      "kind": "order_category",
+      "body": {"name": "Demo: A﻿", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name ending in an ideographic space",
+      "kind": "order_category",
+      "body": {"name": "Demo: A　", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name ending in a line separator",
+      "kind": "order_category",
+      "body": {"name": "Demo: A ", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name ending in a vertical tab",
+      "kind": "order_category",
+      "body": {"name": "Demo: A\u000b", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a name of 81 lone surrogates",
+      "kind": "order_category",
+      "body": {"name": "\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d\ud83d", "behaviour": "supply", "sort": 0},
+      "paths": ["name"]
+    },
+    {
+      "name": "a sort of 2.5e0",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": 2.5e0},
+      "paths": ["sort"]
+    },
+    {
+      "name": "a sort too big for a double",
+      "kind": "order_category",
+      "body": {"name": "Demo: A", "behaviour": "supply", "sort": 1e400},
+      "paths": ["sort"]
+    },
+    {
+      "name": "a window of 365.0000000001",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 365.0000000001},
+      "paths": ["problemCheckDays"]
+    },
+    {
+      "name": "a quantity too big for a double",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1e400}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "equals a number too big for a double",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 1e400}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "the max id in capitals",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an id of version 0",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-0000-8000-000000000001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an id of version 9",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-9000-8000-000000000001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an id of variant c",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-4000-c000-000000000001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an id of variant 7",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-4000-7000-000000000001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an id with no hyphens",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000000040008000000000000001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an id in braces",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "{00000000-0000-4000-8000-000000000001}", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "an id with a line break after it",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-4000-8000-000000000001\n", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "paths": ["categoryId"]
+    },
+    {
+      "name": "criteria of null",
+      "kind": "flag",
+      "body": {"name": "Demo: F", "tier": "secondary", "criteria": null, "color": "red", "rank": 1, "sensitive": false},
+      "paths": ["criteria"]
+    },
+    {
+      "name": "a path of null, with a when",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "path": null, "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "paths": ["path"]
+    },
+    {
+      "name": "a when of null, with a path",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": null, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "paths": ["when"]
+    },
+    {
+      "name": "a result left out, not null",
+      "kind": "item",
+      "body": {"name": "Demo: I", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "each", "medical": false, "captureLot": false},
+      "paths": ["result"]
+    },
+    {
+      "name": "a quantity read from a path of null",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: M", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": null}}]},
+      "paths": ["lines.0.qty"]
+    },
+    {
+      "name": "options in other cases",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "POSITIVE"]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "a dotted capital I is an i with a dot above",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["İ", "i̇"]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "the same Greek option twice",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["ΑΣ", "ΑΣ"]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "the Kelvin sign is a k",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["K", "k"]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "the Angstrom sign is an A with a ring",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Å", "Å"]}},
+      "paths": ["result.options.1"]
+    },
+    {
+      "name": "a title case letter folds with its small one",
+      "kind": "item",
+      "body": {"name": "Demo: L", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["ǅ", "ǆ"]}},
+      "paths": ["result.options.1"]
+    }
+  ],
+  "unknownFields": [
+    {
+      "name": "an item with a field this version has not got",
+      "kind": "item",
+      "body": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": null, "barcode": "Demo: 0001"},
+      "at": "",
+      "key": "barcode",
+      "known": {"name": "Demo: Gauze", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": null}
+    },
+    {
+      "name": "a number result with a field this version has not got",
+      "kind": "item",
+      "body": {"name": "Demo: Glucose test", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "number", "unit": "mg/dL", "decimals": 0}},
+      "at": "result",
+      "key": "decimals",
+      "known": {"name": "Demo: Glucose test", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "number", "unit": "mg/dL"}}
+    },
+    {
+      "name": "a bundle line with a field this version has not got, and no prompt",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true, "note": "Demo: note"}]},
+      "at": "lines.0",
+      "key": "note",
+      "known": {"name": "Demo: Hygiene", "medical": false, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]},
+      "filled": {"prompt": ""}
+    },
+    {
+      "name": "a flag with a field this version has not got",
+      "kind": "flag",
+      "body": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "blue", "rank": 10, "sensitive": false, "icon": "snowflake"},
+      "at": "",
+      "key": "icon",
+      "known": {"name": "Demo: Frost risk", "tier": "secondary", "criteria": "", "color": "blue", "rank": 10, "sensitive": false}
+    },
+    {
+      "name": "a when with a field this version has not got",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"includes": "xeroform", "unless": "other"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]},
+      "at": "when",
+      "key": "unless",
+      "known": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"includes": "xeroform"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "settings with a setting a later phase adds",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90, "idleMinutes": 5},
+      "at": "",
+      "key": "idleMinutes",
+      "known": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90}
+    },
+    {
+      "name": "a category with a field this version has not got",
+      "kind": "order_category",
+      "body": {"name": "Demo: Wound supplies", "behaviour": "supply", "sort": 50, "icon": "Demo: box"},
+      "at": "",
+      "key": "icon",
+      "known": {"name": "Demo: Wound supplies", "behaviour": "supply", "sort": 50}
+    },
+    {
+      "name": "a choice result with a field this version has not got",
+      "kind": "item",
+      "body": {"name": "Demo: Pregnancy test", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Negative"], "default": "Negative"}},
+      "at": "result",
+      "key": "default",
+      "known": {"name": "Demo: Pregnancy test", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Negative"]}}
+    },
+    {
+      "name": "a bundle with a field this version has not got",
+      "kind": "bundle",
+      "body": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}], "sort": 10},
+      "at": "",
+      "key": "sort",
+      "known": {"name": "Demo: Hygiene", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]}
+    },
+    {
+      "name": "a field map with a field this version has not got",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}], "note": "Demo: note"},
+      "at": "",
+      "key": "note",
+      "known": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "a field map line with a field this version has not got",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1, "core": true}]},
+      "at": "lines.0",
+      "key": "core",
+      "known": {"name": "Demo: Dressing applied", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": 1}]}
+    },
+    {
+      "name": "a quantity read from the note with a field this version has not got",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Dressings by wound", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "wound"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": {"fromPath": "visits.count", "times": 2}}]},
+      "at": "lines.0.qty",
+      "key": "times",
+      "known": {"name": "Demo: Dressings by wound", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "wound"}, "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qty": {"fromPath": "visits.count"}}]}
+    },
+    {
+      "name": "a condition map with a field this version has not got",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qtyPerPatient": 1}], "note": "Demo: note"},
+      "at": "",
+      "key": "note",
+      "known": {"name": "Demo: Rash", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qtyPerPatient": 1}]}
+    },
+    {
+      "name": "a condition map line with a field this version has not got",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Rash", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qtyPerPatient": 1, "max": 3}]},
+      "at": "lines.0",
+      "key": "max",
+      "known": {"name": "Demo: Rash", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "qtyPerPatient": 1}]}
+    },
+    {
+      "name": "a bag with a field this version has not got",
+      "kind": "bag",
+      "body": {"name": "Demo: Day bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 2}], "ownerId": "00000000-0000-4000-8000-0000000b0001"},
+      "at": "",
+      "key": "ownerId",
+      "known": {"name": "Demo: Day bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 2}]}
+    },
+    {
+      "name": "a bag minimum with a field this version has not got",
+      "kind": "bag",
+      "body": {"name": "Demo: Day bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 2, "max": 10}]},
+      "at": "minimums.0",
+      "key": "max",
+      "known": {"name": "Demo: Day bag", "minimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 2}]}
+    },
+    {
+      "name": "a template minimum with a field this version has not got",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": true, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 2, "max": 10}], "problemCheckDays": 90},
+      "at": "newBagMinimums.0",
+      "key": "max",
+      "known": {"name": "Team settings", "bagMinimumsOn": true, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-0000000a0001", "min": 2}], "problemCheckDays": 90}
+    }
+  ],
+  "unknownKinds": [
+    {
+      "name": "the billing code map phase 10 adds",
+      "kind": "billing_code_map",
+      "body": {"name": "Demo: Wound care codes", "targetId": "00000000-0000-4000-8000-0000000a0001", "codes": ["97597"]}
+    },
+    {
+      "name": "a kind no phase has named",
+      "kind": "alert_rule",
+      "body": {"name": "Demo: Alert"}
+    }
+  ]
+}

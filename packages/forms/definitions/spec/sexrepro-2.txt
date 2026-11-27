@@ -1,0 +1,40 @@
+            4. If \[ Pregnant \]&#32;
+               1. Current Pregnancy&#32;
+                  1. Gestational age
+                     1. &#91; weeks \] \[ days \]&#32;
+                  2. Estimated due date
+                     1. &#91; date \]&#32;
+                  3. Gravida&#32;
+                     1. G \[ number \]&#32;
+                  4. Para&#32;
+                     1. G \[ number \] P \[ number \]
+               2. Pregnancy History / Current Complications&#32;
+                  1. Gestational diabetes&#32;
+                  2. Gestational hypertension&#32;
+                  3. Preeclampsia
+                  4. Eclampsia&#32;
+                  5. Preterm birth
+                  6. Preterm labor
+                  7. Placental Problems
+                  8. Ectopic pregnancy
+                  9. Miscarriage
+                  10. Stillbirth
+                  11. Cesarean delivery
+                  12. Postpartum hemorrhage
+                  13. Other
+                      1. &#91; Text box \]
+                  14. None known&#32;
+               3. Current Symptoms
+                  1. Vaginal bleeding
+                  2. Pelvic / Abdominal pain&#32;
+                  3. Severe nausea / vomiting
+                  4. Fever
+                  5. Dizziness / syncope
+                  6. Headache
+                  7. Vision changes
+                  8. Swelling
+                  9. Leakage of fluid
+                  10. Decreased fetal movement
+                  11. Contractions
+                  12. Other
+                      1. &#91; Text box \]&#32;

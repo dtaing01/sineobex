@@ -1,0 +1,177 @@
+# Working in this repository
+
+Sineobex: offline-first charting for street medicine teams. HIPAA-regulated; the preview holds
+made-up patients only. Read this before changing anything; it is how every session and every
+helper agent works here, so work can stop at any point (usage limits, restarts) and another
+session can pick it up.
+
+## Where the truth lives
+
+| What | Where |
+|---|---|
+| Product spec (the PRD) | [Sineobex Build & Strategy Plan](https://claude.ai/code/artifact/6f83b7b9-4134-4c36-ad0c-17a41eed3af3): the main tab is the source of truth for what each feature does; the Build plan tab sets the order. It lives outside the repo. |
+| Plan, decisions, phase status | `IMPLEMENTATION_PLAN.md`: architecture, decisions D1–D126, regulation mapping, the phase table with each phase's **Done when** and status, defaults for open questions, risks, what needs a person. |
+| The current phase's design and its unit status | `docs/design/phase-<n>-<name>.md`. Its **Status** section says which units are done, which are open and what each needs. Start there. |
+| Choices that need a person | `docs/decisions-for-review.md`: each one by who decides, with the default built, a recommendation, what a later change costs and where it lives. Reviewed once the MVP (phases 5 to 10) is built. |
+| Compliance mapping | `docs/compliance/` |
+| Task cards for a small model, and the recipes they point to | `docs/plan/` (start with its `README.md`) |
+| Deployment setup (accounts, secrets) | `docs/setup.md` |
+
+When the code and these documents disagree, find out which is right, fix the other, and say so in
+the commit.
+
+## Rules that never bend
+
+- Data leaves a phone only after a hash-confirmed receipt. A rejected change is never dropped and
+  its dependents are held. A rejection never stops a phone's queue. "Log out anyway" never deletes
+  unsynced data; only a remote wipe and the tenth wrong PIN do.
+- Every action writes its audit event in the same database transaction. A read that can't be
+  logged is refused.
+- No patient details in logs, URLs, page titles, notifications, crash reports or browser storage.
+  Search terms travel in POST bodies and are never stored in the audit log.
+- Permissions are checked in the API (existing keys only; the PRD allows no new permission types in
+  the MVP). Row-level security is the second line, not the first.
+- The phone's offline index holds no legal names and nothing derived from one (D40).
+- Every new screen passes accessibility checks in Day, Night run and High contrast, and reflows at
+  narrow width. Every new feature is tested offline, not only online.
+- Demo data only: invented names, descriptors starting "Demo:", no realistic identifiers (the PHI
+  guard fails the build on them).
+
+## Environment
+
+```sh
+export PATH=/opt/flutter/bin:/opt/bin:$PATH        # flutter, deno, gitleaks, actionlint
+pg_isready -h localhost || pg_ctlcluster 16 main start   # Postgres is down after a machine restart
+su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres'\""   # a fresh machine's Postgres has none
+# CI's Postgres images sort text as en_US.UTF-8; make every new database do the same. The server
+# reads its locales when it starts, so restart it after making one (before anything uses it).
+locale -a | grep -qx en_US.utf8 || { localedef -i en_US -f UTF-8 en_US.UTF-8 && pg_ctlcluster 16 main restart; }
+su postgres -c "psql -qAtc \"select datcollate from pg_database where datname = 'template1'\"" | grep -qx en_US.UTF-8 ||
+  su postgres -c "psql -q -c \"update pg_database set datistemplate = false where datname = 'template1'\" -c 'drop database template1' -c \"create database template1 template template0 locale 'en_US.UTF-8'\" -c \"update pg_database set datistemplate = true where datname = 'template1'\""
+pnpm install --frozen-lockfile
+(cd apps/mobile && flutter pub get --enforce-lockfile)
+export TEST_ADMIN_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+```
+
+Each API and DB test file makes its own scratch database, so those suites can run anywhere, any
+time. The portal end-to-end tests, `tools/live-sync.sh` and `tools/ci-local.sh` use **fixed ports
+(8787, 8790, 3100) and fixed databases (`ci_scratch`, `sineobex_e2e`)**: two of them at once break
+each other. Run them under the shared lock, always:
+
+```sh
+flock "$CI_LOCK" <command>
+```
+
+`CI_LOCK` is one file that everything sharing the machine agrees on. A session that runs helper
+agents creates it (in its scratchpad) and passes the path to each agent; a lone session can use any
+file. Without the lock, a second run drops the first one's database mid-test and both fail in ways
+that look like bugs.
+
+## Commands
+
+| Check | Command |
+|---|---|
+| Lint, format, types | `pnpm -s lint && pnpm -s format:check && pnpm -s typecheck` |
+| DB and API tests | `pnpm -s --filter @sineobex/db test && pnpm -s --filter @sineobex/api test` |
+| One API test file | `cd services/api && pnpm -s vitest run test/<file>.test.ts` |
+| Forms package tests | `pnpm -s --filter @sineobex/forms test` |
+| Contract (after any route or schema change) | `pnpm contract:generate`, then commit the regenerated files with the change |
+| Forms export (after any change under `packages/forms/definitions/` or to the interpreter) | `pnpm forms:export && pnpm -s --filter @sineobex/forms golden`, then commit `packages/forms/generated/` and `apps/mobile/assets/forms/` with the change; after an interpreter change, `pnpm --filter @sineobex/forms exec vitest run test/golden.test.ts -u` rewrites the phone's golden sample |
+| Phone | `cd apps/mobile && tool/format_check.sh && flutter analyze --fatal-infos && flutter test` |
+| Phone against the real API | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres tools/live-sync.sh` |
+| PHI guard | `node tools/phi-guard.mjs` |
+| Task cards (after writing or changing one) | `node tools/card-check.mjs` |
+| Decisions document (after adding or changing a `PLAN-OPEN` marker) | `node tools/decisions-check.mjs` |
+| Run a card with the small local model | `CARD_MODEL=<name> node tools/card-run.mjs <card>`; `--dry-run` shows what the model is sent (`docs/plan/README.md`, "Running a card") |
+| **Everything CI runs** (all but the Android build) | `flock "$CI_LOCK" env ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres PORTAL_ENV=test PW_CHROMIUM_PATH=/opt/pw-browsers/chromium tools/ci-local.sh` |
+
+`tools/ci-local.sh` takes about 50 minutes. It must end with "All local CI checks passed" before
+anything is pushed. Without `PW_CHROMIUM_PATH` the portal tests can't start a browser.
+Local Postgres is 16; CI also runs 17, so don't rely on version-specific behaviour (the
+`unaccent` dictionary differs between them: that is why `normalize_name` is pinned, migration
+0015). Nor on how text sorts: CI's databases sort by en_US.UTF-8 rules, which pass over `_` and
+other punctuation (`safer_crack_use` comes before `safe_smoking`), where C.UTF-8 sorts by code
+point. A test that compares an `order by` on text with a list built in code orders it
+`collate "C"`.
+
+## Conventions
+
+- Match the code around you: its comment density, naming and idiom. Comments say why, not what.
+- Nothing is asked of a person mid-build (the project lead, Nov 21). Every default the PRD leaves
+  open, and every other choice that needs a person, is built as a default: a `PLAN-OPEN (<row>):`
+  comment naming its row and the question, that row in `docs/decisions-for-review.md` under who
+  decides, and, when its phase closes, a row in `IMPLEMENTATION_PLAN.md` section 6.
+- Generated files are never edited by hand: `packages/contract/openapi.json`,
+  `packages/contract/src/generated/**`, `apps/mobile/lib/api/generated/**` and the
+  `generated/` data modules. Never run `dart format` over `apps/mobile/lib/api/generated`
+  (`tool/format_check.sh` skips it).
+- Migrations are plain SQL that runs unchanged on RDS, numbered, additive, applied in one
+  transaction (no `create index concurrently`). A migration is never edited once merged; a fix is a
+  new file.
+- `apps/mobile/test/sync/fake_server.dart` mirrors the API's sync rules by hand (plan risk 7). Any
+  change to `services/api/src/sync/**` comes with the same change to the fake.
+- Every rule gets a regression test. For sync, audit and permission rules, check the test bites:
+  revert the rule, see it fail, restore it.
+- User-facing copy is plain language, with curly apostrophes as the existing copy has.
+- No model names in code, comments, commits or documents.
+
+## Git and the pull request
+
+- Phase work lands on the PR branch (today `claude/modest-feynman-1bz6ws`, draft PR
+  dtaing01/sineobex#5). Commit in focused commits with plain messages that say what changed and
+  why; end each message with the attribution lines your session's instructions give.
+- Push only after `tools/ci-local.sh` passes on the exact commit you push. Keep the PR green: a red
+  check is the next thing to fix, before new work goes on top.
+- Update the PR description when a phase or a review round lands.
+
+## How a phase is run
+
+1. **Design.** Read the phase's scope in the plan and its PRD modules. Write
+   `docs/design/phase-<n>-<name>.md`: data model, sync rules, routes, permissions (existing keys),
+   screens, tests mapped to the Done when, defaults, risks, and a **work breakdown into units**, each
+   owning its files, in dependency order. Have it critiqued against the PRD and the code before
+   anyone builds from it. Phase 3's design is the model.
+2. **Build in units.** Phases 4 and 5 are built by the frontier model with helper agents, from the
+   card list in their design (D70, D127; each design's "How this phase is built"), and phases 6 to
+   10 the same way by default until the project lead decides otherwise (row PL-9 of
+   `docs/decisions-for-review.md`): no card is written in full and no small model runs. The
+   two-model build of `docs/plan/README.md` (a small local model writes each card's code through
+   `tools/card-run.mjs`; the frontier model writes each card, writes the level X cards' code
+   itself, writes the tests of level T cards first, and audits every card and every unit) waits
+   for a machine that can run the small model. A unit that others depend on (the schema and
+   contract unit) lands first, alone, with CI green. Then units run in parallel only when they
+   own disjoint files. Keep each unit's **Status** row in the design doc current as it lands.
+3. **Review.** An adversarial review of the whole phase (sync safety, audit, permissions, PHI,
+   accessibility, the fake's fidelity). Every confirmed finding is fixed with a regression test.
+4. **Close.** Copy the phase's decisions into the plan's D-table, set its status to Done with the
+   evidence, update the compliance docs and the PR description.
+
+## Running units with helper agents
+
+- One agent per unit, each in its own git worktree, told to `git reset --hard <PR branch>` first
+  (a new worktree may start from `main`).
+- Give it: the design sections it needs (by number, so it reads ranges, not the whole file), its
+  exact file list, the files it must not touch and who owns them, the rules above, the lock, the
+  commit rules, and what to report (branch, SHAs, signatures others call, test results,
+  departures from the design, open questions).
+- Tell it to commit working pieces as it goes and to report early when other units wait on part of
+  its work. Usage limits stop agents mid-task; whatever is committed survives, and nothing else
+  does.
+- An agent that pushes a backup branch first runs the secret scan on its new commits:
+  `gitleaks git --redact --exit-code 1 --log-opts="<base>..HEAD" .`. CI's checkout fetches every
+  branch and its scan reads them all, so a false positive on a backup branch turns the PR's check
+  red. Reword a made-up value the scan flags (a low-entropy one, such as `t_000000000001`) before
+  pushing; a fingerprint in `.gitleaksignore` is for a value that must stay as it is.
+- The coordinating session merges each unit onto the PR branch (fast-forward when the agent rebased,
+  otherwise cherry-pick), runs the full local CI, pushes, and tells the units that wait on it.
+  Worktrees under `.claude/worktrees/` are scratch: nothing in them counts until it is on the branch.
+  Remove a worktree only after its agent has stopped.
+- Usage limits, not machine time, are what runs out. Run two agents at a time at most, give each a
+  narrow job, and have each write its file or its findings to disk as it goes: six agents at once
+  has twice used a whole window without one finishing.
+- Agents never write in the PR checkout, drafts included: its commit hook rightly asks for
+  everything there to be committed and pushed.
+- To check that a fix's test fails without the fix, script it instead of spending an agent on it:
+  reverse the fix's source hunks in a scratch worktree and run the tests the fix added.
+- Shared test helpers have one owner. A bug in one is fixed by its owner (or the coordinator), on
+  the branch, with a test, and every unit is told to rebase.

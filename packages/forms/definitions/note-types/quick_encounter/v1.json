@@ -1,0 +1,436 @@
+{
+  "key": "quick_encounter",
+  "version": 1,
+  "title": "Quick encounter",
+  "kinds": ["medical"],
+  "group": "clinical",
+  "sensitivity": "none",
+  "quick": true,
+  "sections": [
+    {
+      "id": "visit",
+      "title": "Visit",
+      "spec": "quick-1",
+      "fields": [
+        {
+          "id": "parts",
+          "kind": "choice",
+          "many": true,
+          "label": "What does this visit cover?",
+          "options": [
+            {
+              "code": "general",
+              "label": "GENERAL"
+            },
+            {
+              "code": "wound",
+              "label": "WOUND"
+            },
+            {
+              "code": "social_needs",
+              "label": "SOCIAL NEEDS"
+            },
+            {
+              "code": "medication",
+              "label": "MEDICATION"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "general",
+      "title": "General",
+      "spec": "quick-1",
+      "showWhen": {
+        "field": "visit.parts",
+        "is": "general"
+      },
+      "fields": [
+        {
+          "id": "concern",
+          "kind": "text",
+          "label": "Chief concern",
+          "lines": "many",
+          "maxLength": 2000,
+          "handoff": true,
+          "mapsTo": "general_primary_care:reason.concern"
+        },
+        {
+          "id": "hpi",
+          "kind": "choice",
+          "many": false,
+          "label": "History of present illness",
+          "options": [
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "no",
+              "label": "No"
+            },
+            {
+              "code": "unknown",
+              "label": "Unknown"
+            }
+          ]
+        },
+        {
+          "id": "hpi_details",
+          "kind": "text",
+          "label": "Describe the history of present illness",
+          "lines": "many",
+          "maxLength": 2000,
+          "showWhen": {
+            "field": "general.hpi",
+            "is": "yes"
+          },
+          "mapsTo": "general_primary_care:hpi.narrative"
+        },
+        {
+          "id": "bp",
+          "kind": "group",
+          "label": "Blood pressure",
+          "layout": "row",
+          "fields": [
+            {
+              "id": "systolic",
+              "kind": "number",
+              "label": "Systolic",
+              "min": 0,
+              "max": 300,
+              "decimals": 0,
+              "unit": "mmHg",
+              "handoff": true,
+              "mapsTo": "general_primary_care:vitals.bp.systolic"
+            },
+            {
+              "id": "diastolic",
+              "kind": "number",
+              "label": "Diastolic",
+              "min": 0,
+              "max": 200,
+              "decimals": 0,
+              "unit": "mmHg",
+              "handoff": true,
+              "mapsTo": "general_primary_care:vitals.bp.diastolic"
+            }
+          ]
+        },
+        {
+          "id": "hr",
+          "kind": "number",
+          "label": "Heart rate",
+          "min": 0,
+          "max": 300,
+          "decimals": 0,
+          "unit": "bpm",
+          "handoff": true,
+          "mapsTo": "general_primary_care:vitals.hr"
+        },
+        {
+          "id": "temp",
+          "kind": "number",
+          "label": "Temperature",
+          "min": 50,
+          "max": 115,
+          "decimals": 1,
+          "unit": "°F",
+          "handoff": true,
+          "mapsTo": "general_primary_care:vitals.temp"
+        },
+        {
+          "id": "assessment",
+          "kind": "text",
+          "label": "Assessment",
+          "lines": "many",
+          "maxLength": 2000
+        }
+      ]
+    },
+    {
+      "id": "wound",
+      "title": "Wound",
+      "spec": "quick-1",
+      "showWhen": {
+        "field": "visit.parts",
+        "is": "wound"
+      },
+      "fields": [
+        {
+          "id": "type",
+          "kind": "choice",
+          "many": false,
+          "label": "Wound type",
+          "options": {
+            "list": "wound_type"
+          },
+          "mapsTo": "wound_care:wound.type"
+        },
+        {
+          "id": "location",
+          "kind": "region",
+          "label": "Location",
+          "options": {
+            "list": "body_region"
+          },
+          "side": "side",
+          "mapsTo": "wound_care:wound.location"
+        },
+        {
+          "id": "dimensions",
+          "kind": "group",
+          "label": "Dimensions (L × W × D)",
+          "layout": "row",
+          "fields": [
+            {
+              "id": "length",
+              "kind": "number",
+              "label": "Length",
+              "min": 0.1,
+              "max": 100,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": {
+                "unit": "in",
+                "perUnit": 2.54
+              },
+              "mapsTo": "wound_care:wound.measurements.length"
+            },
+            {
+              "id": "width",
+              "kind": "number",
+              "label": "Width",
+              "min": 0.1,
+              "max": 100,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": {
+                "unit": "in",
+                "perUnit": 2.54
+              },
+              "mapsTo": "wound_care:wound.measurements.width"
+            },
+            {
+              "id": "depth",
+              "kind": "number",
+              "label": "Depth",
+              "min": 0,
+              "max": 30,
+              "decimals": 1,
+              "unit": "cm",
+              "altUnit": {
+                "unit": "in",
+                "perUnit": 2.54
+              },
+              "mapsTo": "wound_care:wound.measurements.depth"
+            }
+          ]
+        },
+        {
+          "id": "drainage",
+          "kind": "choice",
+          "many": false,
+          "label": "Drainage",
+          "options": {
+            "list": "drainage_amount"
+          },
+          "mapsTo": "wound_care:wound.drainage_amount"
+        },
+        {
+          "id": "dressing",
+          "kind": "choice",
+          "many": true,
+          "label": "Dressing applied",
+          "options": [
+            {
+              "code": "gauze",
+              "label": "Gauze"
+            },
+            {
+              "code": "abd",
+              "label": "ABD"
+            },
+            {
+              "code": "xeroform",
+              "label": "Xeroform"
+            },
+            {
+              "code": "compression",
+              "label": "Compression"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ],
+          "mapsTo": "wound_care:wound.treatment.dressing"
+        },
+        {
+          "id": "photos",
+          "kind": "photo",
+          "label": "Photos",
+          "max": 5
+        }
+      ]
+    },
+    {
+      "id": "social",
+      "title": "Social needs",
+      "spec": "quick-2",
+      "showWhen": {
+        "field": "visit.parts",
+        "is": "social_needs"
+      },
+      "fields": [
+        {
+          "id": "support",
+          "kind": "choice",
+          "many": true,
+          "label": "Support",
+          "options": [
+            {
+              "code": "water",
+              "label": "Water"
+            },
+            {
+              "code": "food",
+              "label": "Food"
+            },
+            {
+              "code": "hygiene_kit",
+              "label": "Hygiene Kit"
+            },
+            {
+              "code": "socks",
+              "label": "Socks"
+            },
+            {
+              "code": "handwarmers",
+              "label": "Handwarmers"
+            },
+            {
+              "code": "ride_arranged",
+              "label": "Ride arranged"
+            }
+          ]
+        },
+        {
+          "id": "needs",
+          "kind": "choice",
+          "many": true,
+          "label": "Needs",
+          "options": [
+            {
+              "code": "housing",
+              "label": "Housing"
+            },
+            {
+              "code": "transportation",
+              "label": "Transportation"
+            },
+            {
+              "code": "id",
+              "label": "ID Documents"
+            },
+            {
+              "code": "phone",
+              "label": "Phone"
+            },
+            {
+              "code": "benefits",
+              "label": "Benefits"
+            }
+          ],
+          "mapsTo": "social_needs:needs.needs"
+        },
+        {
+          "id": "referral",
+          "kind": "choice",
+          "many": false,
+          "label": "Referral",
+          "options": [
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "id": "referral_details",
+          "kind": "text",
+          "label": "Referral details",
+          "lines": "many",
+          "maxLength": 2000,
+          "required": true,
+          "showWhen": {
+            "field": "social.referral",
+            "is": "yes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "medication",
+      "title": "Medication",
+      "spec": "quick-2",
+      "showWhen": {
+        "field": "visit.parts",
+        "is": "medication"
+      },
+      "needs": "orderMedications",
+      "fields": [
+        {
+          "id": "order",
+          "kind": "choice",
+          "many": true,
+          "label": "Order",
+          "options": [
+            {
+              "code": "otc",
+              "label": "OTC"
+            },
+            {
+              "code": "prescription",
+              "label": "Prescription"
+            }
+          ]
+        },
+        {
+          "id": "delivery",
+          "kind": "choice",
+          "many": false,
+          "label": "Delivery",
+          "options": [
+            {
+              "code": "yes",
+              "label": "YES"
+            },
+            {
+              "code": "no",
+              "label": "NO"
+            }
+          ]
+        },
+        {
+          "id": "instructions",
+          "kind": "text",
+          "label": "Instructions for delivery",
+          "lines": "many",
+          "maxLength": 2000,
+          "required": true,
+          "showWhen": {
+            "field": "medication.delivery",
+            "is": "yes"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,271 @@
+{
+  "note": "Hand-written. The phase 5 Done when (design 10.1; build-plan 91): \"An admin adds a Labs item, a bundle and a secondary flag, and a phone sees all three after its next sync.\" One story for every test that walks it: services/api/test/presets-done-when.test.ts (steps 2 to 5, card P6-server), apps/mobile/test/presets/done_when_presets_test.dart (steps 1, 6, 7 and 8, the phone's test server, P6-phone), done_when_screens_test.dart (steps 7 and 8 on the screens, P6-screens), live_presets_test.dart (steps 1 to 8, the real API in tools/live-sync.sh, P6-live), and the portal's apps/portal/e2e/presets.spec.ts (steps 2 to 4 through the pages, then step 6's pull as a phone member would make it) and patient-flags.spec.ts (step 8's chart). The people are the seeded staff of db/seed/seed.ts, by email; a test that makes its own team makes them with these names and roles. Every revision in this file is counted from R, the team's revision once step 1 has run: 0 is R itself, 3 is R+3; the server's own numbers are R plus these. A pull answers the greatest revision a preset carries, so where a note type write took the team's last revision, step 1's pull answers below R and step 6's since is what it answered; steps 2 to 6 count from R all the same. In a body, an object where an ID goes names a preset: {\"platform\": originKey} the team's copy of that platform preset (packages/presets/data/platform.json), {\"preset\": ref} the preset an earlier step of this story made; each carries the name a form shows it by. A reader puts the team's ID in its place before it sends the body, and a body sent with an object there is refused. A reason is sent as written; the server keeps it trimmed in team_preset_events and puts it in no audit detail and no log. The names are new to every team: the seed's own demo presets use none of them (P1-seed), so a run against a freshly seeded database finds each name free, and a second run on the same database would find it taken. A pull's `presets` names what it answers, each by its ref, kind, name, version and state, and with `exactly` nothing else is in it. Steps 3 and 4 are the design's row \"3 and 4\". Step 8 needs unit P5 (a flag set on a patient); its data is written here so that P5 and P6 read the same story. The patient is registered by the staff member's phone before step 1 and is on the server by its end, so step 8's change names a patient the server knows. Everyone and everything here is invented.",
+
+  "people": {
+    "programAdmin": {
+      "email": "admin@example.com",
+      "displayName": "Alex Rivera (demo)",
+      "role": "program_admin"
+    },
+    "staff": {
+      "email": "resident@example.com",
+      "displayName": "Casey Nguyen (demo)",
+      "role": "healthcare_staff"
+    }
+  },
+
+  "recentSignInMinutes": 15,
+
+  "patient": {
+    "id": "d05e0000-0000-4000-8000-000000000001",
+    "preferredName": "Juniper",
+    "visualDescriptor": "Demo: orange knit hat, blue scarf",
+    "usualArea": "Demo: under the made-up river bridge",
+    "livingSituation": { "kind": "unsheltered" },
+    "preferredLanguage": "en"
+  },
+
+  "presets": [
+    {
+      "ref": "glucoseTest",
+      "kind": "item",
+      "step": 2,
+      "body": {
+        "name": "Demo: Glucose test",
+        "categoryId": { "platform": "order_category.labs", "name": "Labs" },
+        "unit": "test",
+        "medical": true,
+        "captureLot": false,
+        "result": { "type": "number", "unit": "mg/dL" }
+      },
+      "reason": "Demo: the outreach team now checks blood sugar",
+      "teamSetup": { "under": "Labs", "shows": "Demo: Glucose test" }
+    },
+    {
+      "ref": "footCheck",
+      "kind": "bundle",
+      "step": 3,
+      "body": {
+        "name": "Demo: Foot check",
+        "medical": true,
+        "prompt": "Demo: look at both feet before giving this bundle.",
+        "lines": [
+          { "itemId": { "preset": "glucoseTest", "name": "Demo: Glucose test" }, "qty": 1, "core": true }
+        ]
+      },
+      "reason": "Demo: a foot check for people with diabetes",
+      "teamSetup": { "under": "Bundles", "shows": "Demo: Foot check", "lines": ["Demo: Glucose test"] }
+    },
+    {
+      "ref": "frostRisk",
+      "kind": "flag",
+      "step": 4,
+      "body": {
+        "name": "Demo: Frost risk",
+        "tier": "secondary",
+        "criteria": "Demo: sleeps outside on nights below freezing.",
+        "color": "teal",
+        "rank": 40,
+        "sensitive": false
+      },
+      "reason": "Demo: winter outreach starts next week",
+      "teamSetup": { "under": "Conditions", "shows": "Demo: Frost risk", "pill": "Teal · Demo: Frost risk" }
+    }
+  ],
+
+  "steps": [
+    {
+      "n": 1,
+      "online": true,
+      "then": "offline",
+      "by": "staff",
+      "story": "The staff member's phone signs in to the team, registers the patient, syncs, and pulls the team's presets with no revision of its own; then it goes offline.",
+      "expect": {
+        "pull": { "status": 200, "reset": true, "revision": 0 },
+        "phone": { "holds": "every platform preset, by origin key, at its newest version", "revision": 0 },
+        "server": { "revision": 0 }
+      }
+    },
+    {
+      "n": 2,
+      "online": true,
+      "by": "programAdmin",
+      "signedInMinutesAgo": 0,
+      "adds": "glucoseTest",
+      "story": "A Program Admin, signed in just now, adds the item Demo: Glucose test in Labs, counted in test, its result a number in mg/dL, with a reason.",
+      "expect": {
+        "status": 201,
+        "version": 1,
+        "revision": 1,
+        "head": { "state": "active", "version": 1, "customized": false, "revision": 1 },
+        "storedVersion": { "version": 1, "source": "team", "by": "programAdmin" },
+        "event": { "act": "created", "version": 1, "by": "programAdmin", "holdsTheReason": true },
+        "audit": { "action": "preset.created", "entity": "preset", "count": 1, "inTheWriteTransaction": true, "holdsTheReason": false },
+        "server": { "revision": 1 }
+      }
+    },
+    {
+      "n": 3,
+      "online": true,
+      "by": "programAdmin",
+      "signedInMinutesAgo": 0,
+      "adds": "footCheck",
+      "story": "The admin adds the bundle Demo: Foot check, with that item as a core line, with a reason.",
+      "expect": {
+        "status": 201,
+        "version": 1,
+        "revision": 2,
+        "head": { "state": "active", "version": 1, "customized": false, "revision": 2 },
+        "storedVersion": { "version": 1, "source": "team", "by": "programAdmin" },
+        "event": { "act": "created", "version": 1, "by": "programAdmin", "holdsTheReason": true },
+        "audit": { "action": "preset.created", "entity": "preset", "count": 1, "inTheWriteTransaction": true, "holdsTheReason": false },
+        "server": { "revision": 2 }
+      }
+    },
+    {
+      "n": 4,
+      "online": true,
+      "by": "programAdmin",
+      "signedInMinutesAgo": 0,
+      "adds": "frostRisk",
+      "story": "The admin adds the secondary flag Demo: Frost risk, with a reason.",
+      "expect": {
+        "status": 201,
+        "version": 1,
+        "revision": 3,
+        "head": { "state": "active", "version": 1, "customized": false, "revision": 3 },
+        "storedVersion": { "version": 1, "source": "team", "by": "programAdmin" },
+        "event": { "act": "created", "version": 1, "by": "programAdmin", "holdsTheReason": true },
+        "audit": { "action": "preset.created", "entity": "preset", "count": 1, "inTheWriteTransaction": true, "holdsTheReason": false },
+        "server": { "revision": 3 }
+      }
+    },
+    {
+      "n": 5,
+      "online": true,
+      "story": "The staff member tries step 2's write; then the admin tries it with a sign-in older than 15 minutes. Neither is written, and the revision stays where step 4 left it.",
+      "attempts": [
+        {
+          "by": "staff",
+          "signedInMinutesAgo": 0,
+          "repeats": "glucoseTest",
+          "expect": {
+            "status": 403,
+            "code": "forbidden",
+            "audit": { "action": "access.denied", "count": 1, "details": { "permission": "team.manage_presets" } }
+          }
+        },
+        {
+          "by": "programAdmin",
+          "signedInMinutesAgo": 16,
+          "repeats": "glucoseTest",
+          "expect": { "status": 403, "code": "reauth_required", "audit": null }
+        }
+      ],
+      "expect": {
+        "server": { "revision": 3, "written": "nothing: no head, version, event or preset audit event" }
+      }
+    },
+    {
+      "n": 6,
+      "online": true,
+      "by": "staff",
+      "story": "The phone comes online and syncs: one pull, with the revision and the epoch it holds.",
+      "expect": {
+        "pull": {
+          "since": 0,
+          "status": 200,
+          "reset": false,
+          "presets": [
+            { "ref": "glucoseTest", "kind": "item", "name": "Demo: Glucose test", "version": 1, "state": "active" },
+            { "ref": "footCheck", "kind": "bundle", "name": "Demo: Foot check", "version": 1, "state": "active" },
+            { "ref": "frostRisk", "kind": "flag", "name": "Demo: Frost risk", "version": 1, "state": "active" }
+          ],
+          "exactly": true,
+          "revision": 3
+        },
+        "phone": { "revision": 3 }
+      }
+    },
+    {
+      "n": 7,
+      "online": false,
+      "by": "staff",
+      "story": "The phone goes offline, and the staff member opens Team setup.",
+      "expect": {
+        "teamSetup": {
+          "items": [{ "under": "Labs", "shows": "Demo: Glucose test" }],
+          "bundles": [{ "shows": "Demo: Foot check", "lines": ["Demo: Glucose test"] }],
+          "flags": [{ "under": "Conditions", "shows": "Demo: Frost risk", "pill": "Teal · Demo: Frost risk" }]
+        }
+      }
+    },
+    {
+      "n": 8,
+      "online": false,
+      "then": "online",
+      "by": "staff",
+      "needs": "P5",
+      "story": "Still offline, the staff member sets Demo: Frost risk on the patient, with a reason; then the phone syncs.",
+      "flagChange": {
+        "patient": "d05e0000-0000-4000-8000-000000000001",
+        "flag": "frostRisk",
+        "action": "set",
+        "reason": "Demo: sleeping out through the cold snap"
+      },
+      "expect": {
+        "receipts": { "status": "accepted", "hashConfirmed": true },
+        "server": {
+          "currentFlags": { "primary": null, "secondary": ["frostRisk"] },
+          "audit": {
+            "action": "patient_flag.changed",
+            "count": 1,
+            "inTheWriteTransaction": true,
+            "details": { "action": "set", "tier": "secondary" },
+            "holdsTheReason": false
+          }
+        },
+        "chart": {
+          "flags": {
+            "primary": null,
+            "secondary": [
+              { "flag": "frostRisk", "name": "Demo: Frost risk", "tier": "secondary", "color": "teal", "colorName": "Teal", "rank": 40, "archived": false }
+            ]
+          },
+          "pill": "Teal · Demo: Frost risk",
+          "history": [{ "flag": "frostRisk", "action": "set", "by": "staff", "holdsTheReason": true }]
+        }
+      }
+    }
+  ],
+
+  "neverInAuditDetails": [
+    "Demo: Glucose test",
+    "Demo: Foot check",
+    "Demo: Frost risk",
+    "Demo: the outreach team now checks blood sugar",
+    "Demo: a foot check for people with diabetes",
+    "Demo: winter outreach starts next week",
+    "Demo: look at both feet",
+    "Demo: sleeps outside",
+    "Demo: sleeping out through the cold snap",
+    "Juniper",
+    "Demo: orange knit hat",
+    "Demo: under the made-up river bridge"
+  ],
+
+  "neverLogged": [
+    "Demo: Glucose test",
+    "Demo: Foot check",
+    "Demo: Frost risk",
+    "Demo: the outreach team now checks blood sugar",
+    "Demo: a foot check for people with diabetes",
+    "Demo: winter outreach starts next week",
+    "Demo: look at both feet",
+    "Demo: sleeps outside",
+    "Demo: sleeping out through the cold snap",
+    "Juniper",
+    "Demo: orange knit hat",
+    "Demo: under the made-up river bridge"
+  ]
+}

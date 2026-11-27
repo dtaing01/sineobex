@@ -1,0 +1,83 @@
+commit 088203252f109434f9b5d5942b0caa1c798cb37b
+Author: Claude <noreply@anthropic.com>
+Date:   Mon Nov 16 01:07:49 2026 +0000
+
+    Card F0-package: the implementer's attempt, not audited
+    
+    Written by the small model from docs/plan/phase-4-encounters/cards/F0-package.md, through tools/card-run.mjs.
+    The card's commands passed after 1 attempt(s).
+    The auditor has not read this change.
+    
+    Attempt 1: the commands passed (0 s, 1500 tokens read, 400 written)
+
+diff --git a/packages/forms/package.json b/packages/forms/package.json
+new file mode 100644
+index 0000000..3eae348
+--- /dev/null
++++ b/packages/forms/package.json
+@@ -0,0 +1,20 @@
++{
++  "name": "@sineobex/forms",
++  "private": true,
++  "type": "module",
++  "description": "Encounter form definitions, their checks, and the interpreter that reads them (phase 4 design, forms 2).",
++  "exports": {
++    ".": "./src/index.ts"
++  },
++  "scripts": {
++    "export": "tsx scripts/export.ts",
++    "typecheck": "tsc --noEmit",
++    "test": "vitest run"
++  },
++  "devDependencies": {
++    "@types/node": "22.20.5",
++    "tsx": "4.23.15",
++    "typescript": "5.9.3",
++    "vitest": "4.1.12"
++  }
++}
+diff --git a/packages/forms/src/index.ts b/packages/forms/src/index.ts
+new file mode 100644
+index 0000000..379c22b
+--- /dev/null
++++ b/packages/forms/src/index.ts
+@@ -0,0 +1,2 @@
++/** The forms package (phase 4 design, forms 2). Its modules are added card by card. */
++export {};
+diff --git a/packages/forms/tsconfig.json b/packages/forms/tsconfig.json
+new file mode 100644
+index 0000000..3e543c9
+--- /dev/null
++++ b/packages/forms/tsconfig.json
+@@ -0,0 +1,5 @@
++{
++  "extends": "../../tsconfig.base.json",
++  "compilerOptions": { "types": ["node"], "lib": ["ES2023", "DOM"] },
++  "include": ["src", "scripts", "test"]
++}
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 52a1d28..8f3bf6f 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -172,6 +172,21 @@ importers:
+         specifier: 4.1.12
+         version: 4.1.12(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
+ 
++  packages/forms:
++    devDependencies:
++      '@types/node':
++        specifier: 22.20.5
++        version: 22.20.5
++      tsx:
++        specifier: 4.23.15
++        version: 4.23.15
++      typescript:
++        specifier: 5.9.3
++        version: 5.9.3
++      vitest:
++        specifier: 4.1.12
++        version: 4.1.12(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
++
+   services/api:
+     dependencies:
+       '@hono/node-server':

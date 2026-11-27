@@ -1,0 +1,36 @@
+{
+  "piece": "general-2",
+  "notOptions": [
+    "Search diagnosis/problem",
+    "Status: New, Chronic, Improving, Worse",
+    "Text box for the summary/manual inputs"
+  ],
+  "added": ["New", "Chronic", "Improving", "Worse"],
+  "differences": [
+    {
+      "line": 3,
+      "what": "Problem is a repeating section, one entry per diagnosis, up to 10, titled Problem {n}. The status and the interventions are asked for each.",
+      "why": "inventory A16; forms 2.3; PLAN-OPEN (forms 10.1 #1): the most problems in one note"
+    },
+    {
+      "line": 4,
+      "what": "The diagnosis search is a problem field: a code and a label from the problem code list.",
+      "why": "forms 2.3"
+    },
+    {
+      "line": 5,
+      "what": "Status is choose-one with the four labels of the comma list: New, Chronic, Improving, Worse (added, because a Status: line is not read as words). The problem list maps New to New and the other three to Ongoing.",
+      "why": "inventory A1, A17; PRD main 108"
+    },
+    {
+      "line": 7,
+      "what": "Choose-many. Other asks for a short text. The options record what was done; orders, referrals and supplies are entered on their own screens.",
+      "why": "inventory A1, A2, A24"
+    },
+    {
+      "line": 8,
+      "what": "The Encounter Summary text box is no field of any note: it is the visit's assessment on the summary screen.",
+      "why": "forms 6.2; lifecycle 9.6; inventory section 8, A23"
+    }
+  ]
+}

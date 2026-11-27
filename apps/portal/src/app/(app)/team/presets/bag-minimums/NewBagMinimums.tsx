@@ -1,0 +1,104 @@
+'use client';
+
+import { useState } from 'react';
+import { useFieldId, useFormState } from '@/components/ActionForm';
+import { answerKey } from '@/components/presets/answer';
+import { ItemLines, type ItemChoice } from '@/components/presets/ItemLines';
+import styles from '@/components/presets/presets.module.css';
+import type { ActionState } from '@/lib/forms';
+
+/** A list a new bag's minimums can be filled from: the template for new bags, or one of the bags. */
+export interface MinimumsSource {
+  /** `template`, or the bag's ID. */
+  id: string;
+  /** What Copy from offers it as, and what starts a sentence about it. */
+  label: string;
+  /** What it is called in running text: "the template for new bags", or the bag's name. */
+  name: string;
+  minimums: readonly { itemId: string; min: number }[];
+}
+
+/**
+ * What a screen reader is told when Copy from fills the lines: the list they came from and how many
+ * it filled, or, from a list that holds none, that the lines are empty now.
+ */
+export function filledSentence(source: MinimumsSource): string {
+  const n = source.minimums.length;
+  return n === 0
+    ? `${source.label} holds no minimums, so none are filled.`
+    : `Minimums filled from ${source.name}: ${n} ${n === 1 ? 'item' : 'items'}.`;
+}
+
+/** The Copy from choice that fills the minimums from the template for new bags. */
+export const TEMPLATE = 'template';
+
+/**
+ * A new bag's minimums (phase 5 design 8.1; PRD main 930): Copy from, the template for new bags to
+ * start with, or one of the team's bags, which fills the lines below with that list; the person
+ * changes them as they like, and the API stores the lines sent, never the choice. Choosing again
+ * fills them again, also after a refusal, which until then keeps the lines it sent.
+ */
+export function NewBagMinimums({
+  items,
+  sources,
+  hint,
+}: {
+  items: readonly ItemChoice[];
+  /** The template first, then the bags. */
+  sources: readonly MinimumsSource[];
+  /** What a minimum means, read with the lines. */
+  hint: string;
+}) {
+  const state = useFormState();
+  const id = useFieldId('copyFrom');
+  // The person's choice holds until the form's next answer; after one, a refused form shows what
+  // it sent, and one that went through starts again from the template.
+  const [chosen, setChosen] = useState<{ from: string; at: ActionState } | null>(null);
+  const picked = chosen !== null && chosen.at === state ? chosen.from : undefined;
+  const sent = state.values?.copyFrom;
+  const from = picked ?? (sources.some((s) => s.id === sent) ? sent! : TEMPLATE);
+  const source = sources.find((s) => s.id === from);
+  const minimums = source?.minimums ?? [];
+  return (
+    <>
+      <div className="px-field">
+        <label htmlFor={id}>Copy from</label>
+        <p id={`${id}-hint`} className="sx-help">
+          Choosing one fills the minimums below with its list, in place of what they hold. Change them before
+          you add the bag, or later.
+        </p>
+        {/* Not controlled: React resets a form once its action answers, and a select is reset to
+            the option it started with, so it starts afresh at each answer from what was sent. */}
+        <select
+          id={id}
+          name="copyFrom"
+          className={`px-select ${styles.choose}`}
+          defaultValue={from}
+          key={answerKey(state)}
+          aria-describedby={`${id}-hint`}
+          onChange={(e) => setChosen({ from: e.target.value, at: state })}
+        >
+          {sources.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {/* On the page before anything is said in it, so a screen reader reads each fill. */}
+      <p role="status" className="sr-only">
+        {picked !== undefined && source ? filledSentence(source) : ''}
+      </p>
+      <ItemLines
+        name="minimums"
+        legend="Minimums"
+        hint={hint}
+        items={items}
+        lines={minimums.map((m) => ({ itemId: m.itemId, quantity: m.min }))}
+        quantity={{ field: 'min', label: 'Minimum' }}
+        max={200}
+        {...(picked !== undefined ? { fill: picked } : {})}
+      />
+    </>
+  );
+}

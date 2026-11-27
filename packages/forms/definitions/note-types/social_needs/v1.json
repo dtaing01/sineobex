@@ -1,0 +1,74 @@
+{
+  "key": "social_needs",
+  "version": 1,
+  "title": "Social needs",
+  "kinds": ["medical", "non_medical"],
+  "group": "social",
+  "sensitivity": "none",
+  "sections": [
+    {
+      "id": "needs",
+      "title": "Social needs",
+      "spec": "social-needs",
+      "fields": [
+        {
+          "id": "needs",
+          "kind": "choice",
+          "many": true,
+          "label": "Current needs",
+          "options": {
+            "list": "needs"
+          }
+        },
+        {
+          "id": "housing",
+          "kind": "choice",
+          "many": false,
+          "label": "Housing status",
+          "options": [
+            {
+              "code": "unsheltered",
+              "label": "Unsheltered"
+            },
+            {
+              "code": "shelter",
+              "label": "Shelter"
+            },
+            {
+              "code": "transitional",
+              "label": "Transitional"
+            },
+            {
+              "code": "permanent",
+              "label": "Permanent"
+            },
+            {
+              "code": "couch_surfing",
+              "label": "Couch surfing"
+            },
+            {
+              "code": "unknown",
+              "label": "Unknown"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "resources",
+          "kind": "info",
+          "label": "The resource directory is coming."
+        },
+        {
+          "id": "referral",
+          "kind": "action",
+          "label": "Add referral",
+          "action": "add_referral"
+        }
+      ]
+    }
+  ]
+}

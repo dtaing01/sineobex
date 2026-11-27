@@ -1,0 +1,1199 @@
+{
+  "note": "Hand-written (phase 5 design 4.4; D138). What a preset body's schema cannot hold: validatePreset in packages/presets/src/validate.ts, run on a body its schema accepted (preset-bodies.json), against the team's other presets and its note types. The reader is packages/presets/test/validate.test.ts; the phone does not read this file. Each case calls validatePreset({kind, body, refs, definitions, id}) and must give `expected`, compared as a set: each problem {path, code}, `path` the body path at fault written as an issue path is (parts joined by dots, '' for the body itself). `refs` is the team's presets by id (the file's, unless a case gives its own): each {kind, state, behaviour}, behaviour being a category's own or, for an item, its category's; a preset of another kind has none. A category or an item given without one of supply, medication and lab is unknown_reference, as refs read from the heads alone would be: the rules that read it are never passed for want of it. `definitions` is the current definition of each of the team's active note types (the file's): one written out, or {released: N}, version N of that key in packages/forms/generated/presets.json. `id` is the preset's own id, null for one not yet made. The codes: unknown_reference (an id names no preset of the team: another team's is not among refs), wrong_kind (an id names a preset of another kind: categoryId an order_category, every itemId an item), reference_archived (an id names an archived preset; it is still read, so the rules below still apply to what it says), result_mismatch (an item has a result exactly when its category's behaviour is lab), medical_mismatch (an item in a medication or lab category is Medical; in a supply category the switch is free), bundle_not_medical (a bundle holding an item whose category is a medication category is Medical, PRD main 447; a Labs item does not make it so), primary_sensitive (a primary flag is never sensitive), unknown_note_type (a map names a note type key the team does not offer), unknown_path (a map's path names, through fieldAt with the entry part a repeating section adds, no field's or grid cell's own answer: nothing, an entry's own answer, an Other text, a side, a region's or a diagnosis's part, or a path written with an entry part), path_kind (it names a field or cell of a kind no map fires on: only choice, number and flag, and with answered also text, date and duration, are mapped; a group, a grid as a whole, a region, a diagnosis, a time, a photo, an action, guidance, or a field with sides, whose own path stores nothing), when_invalid (the when does not fit the field: includes names a code a choice field holds; equals names a code a choice field holds, a number checkAnswer takes at that path, or true for a tick; answered fits every mapped kind), from_path (a fromPath names no number that has one answer where the map fires: a map in a repeating section reads a number of its own section, so of the same entry; a map on a grid's cell reads a number in the same row of that grid; any other map, a map on every note included, reads a number outside every repeating section), sensitive_path (what the map fires on lies where visibleAnswers may take it out from a reader who may read the note: mayBeHidden(definition, path, when) for the path, mayBeHidden(definition, fromPath) for each fromPath, and for a note type that is sensitive, mayBeHidden(definition) at noteTypeKey, refused as a whole with nothing else of its path or quantities checked), settings_taken (a settings preset made when the team holds one, archived or not; editing the one it holds is not refused). For a map, the path is checked in this order, the first that fails reported: unknown_path, path_kind, when_invalid, sensitive_path; each fromPath: from_path, then sensitive_path; a note type the team does not offer, or a sensitive one, stops the path's and the quantities' checks. Every id is checked whatever else fails: unknown_reference, else wrong_kind, else reference_archived. An item whose category is unknown or of another kind has nothing read from it. The definitions demo_supplies and demo_marked are made up and pass forms' validate(); every id is made up.",
+  "codes": ["unknown_reference", "wrong_kind", "reference_archived", "result_mismatch", "medical_mismatch", "bundle_not_medical", "primary_sensitive", "unknown_note_type", "unknown_path", "path_kind", "when_invalid", "from_path", "sensitive_path", "settings_taken"],
+  "refs": {
+    "00000000-0000-4000-8000-00000000c001": {"kind": "order_category", "state": "active", "behaviour": "medication"},
+    "00000000-0000-4000-8000-00000000c002": {"kind": "order_category", "state": "active", "behaviour": "medication"},
+    "00000000-0000-4000-8000-00000000c003": {"kind": "order_category", "state": "active", "behaviour": "lab"},
+    "00000000-0000-4000-8000-00000000c004": {"kind": "order_category", "state": "active", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000c005": {"kind": "order_category", "state": "archived", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000c006": {"kind": "order_category", "state": "archived", "behaviour": "lab"},
+    "00000000-0000-4000-8000-00000000a001": {"kind": "item", "state": "active", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000a002": {"kind": "item", "state": "active", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000a003": {"kind": "item", "state": "active", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000a004": {"kind": "item", "state": "active", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000a005": {"kind": "item", "state": "active", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000a006": {"kind": "item", "state": "active", "behaviour": "medication"},
+    "00000000-0000-4000-8000-00000000a007": {"kind": "item", "state": "active", "behaviour": "medication"},
+    "00000000-0000-4000-8000-00000000a008": {"kind": "item", "state": "active", "behaviour": "lab"},
+    "00000000-0000-4000-8000-00000000a009": {"kind": "item", "state": "active", "behaviour": "medication"},
+    "00000000-0000-4000-8000-00000000a00a": {"kind": "item", "state": "archived", "behaviour": "supply"},
+    "00000000-0000-4000-8000-00000000a00b": {"kind": "item", "state": "archived", "behaviour": "medication"},
+    "00000000-0000-4000-8000-00000000b001": {"kind": "bundle", "state": "active"},
+    "00000000-0000-4000-8000-00000000f001": {"kind": "flag", "state": "active"},
+    "00000000-0000-4000-8000-00000000d001": {"kind": "field_supply_map", "state": "active"},
+    "00000000-0000-4000-8000-00000000d002": {"kind": "condition_supply_map", "state": "active"},
+    "00000000-0000-4000-8000-00000000e001": {"kind": "bag", "state": "active"},
+    "00000000-0000-4000-8000-00000000e002": {"kind": "settings", "state": "active"}
+  },
+  "definitions": {
+    "general_primary_care": {"released": 1},
+    "wound_care": {"released": 1},
+    "quick_encounter": {"released": 1},
+    "outreach": {"released": 1},
+    "social_needs": {"released": 1},
+    "red_flags_disposition": {"released": 1},
+    "harm_reduction": {"released": 1},
+    "psychological": {"released": 1},
+    "sexual_reproductive": {"released": 1},
+    "demo_supplies": {"key": "demo_supplies", "version": 1, "title": "Demo supplies", "kinds": ["medical", "non_medical"], "group": "social", "sensitivity": "none", "sections": [{"id": "supplies", "title": "Demo supplies given", "fields": [{"id": "given", "label": "Demo given", "kind": "choice", "many": true, "options": [{"code": "water", "label": "Water"}, {"code": "socks", "label": "Socks"}, {"code": "other", "label": "Other", "other": true}]}, {"id": "size", "label": "Demo size", "kind": "choice", "many": false, "options": [{"code": "small", "label": "Small"}, {"code": "large", "label": "Large"}]}, {"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "amount", "label": "Demo amount", "kind": "number", "min": 0, "max": 10, "decimals": 1, "unit": "L"}, {"id": "kit", "label": "Demo kit given", "kind": "flag"}, {"id": "notes", "label": "Demo notes", "kind": "text", "lines": "one", "maxLength": 200}, {"id": "when", "label": "Demo date", "kind": "date", "range": "any"}, {"id": "for", "label": "Demo how long", "kind": "duration"}, {"id": "at", "label": "Demo time", "kind": "time"}, {"id": "pair", "label": "Demo pair", "kind": "choice", "many": false, "options": [{"code": "yes", "label": "Yes"}, {"code": "no", "label": "No"}], "sides": true}, {"id": "spot", "label": "Demo spot", "kind": "region", "options": [{"code": "arm", "label": "Arm"}, {"code": "leg", "label": "Leg"}]}, {"id": "pack", "label": "Demo pack", "kind": "group", "layout": "stack", "fields": [{"id": "contents", "label": "Demo contents", "kind": "choice", "many": true, "options": [{"code": "gauze", "label": "Gauze"}, {"code": "tape", "label": "Tape"}]}]}, {"id": "kits", "label": "Demo kits", "kind": "grid", "rows": [{"code": "food", "label": "Food"}, {"code": "hygiene", "label": "Hygiene"}], "cell": {"id": "kit", "label": "Demo kit", "kind": "group", "layout": "row", "fields": [{"id": "handed", "label": "Demo handed out", "kind": "flag"}, {"id": "count", "label": "Demo how many", "kind": "number", "min": 0, "max": 20, "decimals": 0}]}}, {"id": "boxes", "label": "Demo boxes", "kind": "grid", "rows": [{"code": "food", "label": "Food"}, {"code": "hygiene", "label": "Hygiene"}], "cell": {"id": "count", "label": "Demo boxes given", "kind": "number", "min": 0, "max": 20, "decimals": 0}}, {"id": "info", "label": "Demo: count what was given.", "kind": "info"}, {"id": "photo", "label": "Demo photo", "kind": "photo", "max": 1}]}, {"id": "visits", "title": "Demo stops", "repeat": {"max": 5, "itemTitle": "Demo stop {n}"}, "fields": [{"id": "type", "label": "Demo stop type", "kind": "choice", "many": false, "options": [{"code": "food", "label": "Food"}, {"code": "water", "label": "Water"}]}, {"id": "n", "label": "Demo handed out", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "packs", "label": "Demo packs", "kind": "grid", "rows": [{"code": "small", "label": "Small"}, {"code": "large", "label": "Large"}], "cell": {"id": "count", "label": "Demo packs given", "kind": "number", "min": 0, "max": 99, "decimals": 0}}]}, {"id": "rounds", "title": "Demo rounds", "repeat": {"max": 5, "itemTitle": "Demo round {n}"}, "fields": [{"id": "n", "label": "Demo given this round", "kind": "number", "min": 0, "max": 99, "decimals": 0}]}, {"id": "later", "title": "Demo later", "fields": [{"id": "extra", "label": "Demo extra", "kind": "number", "min": 0, "max": 99, "decimals": 0}]}]},
+    "demo_marked": {"key": "demo_marked", "version": 1, "title": "Demo marked", "kinds": ["medical"], "group": "clinical", "sensitivity": "none", "sections": [{"id": "care", "title": "Demo treatment", "treatmentRecord": true, "fields": [{"id": "given", "label": "Demo given", "kind": "choice", "many": false, "options": [{"code": "yes", "label": "Yes"}, {"code": "no", "label": "No"}]}, {"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 9, "decimals": 0}]}, {"id": "checks", "title": "Demo checks", "fields": [{"id": "exam", "label": "Demo exams", "kind": "grid", "rows": [{"code": "skin_check", "label": "Skin"}, {"code": "pelvic_check", "label": "Pelvic", "sensitiveExam": true}], "cell": {"id": "result", "label": "Demo result", "kind": "choice", "many": false, "options": [{"code": "done", "label": "Done"}, {"code": "not_done", "label": "Not done"}]}}]}, {"id": "dx", "title": "Demo assessment", "fields": [{"id": "diagnosis", "label": "Demo diagnosis", "kind": "problem"}, {"id": "plan", "label": "Demo plan", "kind": "choice", "many": false, "options": [{"code": "supplies", "label": "Supplies"}, {"code": "none", "label": "None"}]}]}, {"id": "other", "title": "Demo other", "fields": [{"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "focus", "label": "Demo focus", "kind": "choice", "many": false, "options": [{"code": "skin", "label": "Skin"}, {"code": "pelvic", "label": "Pelvic", "sensitiveExam": true}]}]}]}
+  },
+  "cases": [
+    {
+      "name": "a category points at nothing, so nothing here refuses it",
+      "kind": "order_category",
+      "body": {"name": "Demo: Wound supplies", "behaviour": "supply", "sort": 50},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a supply item in a supply category",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c004", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a supply item marked Medical: the switch is free in a supply category",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c004", "unit": "each", "medical": true, "captureLot": false, "result": null},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a medication item is Medical",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "tablet", "medical": true, "captureLot": false, "result": null},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a medication item marked Non-Medical is refused",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "id": null,
+      "expected": [{"path": "medical", "code": "medical_mismatch"}]
+    },
+    {
+      "name": "a category given without its behaviour is unknown: a medication item marked Non-Medical is never passed for want of it",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "id": null,
+      "refs": {"00000000-0000-4000-8000-00000000c001": {"kind": "order_category", "state": "active"}},
+      "expected": [{"path": "categoryId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a category given without its behaviour is unknown: a Labs item with no result is never passed for want of it",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c003", "unit": "test", "medical": true, "captureLot": false, "result": null},
+      "id": null,
+      "refs": {"00000000-0000-4000-8000-00000000c003": {"kind": "order_category", "state": "active"}},
+      "expected": [{"path": "categoryId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "an item given without its category's behaviour is unknown: a Non-Medical bundle of a medication is never passed for want of it",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a006", "qty": 1, "core": true}]},
+      "id": null,
+      "refs": {"00000000-0000-4000-8000-00000000a006": {"kind": "item", "state": "active"}},
+      "expected": [{"path": "lines.0.itemId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a behaviour no category has is no behaviour",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c004", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "id": null,
+      "refs": {"00000000-0000-4000-8000-00000000c004": {"kind": "order_category", "state": "active", "behaviour": "kit"}},
+      "expected": [{"path": "categoryId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a preset of any other kind needs no behaviour",
+      "kind": "bag",
+      "body": {"name": "Demo: Bag", "minimums": [{"itemId": "00000000-0000-4000-8000-00000000b001", "min": 1}]},
+      "id": null,
+      "refs": {"00000000-0000-4000-8000-00000000b001": {"kind": "bundle", "state": "active"}},
+      "expected": [{"path": "minimums.0.itemId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "an Rx vaccine with lot and expiry captured",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c002", "unit": "dose", "medical": true, "captureLot": true, "result": null},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a Labs item with a choice result",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c003", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Negative"]}},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a Labs item with a number result",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c003", "unit": "test", "medical": true, "captureLot": false, "result": {"type": "number", "unit": "mg/dL"}},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a Labs item marked Non-Medical is refused",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c003", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Negative"]}},
+      "id": null,
+      "expected": [{"path": "medical", "code": "medical_mismatch"}]
+    },
+    {
+      "name": "a Labs item with no result is refused: a lab records one",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c003", "unit": "each", "medical": true, "captureLot": false, "result": null},
+      "id": null,
+      "expected": [{"path": "result", "code": "result_mismatch"}]
+    },
+    {
+      "name": "a supply item with a result is refused",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c004", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "number", "unit": "mg/dL"}},
+      "id": null,
+      "expected": [{"path": "result", "code": "result_mismatch"}]
+    },
+    {
+      "name": "a medication item with a result is refused",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c001", "unit": "each", "medical": true, "captureLot": false, "result": {"type": "choice", "options": ["Positive", "Negative"]}},
+      "id": null,
+      "expected": [{"path": "result", "code": "result_mismatch"}]
+    },
+    {
+      "name": "a medication item marked Non-Medical and given a result is refused for both",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c002", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "number", "unit": "mg/dL"}},
+      "id": null,
+      "expected": [{"path": "medical", "code": "medical_mismatch"}, {"path": "result", "code": "result_mismatch"}]
+    },
+    {
+      "name": "a category that is no preset of the team is refused, and nothing it would decide is read",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-000000099999", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "number", "unit": "mg/dL"}},
+      "id": null,
+      "expected": [{"path": "categoryId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a category id that names an item is refused as the wrong kind",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000a001", "unit": "each", "medical": false, "captureLot": false, "result": {"type": "number", "unit": "mg/dL"}},
+      "id": null,
+      "expected": [{"path": "categoryId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "a category id that names a bundle is refused as the wrong kind",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000b001", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "id": null,
+      "expected": [{"path": "categoryId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "an archived category is refused",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c005", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "id": null,
+      "expected": [{"path": "categoryId", "code": "reference_archived"}]
+    },
+    {
+      "name": "an archived category is still read: an archived Labs category still asks for a result and Medical",
+      "kind": "item",
+      "body": {"name": "Demo: Item", "categoryId": "00000000-0000-4000-8000-00000000c006", "unit": "each", "medical": false, "captureLot": false, "result": null},
+      "id": null,
+      "expected": [{"path": "categoryId", "code": "reference_archived"}, {"path": "medical", "code": "medical_mismatch"}, {"path": "result", "code": "result_mismatch"}]
+    },
+    {
+      "name": "a Non-Medical bundle of supplies",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1, "core": true}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a Medical bundle holding a medication, optional",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": true, "prompt": "Demo: ask first.", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a006", "qty": 1, "core": false}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a Non-Medical bundle holding a medication is refused (PRD main 447)",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a006", "qty": 1, "core": false}]},
+      "id": null,
+      "expected": [{"path": "medical", "code": "bundle_not_medical"}]
+    },
+    {
+      "name": "a Non-Medical bundle holding a Labs item: only a medication makes a bundle Medical",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a008", "qty": 1, "core": true}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a Medical bundle of supplies only: the tag is free",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": true, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 2, "core": true}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a line whose item is archived is refused",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1, "core": true}]},
+      "id": null,
+      "expected": [{"path": "lines.1.itemId", "code": "reference_archived"}]
+    },
+    {
+      "name": "a line whose item is no preset of the team is refused",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-000000099999", "qty": 1, "core": true}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a line that names a category is refused as the wrong kind",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000c004", "qty": 1, "core": true}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "a line that names another bundle is refused as the wrong kind",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000b001", "qty": 1, "core": true}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "an archived medication is still a medication: refused twice",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 1, "core": true}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "reference_archived"}, {"path": "medical", "code": "bundle_not_medical"}]
+    },
+    {
+      "name": "every line is checked, not only the first that fails",
+      "kind": "bundle",
+      "body": {"name": "Demo: Bundle", "medical": true, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-000000099999", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 3, "core": false}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "unknown_reference"}, {"path": "lines.2.itemId", "code": "reference_archived"}]
+    },
+    {
+      "name": "a primary flag that is not sensitive",
+      "kind": "flag",
+      "body": {"name": "Demo: Flag", "tier": "primary", "criteria": "", "color": "red", "rank": 10, "sensitive": false},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a sensitive secondary flag",
+      "kind": "flag",
+      "body": {"name": "Demo: Flag", "tier": "secondary", "criteria": "", "color": "red", "rank": 10, "sensitive": true},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a primary flag is never sensitive",
+      "kind": "flag",
+      "body": {"name": "Demo: Flag", "tier": "primary", "criteria": "", "color": "red", "rank": 10, "sensitive": true},
+      "id": null,
+      "expected": [{"path": "sensitive", "code": "primary_sensitive"}]
+    },
+    {
+      "name": "a vaccine given: a grid cell whose rows are picked, equal to a code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "preventive.vaccine_status.flu", "when": {"equals": "given_today"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a007", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a picked row is any option of the picking field",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "preventive.vaccine_status.shingles", "when": {"equals": "given_today"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a007", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a row that is no option of the picking field names nothing",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "preventive.vaccine_status.measles", "when": {"equals": "given_today"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "includes on a choose-one names a code it holds",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "preventive.vaccine_status.flu", "when": {"includes": "given_today"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "equals of a label, not a code, is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "preventive.vaccine_status.flu", "when": {"equals": "given"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a dressing applied, whenever it is answered",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "the dressing type chosen",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"includes": "xeroform"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a003", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "the Other option is a code the field holds",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"includes": "other"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a code the field does not hold is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"includes": "tape"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "equals on a choose-many names one code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"equals": "gauze"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "the quick encounter’s dressing",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "quick_encounter", "path": "wound.dressing", "when": {"includes": "abd"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a003", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "outreach’s support given",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "outreach", "path": "outreach.support", "when": {"includes": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "the quick encounter’s support given",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "quick_encounter", "path": "social.support", "when": {"includes": "socks"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a map on every note of a type that is not sensitive",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "outreach", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a map on every note of a Medical-only type: the Medical gate is not sensitive_path’s",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a section that needs a capability is not hidden from any reader",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "quick_encounter", "path": "medication.order", "when": {"includes": "otc"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a group cell, with its quantity read from the same row",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "lymphatic.node_findings.cervical.findings", "when": {"includes": "enlarged"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "lymphatic.node_findings.cervical.size"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a quantity read from another row is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "lymphatic.node_findings.cervical.findings", "when": {"includes": "enlarged"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "lymphatic.node_findings.axillary.size"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a fixed row of a grid in a repeating section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "msk.shoulder_tests.neer", "when": {"equals": "positive"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a quantity read from the same entry",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "wound.measurements.length"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a number in a repeating section, its quantity read from the same entry",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "vitals.hr", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "vitals.pain"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a map in a repeating section reads no quantity outside its entry",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "vitals.hr", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "abdominal.pain"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a map in a repeating section reads no quantity from another repeating section, even of the same field id",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "rounds.n"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a map outside a repeating section reads no quantity inside one",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "visits.n"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a map on every note reads its quantity outside any repeating section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "abdominal.pain"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a map on every note reads no quantity inside a repeating section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "vitals.hr"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a quantity read from a text is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "hpi.narrative"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a quantity read from a path that names nothing is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "abdominal.nothing"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "each line is checked: only the bad one is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "visits.n"}}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": {"fromPath": "later.extra"}}]},
+      "id": null,
+      "expected": [{"path": "lines.1.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a number read from the field the map fires on",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "supplies.count"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a map outside any repeating section reads a number in another section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "later.extra"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a map outside any grid may read a number in a grid’s fixed row",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "supplies.kits.food.count"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a group cell reads its quantity in its own row",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kits.food.handed", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "supplies.kits.food.count"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a group cell reads no quantity from another row",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kits.food.handed", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "supplies.kits.hygiene.count"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a grid cell reads no quantity from a row of the same code in another grid",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kits.food.handed", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "supplies.boxes.food"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a grid cell reads no quantity outside its row",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kits.food.handed", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "supplies.count"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "a cell of a grid in a repeating section reads its own row",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "visits.packs.small", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "visits.packs.small"}}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a cell of a grid in a repeating section reads no other row",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "visits.packs.small", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "visits.packs.large"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "from_path"}]
+    },
+    {
+      "name": "sensitive_path: includes of an unmarked exam system is let through",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "exam.systems", "when": {"includes": "skin"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "sensitive_path: includes of a sensitive exam is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "exam.systems", "when": {"includes": "gu"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: includes of another sensitive exam is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "exam.systems", "when": {"includes": "breast"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: equals of a sensitive exam is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "exam.systems", "when": {"equals": "gu"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: equals of an unmarked exam is refused too, as the whole answer changes",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "exam.systems", "when": {"equals": "skin"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: answered on the exam picker is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "exam.systems", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: a field of a sensitive exam section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "gu.general", "when": {"includes": "dysuria"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: a tick in a sensitive exam section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "gu.performed", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "a when that does not fit is reported before a sensitive path, as the first that fails",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "gu.general", "when": {"includes": "tape"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "sensitive_path: a repeating section that holds a diagnosis",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "problems.status", "when": {"equals": "new"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: supplies given as an intervention for a diagnosis",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "problems.interventions", "when": {"includes": "supplies"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: a section that holds a diagnosis, not repeating",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "dx.plan", "when": {"equals": "supplies"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: a treatment record, in a note type that is not sensitive",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "care.given", "when": {"equals": "yes"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: a grid row marked as a sensitive exam",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "checks.exam.pelvic_check", "when": {"equals": "done"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: an unmarked row of the same grid is let through",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "checks.exam.skin_check", "when": {"equals": "done"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "sensitive_path: equals of a choose-one's marked code, whose answer a reader without view_sensitive_exams loses whole",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"equals": "pelvic"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: includes of a choose-one's marked code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"includes": "pelvic"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: answered on a choose-one that holds a marked code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: an unmarked code of the same choose-one is let through, its answer kept for every reader",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.focus", "when": {"equals": "skin"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "sensitive_path: a quantity read from a sensitive exam section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "breast.mass.size"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: a quantity read from a treatment record",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "other.count", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "care.count"}}]},
+      "id": null,
+      "expected": [{"path": "lines.0.qty.fromPath", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: the PRD’s naloxone example is in a sensitive note type, refused as a whole",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "harm_reduction", "path": "provided.naloxone", "when": {"equals": "accepted"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "provided.naloxone_doses"}}]},
+      "id": null,
+      "expected": [{"path": "noteTypeKey", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: every note of a sensitive type",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "harm_reduction", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "noteTypeKey", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: behavioral health, as a whole",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "psychological", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "noteTypeKey", "code": "sensitive_path"}]
+    },
+    {
+      "name": "sensitive_path: condoms given in sexual and reproductive health",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "sexual_reproductive", "path": "prevention.provided", "when": {"includes": "condoms_provided"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "noteTypeKey", "code": "sensitive_path"}]
+    },
+    {
+      "name": "a note type the team does not offer is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_missing", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "noteTypeKey", "code": "unknown_note_type"}]
+    },
+    {
+      "name": "a path the note type does not have",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.nothing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "a path in a section the note type does not have",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "nosuch.field", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "a path written with an entry part names nothing",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "visits.e0000001.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "an entry’s own answer is no field",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "visits.entryAt", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "the text of an Other option is no field",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.given_other", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "one side of a field with sides is no field of its own",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.pair.right", "when": {"equals": "yes"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "a part of a region is no field of its own",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.spot.region", "when": {"includes": "arm"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "unknown_path"}]
+    },
+    {
+      "name": "a group is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.pack", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "a grid as a whole is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kits", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "a region is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.spot", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "a field with sides is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.pair", "when": {"equals": "yes"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "a time is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.at", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "a photo is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.photo", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "guidance is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.info", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "an action is not mapped",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "outreach", "path": "outreach.red_flags", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "a diagnosis is not mapped, whatever its section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_marked", "path": "dx.diagnosis", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "path", "code": "path_kind"}]
+    },
+    {
+      "name": "a text, when answered",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.notes", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a date, when answered",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.when", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a duration, when answered",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.for", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a text holds no code to include",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.notes", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a text holds no code to equal",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.notes", "when": {"equals": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a date holds no code to equal",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.when", "when": {"equals": "today"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a number equal to a value it can hold",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 5}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a number at the top of its range",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 99}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a number equal to a value above its range is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 100}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a whole number equal to a decimal is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 2.5}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a number with one decimal equal to a decimal",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.amount", "when": {"equals": 2.5}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a number equal to a code is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": "five"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a number holds no code to include",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"includes": "five"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a number, when answered",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a tick, when set",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a tick, when answered",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a tick holds no code to include",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"includes": "yes"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a tick is never equal to a code",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"equals": "yes"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a choice is never equal to true",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.size", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a choice is never equal to a number",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.size", "when": {"equals": 1}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a choose-one equal to a code it holds",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.size", "when": {"equals": "small"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a choose-one equal to a code it does not hold is refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.size", "when": {"equals": "medium"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "when", "code": "when_invalid"}]
+    },
+    {
+      "name": "a choose-many including a code it holds",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a field in a group",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "supplies.pack.contents", "when": {"includes": "tape"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a choice in a repeating section",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a line whose item is archived",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.1.itemId", "code": "reference_archived"}]
+    },
+    {
+      "name": "a line whose item is no preset of the team",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-000000099999", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a line that names a bundle, not an item: a map line names an item",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "wound_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000b001", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "a sensitive path and an archived item are both refused",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "general_primary_care", "path": "exam.systems", "when": {"includes": "gu"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "reference_archived"}, {"path": "path", "code": "sensitive_path"}]
+    },
+    {
+      "name": "a note type the team does not offer, and an archived item",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "demo_missing", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "reference_archived"}, {"path": "noteTypeKey", "code": "unknown_note_type"}]
+    },
+    {
+      "name": "a sensitive note type and a line naming no item",
+      "kind": "field_supply_map",
+      "body": {"name": "Demo: Map", "noteTypeKey": "harm_reduction", "lines": [{"itemId": "00000000-0000-4000-8000-000000099999", "qty": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "unknown_reference"}, {"path": "noteTypeKey", "code": "sensitive_path"}]
+    },
+    {
+      "name": "rash or dermatitis to hydrocortisone",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Condition", "codes": ["R21", "L30.9"], "lines": [{"itemId": "00000000-0000-4000-8000-00000000a009", "qtyPerPatient": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a sensitive code may be mapped; phases 6 and 7 count it only for readers who may see it",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Condition", "codes": ["F11.20"], "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qtyPerPatient": 1}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a condition map line whose item is archived",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Condition", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-00000000a009", "qtyPerPatient": 1}, {"itemId": "00000000-0000-4000-8000-00000000a00a", "qtyPerPatient": 2}]},
+      "id": null,
+      "expected": [{"path": "lines.1.itemId", "code": "reference_archived"}]
+    },
+    {
+      "name": "a condition map line that names a flag",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Condition", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-00000000f001", "qtyPerPatient": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "a condition map line naming no preset of the team",
+      "kind": "condition_supply_map",
+      "body": {"name": "Demo: Condition", "codes": ["R21"], "lines": [{"itemId": "00000000-0000-4000-8000-000000099999", "qtyPerPatient": 1}]},
+      "id": null,
+      "expected": [{"path": "lines.0.itemId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a bag of active items",
+      "kind": "bag",
+      "body": {"name": "Demo: Bag", "minimums": [{"itemId": "00000000-0000-4000-8000-00000000a001", "min": 10}, {"itemId": "00000000-0000-4000-8000-00000000a006", "min": 4}]},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a bag with no minimums",
+      "kind": "bag",
+      "body": {"name": "Demo: Bag", "minimums": []},
+      "id": null,
+      "expected": []
+    },
+    {
+      "name": "a bag minimum whose item is archived",
+      "kind": "bag",
+      "body": {"name": "Demo: Bag", "minimums": [{"itemId": "00000000-0000-4000-8000-00000000a001", "min": 10}, {"itemId": "00000000-0000-4000-8000-00000000a00a", "min": 4}]},
+      "id": null,
+      "expected": [{"path": "minimums.1.itemId", "code": "reference_archived"}]
+    },
+    {
+      "name": "a bag minimum naming no preset of the team",
+      "kind": "bag",
+      "body": {"name": "Demo: Bag", "minimums": [{"itemId": "00000000-0000-4000-8000-000000099999", "min": 1}]},
+      "id": null,
+      "expected": [{"path": "minimums.0.itemId", "code": "unknown_reference"}]
+    },
+    {
+      "name": "a bag minimum that names a category",
+      "kind": "bag",
+      "body": {"name": "Demo: Bag", "minimums": [{"itemId": "00000000-0000-4000-8000-00000000c004", "min": 1}]},
+      "id": null,
+      "expected": [{"path": "minimums.0.itemId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "the team’s settings, edited",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": true, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-00000000a001", "min": 5}], "problemCheckDays": 30},
+      "id": "00000000-0000-4000-8000-00000000e002",
+      "expected": []
+    },
+    {
+      "name": "a second settings preset is refused",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90},
+      "id": null,
+      "expected": [{"path": "", "code": "settings_taken"}]
+    },
+    {
+      "name": "the first settings preset, in a team that has none",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90},
+      "id": null,
+      "refs": {"00000000-0000-4000-8000-00000000c001": {"kind": "order_category", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000c002": {"kind": "order_category", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000c003": {"kind": "order_category", "state": "active", "behaviour": "lab"}, "00000000-0000-4000-8000-00000000c004": {"kind": "order_category", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000c005": {"kind": "order_category", "state": "archived", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000c006": {"kind": "order_category", "state": "archived", "behaviour": "lab"}, "00000000-0000-4000-8000-00000000a001": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a002": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a003": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a004": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a005": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a006": {"kind": "item", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000a007": {"kind": "item", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000a008": {"kind": "item", "state": "active", "behaviour": "lab"}, "00000000-0000-4000-8000-00000000a009": {"kind": "item", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000a00a": {"kind": "item", "state": "archived", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a00b": {"kind": "item", "state": "archived", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000b001": {"kind": "bundle", "state": "active"}, "00000000-0000-4000-8000-00000000f001": {"kind": "flag", "state": "active"}, "00000000-0000-4000-8000-00000000d001": {"kind": "field_supply_map", "state": "active"}, "00000000-0000-4000-8000-00000000d002": {"kind": "condition_supply_map", "state": "active"}, "00000000-0000-4000-8000-00000000e001": {"kind": "bag", "state": "active"}},
+      "expected": []
+    },
+    {
+      "name": "a template line whose item is archived",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "min": 2}], "problemCheckDays": 90},
+      "id": "00000000-0000-4000-8000-00000000e002",
+      "expected": [{"path": "newBagMinimums.0.itemId", "code": "reference_archived"}]
+    },
+    {
+      "name": "a template line that names a bag",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [{"itemId": "00000000-0000-4000-8000-00000000e001", "min": 2}], "problemCheckDays": 90},
+      "id": "00000000-0000-4000-8000-00000000e002",
+      "expected": [{"path": "newBagMinimums.0.itemId", "code": "wrong_kind"}]
+    },
+    {
+      "name": "an archived settings preset still counts as the one",
+      "kind": "settings",
+      "body": {"name": "Team settings", "bagMinimumsOn": false, "newBagMinimums": [], "problemCheckDays": 90},
+      "id": null,
+      "refs": {"00000000-0000-4000-8000-00000000c001": {"kind": "order_category", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000c002": {"kind": "order_category", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000c003": {"kind": "order_category", "state": "active", "behaviour": "lab"}, "00000000-0000-4000-8000-00000000c004": {"kind": "order_category", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000c005": {"kind": "order_category", "state": "archived", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000c006": {"kind": "order_category", "state": "archived", "behaviour": "lab"}, "00000000-0000-4000-8000-00000000a001": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a002": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a003": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a004": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a005": {"kind": "item", "state": "active", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a006": {"kind": "item", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000a007": {"kind": "item", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000a008": {"kind": "item", "state": "active", "behaviour": "lab"}, "00000000-0000-4000-8000-00000000a009": {"kind": "item", "state": "active", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000a00a": {"kind": "item", "state": "archived", "behaviour": "supply"}, "00000000-0000-4000-8000-00000000a00b": {"kind": "item", "state": "archived", "behaviour": "medication"}, "00000000-0000-4000-8000-00000000b001": {"kind": "bundle", "state": "active"}, "00000000-0000-4000-8000-00000000f001": {"kind": "flag", "state": "active"}, "00000000-0000-4000-8000-00000000d001": {"kind": "field_supply_map", "state": "active"}, "00000000-0000-4000-8000-00000000d002": {"kind": "condition_supply_map", "state": "active"}, "00000000-0000-4000-8000-00000000e001": {"kind": "bag", "state": "active"}, "00000000-0000-4000-8000-00000000e002": {"kind": "settings", "state": "archived"}},
+      "expected": [{"path": "", "code": "settings_taken"}]
+    }
+  ]
+}

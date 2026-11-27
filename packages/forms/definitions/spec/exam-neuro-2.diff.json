@@ -1,0 +1,78 @@
+{
+  "piece": "exam-neuro-2",
+  "notOptions": [
+    "Right upper extremity: _____ / 5",
+    "Left upper extremity: _____ / 5",
+    "Right lower extremity: _____ / 5",
+    "Left lower extremity: _____ / 5"
+  ],
+  "added": [
+    "Upper extremity",
+    "Lower extremity",
+    "Head",
+    "Upper Body",
+    "Abdomen",
+    "Back",
+    "Arms",
+    "Legs",
+    "Lower Body",
+    "Hands",
+    "Feet",
+    "Face",
+    "Groin",
+    "Right",
+    "Left",
+    "Bilateral",
+    "Biceps",
+    "Triceps",
+    "Patellar",
+    "Achilles",
+    "0",
+    "1+",
+    "2+",
+    "3+",
+    "4+"
+  ],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_neuro_2, that the General note type includes: its section Neurologic: strength, sensation, coordination, reflexes and gait shows only while Neurologic (exam.systems is neurologic) is picked in the exam picker, and offers one-tap Normal. Neurologic is two modules, one for each piece; exam_neuro_1 is the other.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory section 7 (pieces 12 and 13), default 10"
+    },
+    {
+      "line": 1,
+      "what": "Motor Strength is a grid, Motor strength, with the rows Upper extremity and Lower extremity (added), recorded for the right and the left (sides): the four bullets are its four cells. Each cell is a whole number from 0 to 5, shown out of 5. Normal fills 5.",
+      "why": "PRD main 414 (left and right where it matters); focused-exam inventory default 28, 44; forms 6.3"
+    },
+    {
+      "line": 11,
+      "what": "Sensory is choose-many. Intact is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 23,
+      "what": "Location: Select body region is a region, Location, from the shared list body_region (Head, Upper Body, Abdomen, Back, Arms, Legs, Lower Body, Hands, added, then Feet, Face and Groin (added: not in the quick form's lines)), with a side from the shared list side (Right, Left, Bilateral, added), shown only while a finding other than Intact is picked. Normal leaves it empty.",
+      "why": "PRD main 410, 414; focused-exam inventory default 37; PLAN-OPEN (forms 10.1 #1): the side of a sensory finding is this plan's, the line gives none; PRD main 410 (the full module's body map), 416 (a wound found in the diabetic foot exam hands off to Wound care); PLAN-OPEN (forms 10.1 #27): the regions of the list, before it is released"
+    },
+    {
+      "line": 25,
+      "what": "Coordination is choose-many. Normal fills Finger-to-nose normal and Heel-to-shin normal, so neither is exclusive. Unable is neither normal nor abnormal, and clears the others. Abnormal may be held with one normal option (the other test was abnormal); held with both it contradicts itself, which a pair of excludes cannot refuse.",
+      "why": "focused-exam inventory 3.7, default 13, 26; forms 2.2 (unable); PLAN-OPEN (forms 10.1 #1): Abnormal beside both normal options"
+    },
+    {
+      "line": 35,
+      "what": "Reflexes is a grid, collapsed until tapped, with a row for each reflex (Biceps, Triceps, Patellar, Achilles, added: the check reads a plain line as no word), recorded for the right and the left (sides), each cell choose-one from the shared list reflex_scale: 0, 1+, 2+, 3+, 4+ (added: the scale line is no word). The table is optional, so Normal leaves it empty, as it does every collapsed part: the scale's normal 2+ is filled only by hand.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory construct 26, default 25, 28 (one-tap Normal leaves an optional part alone)"
+    },
+    {
+      "line": 39,
+      "what": "The table's heading row (Reflex, Grade) is not typed: Grade is the cell's label.",
+      "why": "focused-exam inventory construct 18"
+    },
+    {
+      "line": 59,
+      "what": "Gait is choose-many. Normal is the normal option and clears the others. Unable is neither normal nor abnormal, and clears the others.",
+      "why": "focused-exam inventory default 13, 26; forms 2.2 (unable)"
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+      8\. Skin
+
+      Important for wound care, infection, dermatology, injection sites, and social/environmental exposures.
+
+      A. Overall Skin
+
+      &#32;&#32;&#32;&#32;•   Warm
+
+      &#32;&#32;&#32;&#32;•   Cool
+
+      &#32;&#32;&#32;&#32;•   Dry
+
+      &#32;&#32;&#32;&#32;•   Moist
+
+      &#32;&#32;&#32;&#32;•   Diaphoretic
+
+      &#32;&#32;&#32;&#32;•   Pale
+
+      &#32;&#32;&#32;&#32;•   Cyanotic
+
+      &#32;&#32;&#32;&#32;•   Jaundiced
+
+      B. Skin Findings
+
+      Action: + Add Finding
+
+      For each finding, create a separate entry.
+
+      Location
+
+      &#32;&#32;&#32;&#32;•   Body map
+
+      &#32;&#32;&#32;&#32;•   Side: Right / Left
+
+      &#32;&#32;&#32;&#32;•   Surface: Anterior / Posterior
+
+      Type
+
+      &#32;&#32;&#32;&#32;•   Rash
+
+      &#32;&#32;&#32;&#32;•   Macule
+
+      &#32;&#32;&#32;&#32;•   Papule
+
+      &#32;&#32;&#32;&#32;•   Plaque
+
+      &#32;&#32;&#32;&#32;•   Vesicle
+
+      &#32;&#32;&#32;&#32;•   Pustule
+
+      &#32;&#32;&#32;&#32;•   Nodule
+
+      &#32;&#32;&#32;&#32;•   Ulcer
+
+      &#32;&#32;&#32;&#32;•   Blister
+
+      &#32;&#32;&#32;&#32;•   Ecchymosis
+
+      &#32;&#32;&#32;&#32;•   Petechiae
+
+      &#32;&#32;&#32;&#32;•   Purpura
+
+      &#32;&#32;&#32;&#32;•   Abscess
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      Characteristics
+
+      &#32;&#32;&#32;&#32;•   Erythematous
+
+      &#32;&#32;&#32;&#32;•   Warm
+
+      &#32;&#32;&#32;&#32;•   Tender
+
+      &#32;&#32;&#32;&#32;•   Pruritic
+
+      &#32;&#32;&#32;&#32;•   Fluctuant
+
+      &#32;&#32;&#32;&#32;•   Indurated
+
+      &#32;&#32;&#32;&#32;•   Scaling
+
+      &#32;&#32;&#32;&#32;•   Crusting
+
+      &#32;&#32;&#32;&#32;•   Draining
+
+      Size
+
+      &#32;&#32;&#32;&#32;•   Length: \_\_\_\_\_ cm
+
+      &#32;&#32;&#32;&#32;•   Width: \_\_\_\_\_ cm
+
+      Photo
+
+      \- 📷 Add Photo
+
+      C. Longitudinal Tracking
+
+      After adding a finding, automatically ask:
+
+      Is this the same lesion/wound documented previously?
+
+      &#32;&#32;&#32;&#32;•   Yes → Link to existing finding
+
+      &#32;&#32;&#32;&#32;•   No → Create new finding
+
+      This supports longitudinal tracking and prevents duplicate documentation.

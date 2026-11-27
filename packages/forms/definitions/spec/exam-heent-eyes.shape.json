@@ -1,0 +1,83 @@
+{
+  "piece": "exam-heent-eyes",
+  "file": "modules/exam_heent_eyes/v1.json",
+  "sections": [
+    { "id": "eyes", "title": "Eyes", "showWhen": { "field": "exam.systems", "is": "heent" }, "normal": true }
+  ],
+  "fields": [
+    {
+      "path": "eyes.pupils",
+      "kind": "choice",
+      "many": true,
+      "label": "Pupils",
+      "options": ["perrl", "perrla", "unequal_pupils", "sluggish_reaction", "nonreactive", "other"],
+      "flags": { "exclusive": ["perrl", "perrla"], "normal": ["perrl"], "other": ["other"] }
+    },
+    {
+      "path": "eyes.pupil_size",
+      "kind": "number",
+      "label": "Pupil size",
+      "min": 1,
+      "max": 9,
+      "decimals": 1,
+      "unit": "mm",
+      "sides": true,
+      "showWhen": { "field": "eyes.pupils", "is": "unequal_pupils" }
+    },
+    {
+      "path": "eyes.pupil_reaction",
+      "kind": "choice",
+      "many": false,
+      "label": "Pupil reaction",
+      "options": ["reactive", "nonreactive"],
+      "sides": true,
+      "showWhen": { "field": "eyes.pupils", "is": "unequal_pupils" }
+    },
+    {
+      "path": "eyes.movements",
+      "kind": "choice",
+      "many": true,
+      "label": "Extraocular movements",
+      "options": ["intact", "limited", "pain_with_movement", "nystagmus", "diplopia"],
+      "flags": { "exclusive": ["intact"], "normal": ["intact"] }
+    },
+    {
+      "path": "eyes.conjunctiva",
+      "kind": "choice",
+      "many": true,
+      "label": "Conjunctiva",
+      "options": ["normal", "injected", "pale", "discharge"],
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "eyes.sclera",
+      "kind": "choice",
+      "many": false,
+      "label": "Sclera",
+      "options": ["anicteric", "icteric"],
+      "flags": { "normal": ["anicteric"] }
+    },
+    {
+      "path": "eyes.visual",
+      "kind": "choice",
+      "many": true,
+      "label": "Visual symptoms",
+      "options": [
+        "vision_normal",
+        "blurred_vision",
+        "vision_loss",
+        "photophobia",
+        "eye_pain",
+        "foreign_body_sensation"
+      ],
+      "flags": { "exclusive": ["vision_normal"], "normal": ["vision_normal"] }
+    },
+    {
+      "path": "eyes.other",
+      "kind": "text",
+      "label": "Other eye findings",
+      "lines": "many",
+      "maxLength": 2000
+    }
+  ]
+}

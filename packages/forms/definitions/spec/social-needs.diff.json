@@ -1,0 +1,77 @@
+{
+  "piece": "social-needs",
+  "notOptions": [
+    "🏠 Housing",
+    "🍎 Food",
+    "🚿 Hygiene",
+    "👕 Clothing",
+    "📱 Phone",
+    "🔋 Charging",
+    "🚌 Transportation",
+    "💊 Medication",
+    "🪪 ID",
+    "💰 Financial",
+    "⚖️ Legal",
+    "🐕 Pet",
+    "📄 Benefits",
+    "Doubled-up",
+    "Search Sineobex resources... 🔍",
+    "(auto populate based on what was clicked in current needs section)",
+    "Example:",
+    "Offered",
+    "Accepted",
+    "Contacted",
+    "Scheduled",
+    "Completed",
+    "Declined",
+    "Unable to reach"
+  ],
+  "added": [
+    "Housing",
+    "Food",
+    "Hygiene",
+    "Clothing",
+    "Phone",
+    "Charging",
+    "Transportation",
+    "Medication",
+    "ID",
+    "Financial",
+    "Legal",
+    "Pet",
+    "Benefits",
+    "Couch surfing"
+  ],
+  "differences": [
+    {
+      "line": 1,
+      "what": "Offered in Medical and Non-Medical encounters.",
+      "why": "forms 5; PRD main 379, 409"
+    },
+    {
+      "line": 4,
+      "what": "Choose-many from the shared list needs: its labels have no emoji (added). Other asks for a short text. The emoji become design-system icons, which the list does not carry yet.",
+      "why": "PRD main 410, 419; inventory A2"
+    },
+    {
+      "line": 6,
+      "what": "Choose-one. Doubled-up becomes Couch surfing (added). Other is added, as PRD main 111 asks (the line has none; its word is line 4's), and asks for a short text.",
+      "why": "PRD main 111 (Oct 19); inventory A37; forms 10.1 #22"
+    },
+    {
+      "line": 8,
+      "what": "The resource search and the recommended resources are one info field: The resource directory is coming.",
+      "why": "forms 6.8; PRD main 514"
+    },
+    {
+      "line": 12,
+      "what": "The example resource card names a real organization: left out.",
+      "why": "inventory A51"
+    },
+    {
+      "line": 15,
+      "what": "Referral Status is left out. Add referral records a V1 referral: a date and free text.",
+      "why": "PRD main 113 (Oct 19); inventory A50"
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "piece": "exam-abdominal",
+  "file": "modules/exam_abdominal/v1.json",
+  "sections": [
+    {
+      "id": "abdominal",
+      "title": "Abdominal / GI",
+      "showWhen": { "field": "exam.systems", "is": "abdominal" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "abdominal.inspection",
+      "kind": "choice",
+      "many": true,
+      "label": "Inspection",
+      "options": ["flat", "distended", "protuberant", "scars", "bruising", "visible_masses", "hernia"],
+      "excludes": [
+        ["flat", "distended"],
+        ["flat", "protuberant"]
+      ],
+      "flags": { "normal": ["flat"] }
+    },
+    {
+      "path": "abdominal.bowel_sounds",
+      "kind": "choice",
+      "many": false,
+      "label": "Bowel sounds",
+      "options": ["normal", "hypoactive", "hyperactive", "absent", "unable_to_assess"],
+      "flags": { "normal": ["normal"], "unable": ["unable_to_assess"] }
+    },
+    {
+      "path": "abdominal.tenderness",
+      "kind": "choice",
+      "many": true,
+      "label": "Tenderness",
+      "options": [
+        "none",
+        "right_upper_quadrant_ruq",
+        "right_lower_quadrant_rlq",
+        "left_upper_quadrant_luq",
+        "left_lower_quadrant_llq",
+        "epigastric",
+        "suprapubic",
+        "periumbilical",
+        "diffuse"
+      ],
+      "flags": { "exclusive": ["none"], "normal": ["none"] }
+    },
+    {
+      "path": "abdominal.pain",
+      "kind": "number",
+      "label": "Pain severity",
+      "min": 0,
+      "max": 10,
+      "decimals": 0,
+      "display": "outOf",
+      "showWhen": {
+        "field": "abdominal.tenderness",
+        "is": [
+          "right_upper_quadrant_ruq",
+          "right_lower_quadrant_rlq",
+          "left_upper_quadrant_luq",
+          "left_lower_quadrant_llq",
+          "epigastric",
+          "suprapubic",
+          "periumbilical",
+          "diffuse"
+        ]
+      }
+    },
+    {
+      "path": "abdominal.peritoneal",
+      "kind": "choice",
+      "many": true,
+      "label": "Peritoneal signs",
+      "options": ["guarding", "rebound", "rigidity", "none"],
+      "flags": { "exclusive": ["none"], "normal": ["none"] }
+    },
+    {
+      "path": "abdominal.mass",
+      "kind": "choice",
+      "many": false,
+      "label": "Mass",
+      "options": ["none", "present"],
+      "flags": { "normal": ["none"] }
+    },
+    {
+      "path": "abdominal.mass_location",
+      "kind": "text",
+      "label": "Mass location",
+      "lines": "one",
+      "maxLength": 200,
+      "showWhen": { "field": "abdominal.mass", "is": "present" }
+    },
+    {
+      "path": "abdominal.organomegaly",
+      "kind": "choice",
+      "many": true,
+      "label": "Organomegaly",
+      "options": ["hepatomegaly", "splenomegaly", "none"],
+      "flags": { "exclusive": ["none"], "normal": ["none"] }
+    },
+    {
+      "path": "abdominal.other_findings",
+      "kind": "choice",
+      "many": true,
+      "label": "Other findings",
+      "options": ["cva_tenderness", "murphy_sign", "mcburney_tenderness", "other"],
+      "flags": { "other": ["other"] }
+    }
+  ]
+}

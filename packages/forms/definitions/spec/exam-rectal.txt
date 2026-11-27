@@ -1,0 +1,31 @@
+      13\. Rectal
+
+      Hidden by default unless specifically selected.
+
+      A. Exam Type
+
+      &#32;&#32;&#32;&#32;•   External inspection only
+
+      &#32;&#32;&#32;&#32;•   Digital rectal examination (DRE)
+
+      B. Findings
+
+      &#32;&#32;&#32;&#32;•   Hemorrhoids
+
+      &#32;&#32;&#32;&#32;•   Fissure
+
+      &#32;&#32;&#32;&#32;•   Bleeding
+
+      &#32;&#32;&#32;&#32;•   Mass
+
+      &#32;&#32;&#32;&#32;•   Tenderness
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      C. If DRE Performed
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Abnormal
+
+      Findings: *\_\_*\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_

@@ -1,0 +1,25 @@
+7. Patient Encounter
+   1. Subsection 1&#32;
+      1. Buttons: \[ GENERAL \] \[ WOUND \] \[ SOCIAL NEEDS \] \[ MEDICATION \]&#32;
+         1. If \[ GENERAL \]&#32;
+            1. Chief Concern&#32;
+               1. &#91; Text box \]&#32;
+            2. History of present illness
+               1. Buttons: \[ Yes \] \[ No \] \[ Unknown \]&#32;
+            3. Vitals&#32;
+               1. BP | HR | Temperature
+            4. Assessment&#32;
+               1. &#91; Text box \]&#32;
+         2. If \[ WOUND \]&#32;
+            1. Wound Type&#32;
+               1. Buttons: \[ Venous \] \[ Arterial \] \[ Pressure \] \[ Diabetic \] \[ Traumatic \] \[ Burn \] \[ Abscess \] \[ Surgical \]&#32;
+            2. Location&#32;
+               1. Buttons: \[ Head \] \[ Upper Body \] \[ Abdomen \] \[ Back \] \[ Arms \] \[ Legs \] \[ Lower Body \] \[ Hands \]&#32;
+            3. Dimensions
+               1. &#91; numbers \] x \[ numbers \] x \[ numbers \] \[ in. / cm. \]
+            4. Drainage&#32;
+               1. Buttons: \[ None \] \[ Scant \] \[ Small \] \[ Moderate \] \[ Large \]
+            5. Dressing Applied&#32;
+               1. Buttons: \[ Gauze \] \[ ABD \] \[Xeroform \] \[ Compression \]
+            6. Photos&#32;
+               1. Up to 5

@@ -1,0 +1,585 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A Sineobex form definition file",
+  "description": "One of the three kinds of file under packages/forms/definitions: a note type version, a module or a shared option list (docs/design/phase-4/forms.md, section 2). src/types.ts says the same thing as TypeScript types; test/schema.test.ts holds the two together.",
+  "if": { "type": "object", "required": ["key"] },
+  "then": { "$ref": "#/$defs/noteType" },
+  "else": {
+    "if": { "type": "object", "required": ["options"] },
+    "then": { "$ref": "#/$defs/list" },
+    "else": { "$ref": "#/$defs/module" }
+  },
+  "$defs": {
+    "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,60}$" },
+    "pathPart": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_]{0,60}$" },
+    "path": {
+      "type": "string",
+      "pattern": "^(\\./)?[a-z][a-zA-Z0-9_]{0,60}(\\.[a-z][a-zA-Z0-9_]{0,60}){0,3}$"
+    },
+    "mapsTo": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,60}:[a-z][a-zA-Z0-9_]{0,60}(\\.[a-z][a-zA-Z0-9_]{0,60}){0,3}$"
+    },
+    "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,40}$" },
+    "specPiece": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,60}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:[^\\u0000-\\u001f\\u007f\\ud800-\\udfff]*[^\\s\\u0000-\\u001f\\u007f\\ud800-\\udfff][^\\u0000-\\u001f\\u007f\\ud800-\\udfff]*)?$"
+    },
+    "version": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "yes": { "const": true },
+    "no": { "const": false },
+    "noteType": {
+      "type": "object",
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "version": { "$ref": "#/$defs/version" },
+        "title": { "$ref": "#/$defs/text" },
+        "kinds": {
+          "type": "array",
+          "items": { "enum": ["medical", "non_medical"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "group": { "enum": ["clinical", "psych", "social", "outreach", "harm_reduction", "wound"] },
+        "sensitivity": { "enum": ["none", "sensitive"] },
+        "quick": { "$ref": "#/$defs/yes" },
+        "auto": { "const": "medical" },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "if": { "type": "object", "required": ["include"] },
+            "then": { "$ref": "#/$defs/include" },
+            "else": { "$ref": "#/$defs/section" }
+          }
+        },
+        "renames": { "type": "array", "items": { "$ref": "#/$defs/rename" }, "minItems": 1 }
+      },
+      "required": ["key", "version", "title", "kinds", "group", "sensitivity", "sections"],
+      "additionalProperties": false
+    },
+    "module": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/key" },
+        "version": { "$ref": "#/$defs/version" },
+        "sections": { "type": "array", "items": { "$ref": "#/$defs/section" }, "minItems": 1 }
+      },
+      "required": ["name", "version", "sections"],
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "properties": { "name": { "$ref": "#/$defs/key" }, "options": { "$ref": "#/$defs/optionArray" } },
+      "required": ["name", "options"],
+      "additionalProperties": false
+    },
+    "rename": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9_]{0,60}(\\.[a-z][a-zA-Z0-9_]{0,60}){0,3}$"
+        },
+        "code": { "$ref": "#/$defs/code" },
+        "from": { "$ref": "#/$defs/text" },
+        "to": { "$ref": "#/$defs/text" }
+      },
+      "required": ["path", "from", "to"],
+      "additionalProperties": false
+    },
+    "include": {
+      "type": "object",
+      "properties": {
+        "include": { "$ref": "#/$defs/key" },
+        "version": { "$ref": "#/$defs/version" },
+        "showWhen": { "$ref": "#/$defs/condition" }
+      },
+      "required": ["include", "version"],
+      "additionalProperties": false
+    },
+    "section": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "title": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "sensitiveExam": { "$ref": "#/$defs/yes" },
+        "treatmentRecord": { "$ref": "#/$defs/yes" },
+        "needs": { "const": "orderMedications" },
+        "normal": { "$ref": "#/$defs/yes" },
+        "repeat": { "$ref": "#/$defs/repeat" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" }, "minItems": 1 },
+        "spec": { "$ref": "#/$defs/specPiece" }
+      },
+      "required": ["id", "title", "fields"],
+      "additionalProperties": false
+    },
+    "repeat": {
+      "type": "object",
+      "properties": {
+        "max": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "itemTitle": { "$ref": "#/$defs/text" }
+      },
+      "required": ["max", "itemTitle"],
+      "additionalProperties": false
+    },
+    "option": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/$defs/code" },
+        "label": { "$ref": "#/$defs/text" },
+        "exclusive": { "$ref": "#/$defs/yes" },
+        "other": { "$ref": "#/$defs/yes" },
+        "normal": { "$ref": "#/$defs/yes" },
+        "unable": { "$ref": "#/$defs/yes" },
+        "icon": { "$ref": "#/$defs/text" },
+        "suggests": { "$ref": "#/$defs/key" },
+        "sensitiveExam": { "$ref": "#/$defs/yes" }
+      },
+      "required": ["code", "label"],
+      "additionalProperties": false
+    },
+    "optionArray": { "type": "array", "items": { "$ref": "#/$defs/option" }, "minItems": 1 },
+    "listRef": {
+      "type": "object",
+      "properties": { "list": { "$ref": "#/$defs/key" } },
+      "required": ["list"],
+      "additionalProperties": false
+    },
+    "options": {
+      "type": ["array", "object"],
+      "allOf": [
+        { "if": { "type": "array" }, "then": { "$ref": "#/$defs/optionArray" } },
+        { "if": { "type": "object" }, "then": { "$ref": "#/$defs/listRef" } }
+      ]
+    },
+    "rowsRef": {
+      "type": "object",
+      "properties": { "list": { "$ref": "#/$defs/key" }, "pickedIn": { "$ref": "#/$defs/path" } },
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1
+    },
+    "rows": {
+      "type": ["array", "object"],
+      "allOf": [
+        { "if": { "type": "array" }, "then": { "$ref": "#/$defs/optionArray" } },
+        { "if": { "type": "object" }, "then": { "$ref": "#/$defs/rowsRef" } }
+      ]
+    },
+    "altUnit": {
+      "type": "object",
+      "properties": {
+        "unit": { "$ref": "#/$defs/text" },
+        "perUnit": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "required": ["unit", "perUnit"],
+      "additionalProperties": false
+    },
+    "condition": {
+      "type": "object",
+      "properties": {
+        "field": { "$ref": "#/$defs/path" },
+        "is": {
+          "type": ["string", "array"],
+          "pattern": "^[a-z][a-z0-9_]{0,40}$",
+          "items": { "$ref": "#/$defs/code" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "filled": { "$ref": "#/$defs/yes" },
+        "all": { "type": "array", "items": { "$ref": "#/$defs/condition" }, "minItems": 1 },
+        "any": { "type": "array", "items": { "$ref": "#/$defs/condition" }, "minItems": 1 },
+        "not": { "$ref": "#/$defs/condition" }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["field", "is"], "maxProperties": 2 },
+        { "required": ["field", "filled"], "maxProperties": 2 },
+        { "required": ["all"], "maxProperties": 1 },
+        { "required": ["any"], "maxProperties": 1 },
+        { "required": ["not"], "maxProperties": 1 }
+      ]
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "choice",
+            "text",
+            "number",
+            "flag",
+            "date",
+            "time",
+            "duration",
+            "group",
+            "grid",
+            "region",
+            "problem",
+            "photo",
+            "action",
+            "info"
+          ]
+        }
+      },
+      "required": ["kind"],
+      "allOf": [
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "choice" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/choiceField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "text" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/textField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "number" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/numberField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "flag" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/flagField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "date" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/dateField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "time" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/timeField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "duration" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/durationField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "group" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/groupField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "grid" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/gridField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "region" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/regionField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "problem" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/problemField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "photo" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/photoField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "action" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/actionField" }
+        },
+        {
+          "if": { "type": "object", "properties": { "kind": { "const": "info" } }, "required": ["kind"] },
+          "then": { "$ref": "#/$defs/infoField" }
+        }
+      ]
+    },
+    "choiceField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "choice" },
+        "many": { "type": "boolean" },
+        "options": { "$ref": "#/$defs/options" },
+        "excludes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "array", "items": { "$ref": "#/$defs/code" }, "minItems": 2, "maxItems": 2 }
+        }
+      },
+      "required": ["id", "kind", "label", "many", "options"],
+      "additionalProperties": false
+    },
+    "textField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "text" },
+        "lines": { "enum": ["one", "many"] },
+        "maxLength": { "type": "integer", "minimum": 1, "maximum": 4000 }
+      },
+      "required": ["id", "kind", "label", "lines", "maxLength"],
+      "additionalProperties": false
+    },
+    "numberField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "number" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "decimals": { "enum": [0, 1, 2] },
+        "normal": { "type": "number" },
+        "unit": { "$ref": "#/$defs/text" },
+        "altUnit": { "$ref": "#/$defs/altUnit" },
+        "display": { "enum": ["box", "stepper", "outOf"] }
+      },
+      "required": ["id", "kind", "label", "min", "max", "decimals"],
+      "additionalProperties": false
+    },
+    "flagField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "flag" },
+        "clears": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pathPart" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["id", "kind", "label"],
+      "additionalProperties": false
+    },
+    "dateField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "date" },
+        "range": { "enum": ["past", "future", "any"] }
+      },
+      "required": ["id", "kind", "label", "range"],
+      "additionalProperties": false
+    },
+    "timeField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "time" }
+      },
+      "required": ["id", "kind", "label"],
+      "additionalProperties": false
+    },
+    "durationField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "duration" },
+        "max": { "type": "integer", "minimum": 1, "maximum": 36525 }
+      },
+      "required": ["id", "kind", "label"],
+      "additionalProperties": false
+    },
+    "groupField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "group" },
+        "layout": { "enum": ["stack", "row"] },
+        "collapsed": { "$ref": "#/$defs/yes" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" }, "minItems": 1 }
+      },
+      "required": ["id", "kind", "label", "layout", "fields"],
+      "additionalProperties": false
+    },
+    "gridField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "grid" },
+        "collapsed": { "$ref": "#/$defs/yes" },
+        "rows": { "$ref": "#/$defs/rows" },
+        "cell": { "$ref": "#/$defs/field" }
+      },
+      "required": ["id", "kind", "label", "rows", "cell"],
+      "additionalProperties": false
+    },
+    "regionField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "region" },
+        "options": { "$ref": "#/$defs/options" },
+        "side": { "$ref": "#/$defs/key" },
+        "surface": { "$ref": "#/$defs/yes" }
+      },
+      "required": ["id", "kind", "label", "options"],
+      "additionalProperties": false
+    },
+    "problemField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "problem" }
+      },
+      "required": ["id", "kind", "label"],
+      "additionalProperties": false
+    },
+    "photoField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "photo" },
+        "max": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["id", "kind", "label", "max"],
+      "additionalProperties": false
+    },
+    "actionField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "action" },
+        "action": { "enum": ["show_handoff", "add_referral", "open_note_type"] },
+        "noteType": { "$ref": "#/$defs/key" }
+      },
+      "required": ["id", "kind", "label", "action"],
+      "additionalProperties": false,
+      "if": {
+        "type": "object",
+        "properties": { "action": { "const": "open_note_type" } },
+        "required": ["action"]
+      },
+      "then": { "required": ["noteType"] },
+      "else": { "properties": { "noteType": false } }
+    },
+    "infoField": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/pathPart" },
+        "label": { "$ref": "#/$defs/text" },
+        "help": { "$ref": "#/$defs/text" },
+        "showWhen": { "$ref": "#/$defs/condition" },
+        "required": { "$ref": "#/$defs/yes" },
+        "sides": { "$ref": "#/$defs/yes" },
+        "noNormal": { "$ref": "#/$defs/yes" },
+        "recap": { "$ref": "#/$defs/no" },
+        "handoff": { "$ref": "#/$defs/yes" },
+        "mapsTo": { "$ref": "#/$defs/mapsTo" },
+        "kind": { "const": "info" }
+      },
+      "required": ["id", "kind", "label"],
+      "additionalProperties": false
+    }
+  }
+}

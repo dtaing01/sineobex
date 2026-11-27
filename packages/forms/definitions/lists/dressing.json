@@ -1,0 +1,13 @@
+{
+  "name": "dressing",
+  "options": [
+    { "code": "gauze", "label": "Gauze" },
+    { "code": "xeroform", "label": "Xeroform" },
+    { "code": "mepilex", "label": "Mepilex" },
+    { "code": "abd", "label": "ABD" },
+    { "code": "hydrocolloid", "label": "Hydrocolloid" },
+    { "code": "aquacel", "label": "Aquacel" },
+    { "code": "compression", "label": "Compression" },
+    { "code": "other", "label": "Other", "other": true }
+  ]
+}

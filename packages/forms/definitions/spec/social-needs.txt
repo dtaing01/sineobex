@@ -1,0 +1,16 @@
+6. Social Needs
+   1. Subsection 1&#32;
+      1. Current Needs
+         1. Buttons: \[ 🏠 Housing \] \[ 🍎 Food \] \[ 🚿 Hygiene \] \[ 👕 Clothing \] \[ 📱 Phone \] \[ 🔋 Charging \] \[ 🚌 Transportation \] \[ 💊 Medication \] \[ 🪪 ID \] \[ 💰 Financial \] \[ ⚖️ Legal \] \[ 🐕 Pet \] \[ 📄 Benefits \] \[ Other \]
+      2. Housing Status
+         1. Buttons:  \[ Unsheltered \] \[ Shelter \] \[ Transitional \] \[ Permanent \] \[ Doubled-up \] \[ Unknown \]
+      3. Resources&#32;
+         1. Search Box: \[ Search Sineobex resources...                          🔍 \]
+      4. Recommended Sources
+         1. (auto populate based on what was clicked in current needs section)
+         2. Example:&#32;
+[left out]
+[left out]
+[left out]
+         3. Referral Status
+            1. Buttons: \[ Offered \] \[ Accepted \] \[ Contacted \] \[ Scheduled \] \[ Completed \] \[ Declined \] \[ Unable to reach \]

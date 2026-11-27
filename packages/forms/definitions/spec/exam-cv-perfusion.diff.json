@@ -1,0 +1,42 @@
+{
+  "piece": "exam-cv-perfusion",
+  "notOptions": ["Absent"],
+  "added": ["0"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_cv_perfusion, that the General note type includes: its section Perfusion, edema and JVD shows only while Cardiovascular (exam.systems is cardiovascular) is picked in the exam picker, and offers one-tap Normal. Cardiovascular is two modules, one for each piece; exam_cv_rhythm is the other.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory section 7 (pieces 6 and 7), default 10"
+    },
+    {
+      "line": 3,
+      "what": "The pulse sites (lines 19 to 27) are two grids, each row a site recorded for the right and the left (sides), each cell choose-one from the shared list pulse_scale: 0 (added), 1+, 2+, 3+, Unable to assess. Pulses holds the sites a routine exam palpates, Radial, Dorsalis pedis (DP) and Posterior tibial (PT), and Normal fills them with 2+. More pulse sites, collapsed, holds Brachial and Femoral, and Normal leaves them empty: an optional part is left alone.",
+      "why": "PRD main 414; focused-exam inventory default 1, 23, 28; forms 4.3, 6.3; PLAN-OPEN (forms 10.1 #1): which sites are routine, for the clinical team to confirm. The inventory names none; DP and PT are the sites its worked example (1928 to 1990) and the foot exam (1692 to 1704) record, and Radial the pulse taken with the vitals"
+    },
+    {
+      "line": 11,
+      "what": "Trace is not a pulse grade: the one pulse scale has none. Trace stays an option of Edema (line 35).",
+      "why": "PRD main 414; focused-exam inventory default 1"
+    },
+    {
+      "line": 13,
+      "what": "Absent is not typed: 0 is the grade of an absent pulse.",
+      "why": "PRD main 414; focused-exam inventory default 1"
+    },
+    {
+      "line": 29,
+      "what": "Edema is choose-one, a grade: None (the normal option), Trace, 1+, 2+, 3+, 4+. The codes one_plus, two_plus, three_plus and four_plus are given, as in the shared scales: the rule makes no code that starts with a letter from these labels.",
+      "why": "focused-exam inventory default 14, 26; recipe step 5"
+    },
+    {
+      "line": 45,
+      "what": "Edema location is choose-many with the five options as written, and shows only while Edema is Trace or a grade, not None.",
+      "why": "focused-exam inventory default 22, 32"
+    },
+    {
+      "line": 57,
+      "what": "JVD is choose-one. None is the normal option; Unable to assess is neither normal nor abnormal.",
+      "why": "focused-exam inventory default 14, 26; forms 2.2 (unable)"
+    }
+  ]
+}

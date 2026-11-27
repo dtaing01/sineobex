@@ -1,0 +1,832 @@
+/* Sineobex Field components, copied from the design system artifact (https://claude.ai/artifact/5HMw4MtUiGeuP21s91i21V), version 1791950536-c960.
+   Only change: the Google Fonts @import is removed, because the site self-hosts the same fonts through @fontsource.
+   Update by re-copying; style the website in globals.css, not here. */
+
+/* Sineobex Field components. Every color comes from tokens.css; every control is at least --tap-min tall. */
+.sx {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 24px;
+}
+.sx *,
+.sx *::before,
+.sx *::after {
+  box-sizing: border-box;
+}
+.sx :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.sx-label {
+  font-family: var(--font-label);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 18px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0;
+}
+.sx-data {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.sx-muted {
+  color: var(--ink-muted);
+}
+.sx-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sx-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.sx-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Button */
+.sx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+  font: 700 17px/1 var(--font-sans);
+  cursor: pointer;
+  background: none;
+  color: var(--ink);
+}
+.sx-btn--primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.sx-btn--secondary {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.sx-btn--ghost {
+  color: var(--accent);
+  padding: 0 var(--space-3);
+}
+.sx-btn--danger {
+  background: var(--critical);
+  color: var(--surface);
+}
+.sx-btn--lg {
+  min-height: var(--tap-lg);
+  font-size: 18px;
+  width: 100%;
+}
+.sx-btn[disabled] {
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+/* Choice chip: single- or multi-select charting answers */
+.sx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 16px/1 var(--font-sans);
+  cursor: pointer;
+}
+.sx-chip[aria-pressed='true'],
+.sx-chip[aria-checked='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+.sx-chip[aria-pressed='true']::before,
+.sx-chip[aria-checked='true']::before {
+  content: '\2713';
+  font-weight: 700;
+}
+.sx-chip--alarm[aria-checked='true'] {
+  background: var(--critical);
+  border-color: var(--critical);
+  color: var(--surface);
+}
+
+/* Quantity stepper */
+.sx-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.sx-stepper button {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: 700 24px/1 var(--font-sans);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+.sx-stepper output {
+  min-width: 64px;
+  text-align: center;
+  font: 600 22px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.sx-stepper small {
+  display: block;
+  font: 400 13px/18px var(--font-sans);
+  color: var(--ink-muted);
+}
+
+/* Status pill */
+.sx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font: 700 14px/20px var(--font-sans);
+}
+.sx-pill--critical {
+  background: var(--critical-soft);
+  color: var(--critical);
+}
+.sx-pill--warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.sx-pill--good {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.sx-pill--info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.sx-pill--neutral {
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+}
+
+/* Priority flag: shape + color + word, never color alone */
+.sx-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: 700 14px/20px var(--font-sans);
+}
+.sx-flag svg {
+  width: 16px;
+  height: 16px;
+}
+.sx-flag--red {
+  color: var(--critical);
+}
+.sx-flag--yellow {
+  color: var(--warning);
+}
+.sx-flag--green {
+  color: var(--good);
+}
+.sx-flag svg * {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* Sync banner */
+.sx-sync {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-2) var(--space-4);
+  font: 500 15px/20px var(--font-sans);
+  border-radius: var(--radius-md);
+}
+.sx-sync--offline {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.sx-sync--pending {
+  background: var(--warning-soft);
+  color: var(--ink);
+}
+.sx-sync--failed {
+  background: var(--critical-soft);
+  color: var(--ink);
+}
+.sx-sync--synced {
+  background: var(--good-soft);
+  color: var(--ink);
+}
+.sx-sync strong {
+  font-weight: 700;
+}
+.sx-sync .sx-icon {
+  width: 18px;
+  height: 18px;
+}
+.sx-sync--pending .sx-icon {
+  color: var(--warning);
+}
+.sx-sync--failed .sx-icon {
+  color: var(--critical);
+}
+.sx-sync--synced .sx-icon {
+  color: var(--good);
+}
+
+/* Alert banner */
+.sx-alert {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 2px solid var(--critical);
+  background: var(--critical-soft);
+}
+.sx-alert--passive {
+  border: 1.5px solid var(--warning);
+  background: var(--warning-soft);
+}
+.sx-alert__title {
+  font: 700 17px/24px var(--font-sans);
+  margin: 0;
+}
+.sx-alert__body {
+  font: 400 15px/22px var(--font-sans);
+  margin: 0;
+  grid-column: 2;
+}
+.sx-alert__actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.sx-alert > .sx-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--critical);
+}
+.sx-alert--passive > .sx-icon {
+  color: var(--warning);
+}
+
+/* Card + rows */
+.sx-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.sx-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+.sx-rowitem {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  min-height: 64px;
+  border-top: 1px solid var(--line);
+}
+.sx-rowitem:first-child {
+  border-top: 0;
+}
+.sx-rowitem__title {
+  font: 700 18px/24px var(--font-sans);
+  margin: 0;
+}
+.sx-rowitem__meta {
+  font: 400 15px/22px var(--font-sans);
+  color: var(--ink-muted);
+  margin: 0;
+}
+.sx-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  display: grid;
+  place-items: center;
+  font: 700 16px/1 var(--font-sans);
+  color: var(--ink-muted);
+}
+.sx-chev {
+  color: var(--ink-muted);
+}
+
+/* Run card */
+.sx-run {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.sx-run:first-child {
+  border-top: 0;
+}
+.sx-run__date {
+  text-align: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  padding: var(--space-1) 0;
+}
+.sx-run__date b {
+  display: block;
+  font: 700 24px/26px var(--font-label);
+}
+.sx-run__date span {
+  font: 600 13px/16px var(--font-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Task */
+.sx-task {
+  display: grid;
+  grid-template-columns: var(--tap-min) 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-2);
+  border-top: 1px solid var(--line);
+}
+.sx-task:first-child {
+  border-top: 0;
+}
+.sx-check {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.sx-check span {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--line-strong);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+}
+.sx-check[aria-checked='true'] span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* Encounter section (accordion) */
+.sx-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.sx-section > summary,
+.sx-section__head {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--tap-lg);
+  padding: 0 var(--space-4);
+  cursor: pointer;
+  font: 700 18px/24px var(--font-sans);
+}
+.sx-section > summary::-webkit-details-marker {
+  display: none;
+}
+.sx-section__body {
+  padding: 0 var(--space-4) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sx-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Bundle (order set) */
+.sx-bundle__item {
+  display: grid;
+  grid-template-columns: var(--tap-min) 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+}
+.sx-bundle__group {
+  padding: var(--space-2) var(--space-4);
+}
+
+/* Stat tile */
+.sx-stat {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.sx-stat b {
+  display: block;
+  font: 600 28px/32px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.sx-stat span {
+  font: 400 15px/22px var(--font-sans);
+  color: var(--ink-muted);
+}
+
+/* Text field */
+.sx-input {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
+}
+.sx-input input,
+.sx-input textarea {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 400 17px/24px var(--font-sans);
+  padding: var(--space-3) 0;
+  outline: none;
+}
+.sx-input:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.sx-input .unit {
+  font: 500 15px/1 var(--font-mono);
+  color: var(--ink-muted);
+}
+.sx-input--error {
+  border-color: var(--critical);
+}
+.sx-help {
+  font: 400 15px/22px var(--font-sans);
+  color: var(--ink-muted);
+  margin: 0;
+}
+.sx-help--error {
+  color: var(--critical);
+  font-weight: 700;
+}
+
+/* Tab bar */
+.sx-tabbar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+.sx-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--tap-lg);
+  justify-content: center;
+  background: none;
+  border: 0;
+  color: var(--ink-muted);
+  font: 600 12px/14px var(--font-sans);
+  cursor: pointer;
+}
+.sx-tab[aria-current='page'] {
+  color: var(--accent);
+}
+.sx-tab[aria-current='page'] .sx-icon {
+  stroke-width: 2.5;
+}
+.sx-start {
+  width: 64px;
+  height: 64px;
+  margin: -20px auto 0;
+  border-radius: var(--radius-pill);
+  background: var(--hivis);
+  color: var(--ink-on-hivis);
+  border: 3px solid var(--surface);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.sx-start .sx-icon {
+  width: 28px;
+  height: 28px;
+  stroke-width: 2.75;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sx-btn,
+  .sx-chip,
+  .sx-tab {
+    transition:
+      background-color 0.12s,
+      color 0.12s;
+  }
+}
+
+/* ---- Added Oct 7, 2026 (synced with the Build & Strategy Plan) ---- */
+
+/* Choice card: a big either-or decision, e.g. Medical / Non-Medical at the start of an encounter */
+.sx-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: var(--tap-lg);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  font: 700 18px/24px var(--font-sans);
+  cursor: pointer;
+}
+.sx-choice small {
+  font: 400 15px/22px var(--font-sans);
+  color: var(--ink-muted);
+}
+.sx-choice[aria-checked='true'] {
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+.sx-choice[aria-checked='true'] b::before {
+  content: '\2713  ';
+  color: var(--accent);
+}
+
+/* Progress meter: sync progress by category, kit fill */
+.sx-meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.sx-meter__top {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font: 500 15px/22px var(--font-sans);
+}
+.sx-meter__bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.sx-meter__bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* Bottom sheet over a dimmed screen */
+.sx-scrim {
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+.sx-sheet {
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-sheet);
+  padding: var(--space-2) var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sx-sheet__grip {
+  width: 40px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--line-strong);
+  align-self: center;
+}
+.sx-sheet__title {
+  font: 700 22px/28px var(--font-sans);
+  margin: 0;
+}
+
+/* Kit check: needed for the route vs. in my kit */
+.sx-kit {
+  display: grid;
+  grid-template-columns: 1fr 56px 56px 72px;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--tap-min);
+  border-top: 1px solid var(--line);
+  font: 400 16px/22px var(--font-sans);
+}
+.sx-kit--head {
+  border-top: 0;
+  min-height: 0;
+}
+.sx-kit > .sx-data {
+  text-align: right;
+}
+.sx-kit__short {
+  justify-self: end;
+}
+
+/* Route stop with number, place, time and pre-visit contact status */
+.sx-stop {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: var(--tap-min);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+.sx-stop:first-child {
+  border-top: 0;
+}
+.sx-stop__num {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  font: 700 15px/1 var(--font-sans);
+}
+.sx-stop__num--now {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.sx-stop__num--done {
+  background: var(--good);
+  border-color: var(--good);
+  color: var(--surface);
+}
+.sx-stop--removed {
+  opacity: 1;
+  color: var(--ink-muted);
+}
+.sx-stop--removed .sx-stop__num {
+  border-style: dashed;
+}
+
+/* Change request from Logistics on a locked route */
+.sx-request {
+  border: 1.5px solid var(--info);
+  background: var(--info-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sx-request__title {
+  font: 700 17px/24px var(--font-sans);
+  margin: 0;
+}
+.sx-request__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+/* Oct 14: bags, follow-ups board */
+.sx-chip--out,
+.sx-chip[aria-disabled='true'] {
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.sx-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(200px, 1fr);
+  gap: var(--space-3);
+  overflow-x: auto;
+  align-items: start;
+  padding-bottom: var(--space-2);
+}
+.sx-col {
+  background: var(--surface-sunken);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sx-col__head {
+  margin: 0 2px;
+  display: flex;
+  justify-content: space-between;
+  font: 700 12px/18px var(--font-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.sx-col__head span {
+  font-family: var(--font-mono);
+}
+.sx-kcard {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-2) var(--space-2) 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sx-kcard--sel {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.sx-kcard__pick {
+  position: absolute;
+  left: 10px;
+  top: 12px;
+}
+
+/* Oct 14: screen title, text link, tappable row (from the prototype) */
+.sx-h1 {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: 30px;
+  line-height: 34px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.sx-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font: 700 15px/1.3 var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+  min-height: 32px;
+}
+.sx-rowbtn {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  min-height: 64px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+  width: 100%;
+}
+.sx-rowbtn:first-child {
+  border-top: 0;
+}
+.sx-rowbtn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}

@@ -1,0 +1,16 @@
+{
+  "name": "body_region",
+  "options": [
+    { "code": "head", "label": "Head" },
+    { "code": "upper_body", "label": "Upper Body" },
+    { "code": "abdomen", "label": "Abdomen" },
+    { "code": "back", "label": "Back" },
+    { "code": "arms", "label": "Arms" },
+    { "code": "legs", "label": "Legs" },
+    { "code": "lower_body", "label": "Lower Body" },
+    { "code": "hands", "label": "Hands" },
+    { "code": "feet", "label": "Feet" },
+    { "code": "face", "label": "Face" },
+    { "code": "groin", "label": "Groin" }
+  ]
+}

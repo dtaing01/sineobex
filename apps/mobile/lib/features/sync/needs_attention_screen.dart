@@ -1,0 +1,1103 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../app_providers.dart';
+import '../../auth/session_controller.dart';
+import '../../design/theme.dart';
+import '../../design/tokens.dart';
+import '../../design/widgets/form_bits.dart' show ErrorMessage;
+import '../../design/widgets/status_chip.dart';
+import '../../encounters/encounter_models.dart' show VisitKind;
+import '../../encounters/encounter_repository.dart'
+    show
+        NoteActions,
+        RefusalFixes,
+        VisitChoice,
+        cannotRemoveRefusedNote,
+        settledByPatient,
+        settledByRemoving,
+        settledByVisit;
+import '../../encounters/encounter_services.dart';
+import '../../encounters/referrals.dart' show settledByDate;
+import '../../forms/definition.dart' show ChoiceDef;
+import '../../forms/field_at.dart' show fieldAt;
+import '../../forms/forms_api.dart' show NoteTypeVersion;
+import '../../patients/flags.dart' show FlagView, NotAppliedFlagChange, clearsFlag, settledByFlag, settledByReason;
+import '../../patients/patient_providers.dart';
+import '../../sync/entities.dart' show entityCorrection, entitySignoff;
+import '../../sync/local_store.dart';
+import '../encounters/encounter_labels.dart'
+    show
+        encounterErrorText,
+        noteNotOnPhone,
+        openNoteAction,
+        removeNoteAction,
+        removeNoteBody,
+        removeNoteTitle,
+        removeNoteYes,
+        startedHere,
+        visitKindText;
+import '../encounters/encounter_widgets.dart' show ChoiceTile, SheetGate, choosePatient, encountersOpen, fetchNote;
+import '../encounters/note_type_list.dart' show noteLocation;
+import '../encounters/referrals_sheet.dart' show askReferralDate, changeReferralDateAction;
+import '../patients/flag_sheet.dart' show FlagMark, FlagReasonBox;
+import '../patients/patient_labels.dart' show longDate, problemStatusText, shortDate;
+import '../patients/patient_picker.dart';
+import '../patients/patient_widgets.dart' show FrozenNotice, confirm, errorText, todayOf;
+import '../patients/sheet_gate.dart' show DialogGate, SheetGate;
+import 'sync_labels.dart';
+
+/// Rejected changes and conflicts, until someone resolves them (module 9 "Rejections", Oct 19
+/// reconciliation rule), then the notices that need no fix. Nothing here is ever dropped by the app.
+/// Titles never hold a value: field and record names only.
+class NeedsAttentionScreen extends ConsumerWidget {
+  const NeedsAttentionScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sync = ref.watch(syncControllerProvider);
+    final session = ref.watch(sessionProvider);
+    final watched = ref.watch(patientServicesProvider);
+    final watchedEncounters = ref.watch(encounterServicesProvider);
+    final me = switch (session.state) {
+      Unlocked(:final user) => user.userId,
+      _ => null,
+    };
+    return ListenableBuilder(
+      listenable: Listenable.merge([sync, ?watched, ?watchedEncounters]),
+      builder: (context, _) {
+        final snapshot = sync.snapshot;
+        final items = snapshot.attention;
+        final store = sync.store;
+        // Services whose database a lock or a team switch just closed read nothing.
+        final services = watched != null && identical(watched.store, store) ? watched : null;
+        final encounters = watchedEncounters != null && encountersOpen(sync, watchedEncounters)
+            ? watchedEncounters
+            : null;
+        final notices = store?.notices(unreadOnly: true) ?? const <LocalNotice>[];
+        if (encounters != null) _loadDefinitions(encounters, items);
+        final messenger = ScaffoldMessenger.of(context);
+        void outOfDate() =>
+            messenger.showSnackBar(const SnackBar(content: Text('The other value changed. Check both values again.')));
+        // A choice the store refuses (the clock check failed since the card was drawn, or the store
+        // froze for a hand-over) says why. The cards don't wait for it, so without this nobody would.
+        Future<void> choosing(Future<void> Function() choice) async {
+          try {
+            await choice();
+          } on Exception catch (x) {
+            messenger.showSnackBar(SnackBar(content: Text(errorText(x))));
+          }
+        }
+
+        // Once the store freezes for a hand-over, nothing of a chart stays here either (D125; the
+        // coordinator's decision on review finding PP-2): the reason in place of every card that
+        // names a record or holds a value, which may say that something waits, never what.
+        final frozen = store?.frozenMessage;
+        final cards = <Widget>[
+          if (frozen != null && items.isNotEmpty) ...[
+            FrozenNotice(frozen),
+            Text(
+              // Words that stand on their own: once access ended, nothing here waits on this person
+              // (review finding VX-6).
+              '${plural(items.length, 'change is', 'changes are')} still on this phone.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
+          for (final e in frozen == null ? items : const <OutboxEntry>[])
+            if (e.state == ChangeState.conflict && store != null && e.entity == entityProblem && e.field == 'status')
+              _ProblemConflictCard(
+                entry: e,
+                mine: store.myValue(e),
+                me: me,
+                title: services?.problems.problem(e.recordId)?.title,
+                today: todayOf(ref),
+                onChoose: snapshot.clock.paused || services == null
+                    ? null
+                    : (choice) => choosing(() async {
+                        final done = switch (choice) {
+                          _ProblemChoice.keepResolved => services.problems.keepServer(e.changeId),
+                          _ProblemChoice.cameBack =>
+                            services.problems.keepServerAndAdd(e.changeId, cameBack: true) != null,
+                          _ProblemChoice.mistake =>
+                            services.problems.keepServerAndAdd(e.changeId, cameBack: false) != null,
+                        };
+                        services.changed();
+                        if (!done) return outOfDate();
+                        await sync.syncNow();
+                      }),
+              )
+            else if (e.state == ChangeState.conflict && store != null)
+              _ConflictCard(
+                entry: e,
+                mine: store.myValue(e),
+                me: me,
+                // A note's answer, named and worded as its form words it, never by its key or its
+                // option codes; and Open the note, where the form shows the choice too (review SAX-3).
+                words: e.entity == entityNote && encounters != null ? noteAnswerWords(encounters, e) : null,
+                onOpenNote: e.entity == entityNote && encounters != null
+                    ? () => unawaited(_openNote(context, encounters, e.recordId))
+                    : null,
+                // A choice writes to the chart, so it waits like the rest of charting.
+                onChoose: snapshot.clock.paused
+                    ? null
+                    : (keepMine) => choosing(() async {
+                        if (!await sync.resolveConflict(e.changeId, keepMine: keepMine)) outOfDate();
+                      }),
+              )
+            else
+              _RejectionCard(entry: e, services: services, encounters: encounters, paused: snapshot.clock.paused),
+          if (snapshot.held > 0 && frozen == null)
+            Text(
+              '${plural(snapshot.held, 'later change waits', 'later changes wait')} until these are resolved.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          if (notices.isNotEmpty) ...[
+            Semantics(header: true, child: Text('For your information', style: Theme.of(context).textTheme.titleLarge)),
+            for (final n in notices)
+              _NoticeCard(
+                notice: n,
+                // What the phone holds of a held flag change that wasn't applied words its notice (W1).
+                flagChange: n.kind == noticeFlagChangeNotApplied && n.recordId != null
+                    ? services?.flags.notAppliedOf(n.recordId!)
+                    : null,
+                onOpenNote: switch (_noteOf(n)) {
+                  final note? when encounters != null => () => unawaited(_openNote(context, encounters, note)),
+                  _ => null,
+                },
+                onOpen: _opener(context, n, services),
+                // Read here now, and on the server at the next contact.
+                onDone: () => services != null ? services.notices.markRead(n.id) : store!.markNoticeRead(n.id),
+              ),
+          ],
+        ];
+        return Scaffold(
+          appBar: AppBar(title: const Text('Needs attention')),
+          body: items.isEmpty && notices.isEmpty
+              ? const Center(
+                  child: Padding(padding: EdgeInsets.all(FieldSpace.s4), child: Text('Nothing needs attention.')),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(FieldSpace.s4),
+                  itemCount: cards.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: FieldSpace.s4),
+                  itemBuilder: (context, i) => cards[i],
+                ),
+        );
+      },
+    );
+  }
+}
+
+/// The note a notice of a note's life asks the person to open (lifecycle 9.13): the one a
+/// `signoff_not_applied` or a `correction_not_applied` names beside its sign-off or correction (D104,
+/// VS-6), the one `finished_differently` is about.
+String? _noteOf(LocalNotice n) => switch (n.kind) {
+  noticeSignoffNotApplied || noticeCorrectionNotApplied => n.noteId,
+  noticeFinishedDifferently => n.recordId,
+  _ => null,
+};
+
+/// **Open the note** (lifecycle 9.13): the note's form, or its read view once finished, fetched
+/// first when this phone does not hold it (a second phone, or one a synced sign-out erased; 4.8). It
+/// settles nothing: completing it again does.
+Future<void> _openNote(BuildContext context, EncounterServices services, String noteId) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final router = GoRouter.of(context);
+  if (!await fetchNote(services, noteId)) {
+    messenger.showSnackBar(const SnackBar(content: Text(noteNotOnPhone)));
+    return;
+  }
+  unawaited(router.push(noteLocation(noteId)));
+}
+
+/// Where a notice's "Open" goes, from this phone's own data: the patient it names, or the problem
+/// it names when the phone holds it. Null when the phone has neither.
+VoidCallback? _opener(BuildContext context, LocalNotice n, PatientServices? services) {
+  if (services == null) return null;
+  if (n.patientId case final patient?) return () => unawaited(context.push('/patients/$patient'));
+  if (n.kind == noticeReversalDecided && n.recordId != null) {
+    final problem = services.problems.problem(n.recordId!);
+    if (problem != null) {
+      return () => unawaited(context.push('/patients/${problem.patientId}/problems/${problem.id}'));
+    }
+  }
+  return null;
+}
+
+/// The note type and version of the note [e] changes, by the phone's record or the change itself.
+NoteTypeVersion? _versionOf(EncounterServices services, OutboxEntry e) {
+  final rec = services.store.record(e.recordId);
+  final value = e.value is Map<String, Object?> ? e.value! as Map<String, Object?> : const <String, Object?>{};
+  final key = rec?.attributes['noteTypeKey'] ?? value['noteTypeKey'];
+  final version = rec?.attributes['noteTypeVersion'] ?? value['noteTypeVersion'];
+  return key is String && version is int ? (key: key, version: version) : null;
+}
+
+/// The note types of the notes [entries] change that the services have not loaded: loaded once for
+/// the screen, which then words their answers ([noteAnswerWords]).
+final _askedDefinitions = Expando<Set<NoteTypeVersion>>();
+void _loadDefinitions(EncounterServices services, Iterable<OutboxEntry> entries) {
+  final asked = _askedDefinitions[services] ??= {};
+  final missing = {
+    for (final e in entries)
+      if (e.entity == entityNote)
+        if (_versionOf(services, e) case final v? when services.definitions.loaded(v.key, v.version) == null) v,
+  }.difference(asked);
+  if (missing.isEmpty) return;
+  asked.addAll(missing);
+  unawaited(services.definitions.loadAll(missing).then((_) => services.changed(), onError: (Object _) {}));
+}
+
+/// A note's answer as its form names and words it (lifecycle 9.13; review SAX-3, SFL-1): the answer's
+/// label and the note's type ("Current needs, in Social needs"), and a value with each option's label
+/// in place of its code. The note's type alone, and the value as stored, for an answer the phone's
+/// copy of the definition doesn't name; null while the phone holds no definition of the note.
+({String heading, String Function(Object? value) value})? noteAnswerWords(EncounterServices services, OutboxEntry e) {
+  final v = _versionOf(services, e);
+  final definition = v == null ? null : services.definitions.loaded(v.key, v.version);
+  if (definition == null) return null;
+  final field = e.field;
+  final path = field != null && field.startsWith('data.') ? field.substring('data.'.length) : null;
+  final target = path == null ? null : fieldAt(definition, path)?.field;
+  String words(Object? value) {
+    if (target is ChoiceDef) {
+      String label(Object? code) => target.options.where((o) => o.code == code).firstOrNull?.label ?? '$code';
+      return switch (value) {
+        null || '' => valueText(value),
+        final List<Object?> codes => codes.isEmpty ? valueText(null) : codes.map(label).join(', '),
+        _ => label(value),
+      };
+    }
+    return value is Map || value is List ? openTheNoteToSee : valueText(value);
+  }
+
+  return (heading: target == null ? definition.title : '${target.label}, in ${definition.title}', value: words);
+}
+
+/// [noteAnswerWords]' heading, else the change's own field or record words.
+String noteAnswerHeading(EncounterServices services, OutboxEntry e) =>
+    noteAnswerWords(services, e)?.heading ?? (e.field != null ? fieldLabel(e.field!) : entityLabel(e.entity));
+
+class _ConflictCard extends StatelessWidget {
+  const _ConflictCard({
+    required this.entry,
+    required this.mine,
+    required this.me,
+    required this.onChoose,
+    this.words,
+    this.onOpenNote,
+  });
+  final OutboxEntry entry;
+
+  /// A note's answer named and worded as its form does ([noteAnswerWords]).
+  final ({String heading, String Function(Object? value) value})? words;
+  final VoidCallback? onOpenNote;
+
+  /// What the person has in the field now: exactly what "Use my value" sends.
+  final Object? mine;
+  final String? me;
+
+  /// Null while charting is paused for the clock.
+  final Future<void> Function(bool keepMine)? onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.field;
+    final text = Theme.of(context).textTheme;
+    final server = entry.server!;
+    final choose = onChoose;
+    final who = _who(server, me);
+    final when = server.changedAt == null ? '' : ' at ${timeOfDay(context, server.changedAt!)}';
+    Widget side(String heading, Object? value) => Expanded(
+      child: Semantics(
+        container: true,
+        child: Container(
+          padding: const EdgeInsets.all(FieldSpace.s3),
+          decoration: BoxDecoration(
+            color: c.surface,
+            border: Border.all(color: c.lineStrong),
+            borderRadius: BorderRadius.circular(FieldRadius.md),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(heading, style: text.labelLarge?.copyWith(color: c.inkMuted)),
+              const SizedBox(height: FieldSpace.s1),
+              Text(words?.value(value) ?? valueText(value), style: text.titleMedium),
+            ],
+          ),
+        ),
+      ),
+    );
+    return Semantics(
+      container: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(header: true, child: Text(words?.heading ?? fieldLabel(entry.field!), style: text.titleLarge)),
+          const SizedBox(height: FieldSpace.s1),
+          Text('This field already had a different value. Choose which one to keep.', style: text.bodyLarge),
+          const SizedBox(height: FieldSpace.s3),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                side('Your value', mine),
+                const SizedBox(width: FieldSpace.s3),
+                side('$who$when', server.value),
+              ],
+            ),
+          ),
+          const SizedBox(height: FieldSpace.s3),
+          FilledButton(onPressed: choose == null ? null : () => choose(true), child: const Text('Use my value')),
+          const SizedBox(height: FieldSpace.s2),
+          OutlinedButton(
+            onPressed: choose == null ? null : () => choose(false),
+            child: Text('Keep ${who == 'On the server' ? 'the server’s' : 'theirs'}'),
+          ),
+          const SizedBox(height: FieldSpace.s1),
+          if (choose == null) ...[
+            Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
+            const SizedBox(height: FieldSpace.s1),
+          ],
+          Text('Both values stay in the record’s history either way.', style: text.bodyMedium),
+          if (onOpenNote case final open?) ...[
+            const SizedBox(height: FieldSpace.s2),
+            OutlinedButton(onPressed: open, child: const Text(openNoteAction)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _who(ServerField server, String? me) => server.changedBy == null
+    ? 'On the server'
+    : server.changedBy == me
+    ? 'You, from another phone'
+    : 'A teammate';
+
+enum _ProblemChoice { keepResolved, cameBack, mistake }
+
+/// A problem marked Resolved on the server while this phone marked it otherwise (design 9.3).
+/// "Use mine" would reverse a Resolved problem, which is a Program Admin's, so the three choices
+/// all keep Resolved; two also add a new entry. Each keeps the person's status in the history.
+class _ProblemConflictCard extends StatelessWidget {
+  const _ProblemConflictCard({
+    required this.entry,
+    required this.mine,
+    required this.me,
+    required this.title,
+    required this.today,
+    required this.onChoose,
+  });
+  final OutboxEntry entry;
+  final Object? mine;
+  final String? me;
+  final String? title;
+  final DateTime today;
+  final Future<void> Function(_ProblemChoice choice)? onChoose;
+
+  static String? _status(Object? v) => v is Map<String, Object?> ? v['status'] as String? : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final server = entry.server!;
+    String when(DateTime? t) => t == null ? '' : ' on ${shortDate(t, today)} at ${timeOfDay(context, t)}';
+    final theirs = problemStatusText(_status(server.value) ?? 'resolved');
+    final yours = problemStatusText(_status(mine) ?? 'ongoing');
+    final who = switch (_who(server, me)) {
+      'On the server' => 'Someone',
+      final w => w,
+    };
+    final choose = onChoose;
+    return Semantics(
+      container: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(header: true, child: Text(title ?? 'Problem', style: text.titleLarge)),
+          const SizedBox(height: FieldSpace.s1),
+          Text(
+            '$who marked it $theirs${when(server.changedAt)}. '
+            'You marked it $yours on this phone${when(entry.correctedTime ?? entry.deviceTime)}.',
+            style: text.bodyLarge,
+          ),
+          const SizedBox(height: FieldSpace.s3),
+          FilledButton(
+            onPressed: choose == null ? null : () => unawaited(choose(_ProblemChoice.keepResolved)),
+            child: Text('Keep $theirs'),
+          ),
+          const SizedBox(height: FieldSpace.s2),
+          OutlinedButton(
+            onPressed: choose == null ? null : () => unawaited(choose(_ProblemChoice.cameBack)),
+            child: const Text('It came back: add as a new problem'),
+          ),
+          const SizedBox(height: FieldSpace.s2),
+          OutlinedButton(
+            onPressed: choose == null ? null : () => unawaited(choose(_ProblemChoice.mistake)),
+            child: const Text('Resolved by mistake: ask an admin'),
+          ),
+          const SizedBox(height: FieldSpace.s1),
+          if (choose == null) ...[
+            Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
+            const SizedBox(height: FieldSpace.s1),
+          ],
+          Text('Your status stays in the problem’s history either way.', style: text.bodyMedium),
+        ],
+      ),
+    );
+  }
+}
+
+class _RejectionCard extends ConsumerWidget {
+  const _RejectionCard({required this.entry, required this.services, required this.encounters, required this.paused});
+  final OutboxEntry entry;
+  final PatientServices? services;
+  final EncounterServices? encounters;
+  final bool paused;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final e = entry;
+    final problem = e.details?['problem'] as String?;
+    final s = services;
+    final n = encounters;
+    final patientSide = e.entity != entityEncounter && e.entity != entityNote;
+    final what = n != null && e.entity == entityNote
+        ? noteAnswerHeading(n, e)
+        : e.field != null
+        ? fieldLabel(e.field!)
+        : entityLabel(e.entity);
+    final card = e.entity == entityIdLink && e.op == 'create';
+    final attach =
+        !card &&
+        e.op == 'create' &&
+        (problem == 'patient_missing') &&
+        const {entityAlias, entityAllergy, entityConsent, entityProblem}.contains(e.entity);
+    final messenger = ScaffoldMessenger.of(context);
+    // A note's life (lifecycle 9.13): the note a refused sign-off, correction or answer is about.
+    final value = e.value is Map<String, Object?> ? e.value! as Map<String, Object?> : const <String, Object?>{};
+    // An addendum or a correction refused only for naming a refused sign-off goes again when its
+    // note is completed again (review findings PS-1, C-1): the card says so and opens that note.
+    final completedAgain = n?.store.noteCompletedAgainFor(e);
+    final noteId =
+        completedAgain ??
+        switch (e.entity) {
+          entityNote => e.recordId,
+          entitySignoff || entityCorrection => value['noteId'] as String?,
+          _ => null,
+        };
+    final opensNote =
+        n != null &&
+        noteId != null &&
+        problem != 'definition_error' &&
+        problem != 'unknown_note_type' &&
+        (e.entity != entitySignoff || const {'content_changed', 'incomplete', 'red_flags_first'}.contains(problem));
+    // A refused correction: Correct again sends it at the versions now seen; Leave it abandons it,
+    // changing nothing, so the refusal settles (3.6, D109). Correct again only where someone else's
+    // correction got there first; one that left the note missing something needs other answers.
+    final correction = n != null && e.entity == entityCorrection && e.op == 'create';
+    // The refusals only the domain layer can settle (4.1, 8.4): a record made at a visit the team
+    // lacks or that is someone else's now; a clinical note in a visit with no patient; a note on a
+    // type the team doesn't have. Each fix writes, so it waits for the clock.
+    final byVisit = n != null && settledByVisit(e);
+    final byPatient = n != null && settledByPatient(e);
+    final byRemoving = n != null && settledByRemoving(e);
+    // A referral dated past what the server takes: Change the date (review finding PS-3). A referral
+    // does not wait for the clock (3.11), so neither does its fix.
+    final byDate = n != null && settledByDate(e);
+    // A flag change refused for its flag, or for its reason (phase 5 design 6.2, 8.2; D121): Choose a
+    // flag, from its tier's flags the person may set, or why there is none; Change the reason. Each
+    // sends the refused change again through the flags domain class, once the clock allows.
+    final byFlag = s != null && settledByFlag(e);
+    final byReason = s != null && settledByReason(e);
+    final flagChoices = byFlag ? _flagsToChoose(s, e) : const <FlagView>[];
+    final visitId = switch (e.entity) {
+      entityEncounter => e.recordId,
+      entityNote =>
+        value['encounterId'] as String? ?? n?.store.record(e.recordId)?.attributes['encounterId'] as String?,
+      _ => null,
+    };
+
+    Future<void> settle(Future<void> Function() fix) async {
+      try {
+        await fix();
+        await ref.read(syncControllerProvider).syncNow();
+      } on Exception catch (x) {
+        messenger.showSnackBar(SnackBar(content: Text(encounterErrorText(x))));
+      }
+    }
+
+    Future<void> makeCard() async {
+      try {
+        final reason = (e.value as Map<String, Object?>?)?['reason'] as String? ?? 'other';
+        s!.idLinks.replaceRejected(e.changeId, reason: reason);
+        s.changed();
+        await ref.read(syncControllerProvider).syncNow();
+      } on Exception catch (x) {
+        messenger.showSnackBar(SnackBar(content: Text(errorText(x))));
+      }
+    }
+
+    Future<void> chooseVisit() async {
+      final chosen = await _chooseVisit(context, n!, e.changeId);
+      if (chosen == null) return;
+      await settle(() async => n.repository.moveToVisit(e.changeId, chosen));
+    }
+
+    // The visit's patient, when this phone's copy names one already (its set still on its way):
+    // then the note's create is only sent again.
+    final visitPatient = byPatient && visitId != null
+        ? n.store.record(visitId)?.fields['patientId']?.value as String?
+        : null;
+    Future<void> choosePatientFor() async {
+      final patients = s;
+      final patientId =
+          visitPatient ??
+          (patients == null ? null : (await choosePatient(context, patients, line: choosePatientLine))?.patientId);
+      if (patientId == null) return;
+      await settle(() async => n!.repository.choosePatientFor(e.changeId, patientId));
+    }
+
+    Future<void> changeDate() async {
+      final picked = await askReferralDate(context, n!, today: todayOf(ref));
+      if (picked == null) return;
+      await settle(() async => n.referrals.changeRefusedDate(e.changeId, picked));
+    }
+
+    Future<void> removeRefused() async {
+      final yes = await confirm(
+        context,
+        title: removeNoteTitle,
+        body: removeNoteBody,
+        yes: removeNoteYes,
+        // It goes with the store, as its Cancel would (D125).
+        gate: (dialog) => DialogGate<bool>(services: n!, child: dialog),
+      );
+      if (!yes) return;
+      await settle(() => n!.repository.removeRefusedNote(e.changeId));
+    }
+
+    Future<void> chooseFlag() async {
+      if (await _chooseFlag(context, s!, e, flagChoices)) await ref.read(syncControllerProvider).syncNow();
+    }
+
+    Future<void> changeReason() async {
+      if (await _changeFlagReason(context, s!, e)) await ref.read(syncControllerProvider).syncNow();
+    }
+
+    Future<void> attachTo() async {
+      final patientId = await pickPatient(context, s!, today: todayOf(ref));
+      if (patientId == null) return;
+      try {
+        s.patients.attachToPatient(e.changeId, patientId);
+        s.changed();
+        await ref.read(syncControllerProvider).syncNow();
+      } on Exception catch (x) {
+        messenger.showSnackBar(SnackBar(content: Text(errorText(x))));
+      }
+    }
+
+    return Semantics(
+      container: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(header: true, child: Text(what, style: text.titleLarge)),
+          const SizedBox(height: FieldSpace.s1),
+          Text(
+            completedAgain != null
+                ? waitsForNoteLine
+                : byFlag && flagChoices.isEmpty
+                ? (clearsFlag(e) ? noFlagToClear : noFlagToChoose)
+                : problemLabel(problem) ?? reasonLabel(e.reason),
+            style: text.titleMedium,
+          ),
+          if (completedAgain == null && problemLabel(problem) == null && e.message != null) ...[
+            const SizedBox(height: FieldSpace.s1),
+            Text(e.message!, style: text.bodyLarge),
+          ],
+          const SizedBox(height: FieldSpace.s1),
+          Text(
+            completedAgain != null
+                ? sentWithNoteLine
+                : patientSide
+                ? 'It stays on this phone until it is fixed, with what depends on it.'
+                : 'It stays on this phone until it is fixed. Open the record to fix it.',
+            style: text.bodyMedium,
+          ),
+          if (opensNote || correction || byPatient || byRemoving) ...[
+            const SizedBox(height: FieldSpace.s2),
+            Wrap(
+              spacing: FieldSpace.s2,
+              runSpacing: FieldSpace.s2,
+              children: [
+                if (byPatient && (visitPatient != null || s != null))
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(choosePatientFor()),
+                    child: Text(visitPatient == null ? choosePatientAction : sendAgainAction),
+                  ),
+                if (correction && problem == 'field_changed')
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(settle(() => n.repository.correctAgain(e.changeId))),
+                    child: const Text(correctAgainAction),
+                  ),
+                if (opensNote)
+                  OutlinedButton(
+                    onPressed: () => unawaited(_openNote(context, n, noteId)),
+                    child: const Text(openNoteAction),
+                  ),
+                if (visitId != null && byRemoving)
+                  OutlinedButton(
+                    onPressed: () => unawaited(context.push('/encounters/$visitId/note-types')),
+                    child: const Text(chooseNoteTypeAction),
+                  ),
+                if (byRemoving)
+                  _RemoveRefusedNote(
+                    key: ValueKey('remove.${e.changeId}'),
+                    can: () => n.repository.canRemoveRefusedNote(e.changeId),
+                    onPressed: paused ? null : () => unawaited(removeRefused()),
+                  ),
+                if (correction)
+                  OutlinedButton(
+                    onPressed: paused ? null : () => unawaited(settle(() => n.repository.leaveIt(e.changeId))),
+                    child: const Text(leaveItAction),
+                  ),
+              ],
+            ),
+            if ((correction || byPatient || byRemoving) && paused) ...[
+              const SizedBox(height: FieldSpace.s1),
+              Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
+            ],
+          ],
+          if (s != null && patientSide && !opensNote && !correction) ...[
+            const SizedBox(height: FieldSpace.s2),
+            Wrap(
+              spacing: FieldSpace.s2,
+              runSpacing: FieldSpace.s2,
+              children: [
+                if (card && s.mayEdit)
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(makeCard()),
+                    child: Text(
+                      problem == 'patient_merged' ? 'Make a new card from the kept chart' : 'Make a new card',
+                    ),
+                  ),
+                if (attach)
+                  FilledButton(onPressed: () => unawaited(attachTo()), child: const Text('Attach to another patient')),
+                if (byDate)
+                  FilledButton(onPressed: () => unawaited(changeDate()), child: const Text(changeReferralDateAction)),
+                if (byFlag && flagChoices.isNotEmpty)
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(chooseFlag()),
+                    child: const Text(chooseFlagAction),
+                  ),
+                if (byReason)
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(changeReason()),
+                    child: const Text(changeReasonAction),
+                  ),
+                if (byVisit && n.repository.hasVisitsToChoose(e.changeId))
+                  FilledButton(
+                    onPressed: paused ? null : () => unawaited(chooseVisit()),
+                    child: const Text(chooseVisitAction),
+                  ),
+                if (byVisit)
+                  OutlinedButton(
+                    onPressed: paused
+                        ? null
+                        : () => unawaited(settle(() async => n.repository.sendWithoutVisit(e.changeId))),
+                    child: const Text(sendWithoutVisitAction),
+                  ),
+                if (e.patientId != null && !attach)
+                  OutlinedButton(
+                    onPressed: () => unawaited(context.push('/patients/${e.patientId}')),
+                    child: const Text('Open the chart'),
+                  ),
+              ],
+            ),
+            if (card && paused) ...[
+              const SizedBox(height: FieldSpace.s1),
+              Text('Cards can be made once the phone’s clock is right.', style: text.bodyMedium),
+            ],
+            if ((byVisit || byReason || (byFlag && flagChoices.isNotEmpty)) && paused) ...[
+              const SizedBox(height: FieldSpace.s1),
+              Text('You can choose once the phone’s clock is right.', style: text.bodyMedium),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// **Remove this note** for a refused note of a type the team moved on from, when the team's list
+/// gives a version that takes every answer the phone holds of it; otherwise the card says to tell a
+/// Program Admin, and the refusal stays (D121; review finding VS-3). Asked of the phone's files once.
+class _RemoveRefusedNote extends StatefulWidget {
+  const _RemoveRefusedNote({super.key, required this.can, required this.onPressed});
+  final Future<bool> Function() can;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_RemoveRefusedNote> createState() => _RemoveRefusedNoteState();
+}
+
+class _RemoveRefusedNoteState extends State<_RemoveRefusedNote> {
+  late final Future<bool> _can = widget.can();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+    future: _can,
+    builder: (context, can) => switch (can.data) {
+      true => OutlinedButton(onPressed: widget.onPressed, child: const Text(removeNoteAction)),
+      false => Text(cannotRemoveRefusedNote, style: Theme.of(context).textTheme.bodyLarge),
+      null => const SizedBox.shrink(),
+    },
+  );
+}
+
+class _NoticeCard extends StatelessWidget {
+  const _NoticeCard({
+    required this.notice,
+    required this.flagChange,
+    required this.onOpenNote,
+    required this.onOpen,
+    required this.onDone,
+  });
+  final LocalNotice notice;
+
+  /// For a held flag change's notice, what the phone holds of the change; null for anything else.
+  final NotAppliedFlagChange? flagChange;
+
+  /// **Open the note**, for a notice of a note's life (lifecycle 9.13).
+  final VoidCallback? onOpenNote;
+  final VoidCallback? onOpen;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) => StatusBanner(
+    icon: notice.kind == 'id_link_superseded' ? LucideIcons.idCard : LucideIcons.info,
+    tone: notice.kind == 'id_link_superseded' ? ChipTone.warning : ChipTone.info,
+    text: noticeLabel(notice.kind, notice.field, flagChange: flagChange),
+    action: Wrap(
+      spacing: FieldSpace.s2,
+      runSpacing: FieldSpace.s2,
+      children: [
+        if (onOpenNote != null)
+          OutlinedButton(onPressed: onOpenNote, child: const Text(openNoteAction))
+        else if (onOpen != null)
+          OutlinedButton(
+            onPressed: onOpen,
+            child: Text(
+              notice.kind == noticeFlagChangeNotApplied
+                  ? openPatientAction
+                  : notice.patientId == null
+                  ? 'Open the problem'
+                  : 'Open the chart',
+            ),
+          ),
+        TextButton(onPressed: onDone, child: const Text('Got it')),
+      ],
+    ),
+  );
+}
+
+const correctAgainAction = 'Correct again';
+
+/// A flag change's fixes (phase 5 design 8.2), and the notice's way to the patient.
+const chooseFlagAction = 'Choose a flag';
+const changeReasonAction = 'Change the reason';
+const noFlagToChoose = 'This flag can’t be set on this phone. Tell a Program Admin.';
+const openPatientAction = 'Open patient';
+
+/// A refused clear (phase 5 design 6.2): sent again with another flag, it would clear that one, which
+/// the person never chose to take off, so Choose a flag isn't offered for it.
+const noFlagToClear = 'This flag can’t be cleared on this phone. Tell a Program Admin.';
+
+/// What Choose a flag offers for [e]: none once the store froze, or for a change it doesn't settle.
+List<FlagView> _flagsToChoose(PatientServices services, OutboxEntry e) {
+  try {
+    return services.flags.flagsToChoose(e.changeId);
+  } on ChartingPaused {
+    return const [];
+  } on StateError {
+    return const [];
+  }
+}
+
+/// The reason a refused flag change was sent with: Choose a flag and Change the reason start from it.
+String _refusedReason(OutboxEntry e) => switch (e.value) {
+  {'reason': final String reason} => reason,
+  _ => '',
+};
+
+/// **Choose a flag** (phase 5 design 6.2, 8.2; D121): the flags of the refused change's tier the
+/// person may set, by their pills, and the refused change's reason, shown and editable; Send it again
+/// sends the refused create with both, through the flags domain class, which settles the refusal once
+/// the server takes it. A sheet in [SheetGate], so a freeze takes it, and what was typed with it.
+/// True when it was sent.
+Future<bool> _chooseFlag(BuildContext context, PatientServices services, OutboxEntry e, List<FlagView> choices) async {
+  final sent = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => SheetGate.patients(
+      services: services,
+      child: _ChooseFlagSheet(services: services, entry: e, choices: choices),
+    ),
+  );
+  return sent ?? false;
+}
+
+class _ChooseFlagSheet extends StatefulWidget {
+  const _ChooseFlagSheet({required this.services, required this.entry, required this.choices});
+  final PatientServices services;
+  final OutboxEntry entry;
+  final List<FlagView> choices;
+
+  @override
+  State<_ChooseFlagSheet> createState() => _ChooseFlagSheetState();
+}
+
+class _ChooseFlagSheetState extends State<_ChooseFlagSheet> {
+  late final _reason = TextEditingController(text: _refusedReason(widget.entry));
+  String? _flag;
+
+  /// Presses of Send it again, so each refusal is a new node, said again.
+  int _tries = 0;
+  String? _problem;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    _tries++;
+    try {
+      widget.services.flags.chooseFlag(widget.entry.changeId, flagId: _flag!, reason: _reason.text);
+    } on Exception catch (x) {
+      return setState(() => _problem = errorText(x));
+    } on StateError {
+      return setState(() => _problem = flagFixGone);
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final ready = _flag != null && _reason.text.trim().isNotEmpty;
+    // The choices and the reason scroll; Send it again stays under them, in reach at any text size.
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s2),
+                children: [
+                  // Compact, so the choices, the reason and Send it again all show at once, at any
+                  // text size.
+                  Semantics(header: true, child: Text(chooseFlagAction, style: text.titleMedium)),
+                  RadioGroup<String>(
+                    groupValue: _flag,
+                    onChanged: (v) => setState(() {
+                      _flag = v;
+                      _problem = null;
+                    }),
+                    child: Column(
+                      children: [
+                        for (final f in widget.choices)
+                          RadioListTile<String>(
+                            value: f.flagId,
+                            contentPadding: EdgeInsets.zero,
+                            minVerticalPadding: 0,
+                            visualDensity: VisualDensity.compact,
+                            title: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FlagMark(flag: f),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  FlagReasonBox(controller: _reason, onChanged: (_) => setState(() {})),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(FieldSpace.s4, FieldSpace.s2, FieldSpace.s4, FieldSpace.s4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_problem case final problem?) ...[
+                    ErrorMessage(problem, key: ValueKey('flag.choose.problem.$_tries')),
+                    const SizedBox(height: FieldSpace.s2),
+                  ],
+                  FilledButton(onPressed: ready ? _send : null, child: const Text(sendAgainAction)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A refused flag change settled since its card was drawn (another phone's fix, a sync).
+const flagFixGone = 'This change was settled already.';
+
+/// **Change the reason** (phase 5 design 6.2, 8.2; D121): the refused change's reason, shown and
+/// editable; Send it again sends the same change with the new reason, through the flags domain
+/// class. A dialog in [DialogGate], so a freeze closes it. True when it was sent.
+Future<bool> _changeFlagReason(BuildContext context, PatientServices services, OutboxEntry e) async {
+  final sent = await showDialog<bool>(
+    context: context,
+    builder: (_) => DialogGate<bool>.patients(
+      services: services,
+      cancel: false,
+      child: _ChangeReasonDialog(
+        reason: _refusedReason(e),
+        send: (reason) {
+          try {
+            services.flags.changeReason(e.changeId, reason);
+            return null;
+          } on Exception catch (x) {
+            return errorText(x);
+          } on StateError {
+            return flagFixGone;
+          }
+        },
+      ),
+    ),
+  );
+  return sent ?? false;
+}
+
+class _ChangeReasonDialog extends StatefulWidget {
+  const _ChangeReasonDialog({required this.reason, required this.send});
+  final String reason;
+
+  /// Sends the change again with the reason given; the refusal's words, or null once sent.
+  final String? Function(String reason) send;
+
+  @override
+  State<_ChangeReasonDialog> createState() => _ChangeReasonDialogState();
+}
+
+class _ChangeReasonDialogState extends State<_ChangeReasonDialog> {
+  late final _reason = TextEditingController(text: widget.reason);
+  int _tries = 0;
+  String? _problem;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    _tries++;
+    final refused = widget.send(_reason.text);
+    if (refused == null) return Navigator.of(context).pop(true);
+    setState(() => _problem = refused);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text(changeReasonAction),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FlagReasonBox(controller: _reason, onChanged: (_) => setState(() {})),
+        if (_problem case final problem?) ...[
+          const SizedBox(height: FieldSpace.s2),
+          ErrorMessage(problem, key: ValueKey('flag.reason.problem.$_tries')),
+        ],
+      ],
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+      FilledButton(onPressed: _reason.text.trim().isEmpty ? null : _submit, child: const Text(sendAgainAction)),
+    ],
+  );
+}
+
+/// A note's answer whose value is more than a few words: the form shows it.
+const openTheNoteToSee = 'Open the note to see it';
+
+/// An addendum or a correction that waits for its note's sign-off (review finding C-1).
+const waitsForNoteLine = 'This waits for its note to be completed again.';
+const sentWithNoteLine = 'It’s sent, as you made it, when you complete the note again. Open the note to complete it.';
+const leaveItAction = 'Leave it';
+const chooseNoteTypeAction = 'Choose a note type';
+const choosePatientAction = 'Choose a patient';
+const choosePatientLine = 'A clinical note needs a patient. Choose who this visit is for.';
+const sendAgainAction = 'Send it again';
+const chooseVisitAction = 'Choose a visit';
+const chooseVisitHeading = 'Choose a visit';
+const chooseVisitLine = 'Visits of this patient on this phone.';
+const sendWithoutVisitAction = 'Send without the visit';
+
+/// **Choose a visit** (lifecycle 8.4): the visits of the refused record's patient the phone holds,
+/// read and logged as the sheet opens; the chosen one's ID, or null. In a sheet gate, so a freeze
+/// takes the list off the screen (phase 3's V1).
+Future<String?> _chooseVisit(BuildContext context, EncounterServices services, String changeId) async {
+  final List<VisitChoice> choices;
+  try {
+    choices = services.repository.visitsToChoose(changeId);
+  } on Exception catch (x) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(encounterErrorText(x))));
+    return null;
+  }
+  if (!context.mounted) return null;
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => SheetGate(
+      services: services,
+      child: SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(FieldSpace.s4, 0, FieldSpace.s4, FieldSpace.s4),
+          children: [
+            Semantics(header: true, child: Text(chooseVisitHeading, style: Theme.of(context).textTheme.titleLarge)),
+            const SizedBox(height: FieldSpace.s2),
+            Text(chooseVisitLine, style: Theme.of(context).textTheme.bodyLarge),
+            for (final v in choices) ...[
+              const SizedBox(height: FieldSpace.s2),
+              ChoiceTile(
+                icon: v.kind == VisitKind.medical ? LucideIcons.stethoscope : LucideIcons.heartHandshake,
+                label: visitKindText(v.kind),
+                line: switch (v.startedAt) {
+                  final at? => '${longDate(at)} at ${timeOfDay(context, at)}',
+                  null => startedHere,
+                },
+                onTap: () => Navigator.of(context).pop(v.encounterId),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+}

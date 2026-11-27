@@ -1,0 +1,21 @@
+/* The access forms: a select of every role or credential, and a credential's fields in a fieldset
+   within the panel. At their own widths, the longest option and a text box's default 20 characters
+   are wider than the column at 320 px, and widened the page (WCAG 1.4.10). Each takes the width of
+   its column instead, as it is drawn already at any width: the select stretched to the field, the
+   input filling its box. */
+.access :global(.px-select),
+.access :global(.sx-input) input {
+  width: 100%;
+}
+
+/* A member's history, as the Flags history (review R3): the stacked table pattern wraps its cells
+   anywhere, so in columns a long reason took nearly all the width and split the rest mid-word
+   ("Invited", the headings). Its cells wrap at spaces, but for the reason, which may be one long
+   word. */
+table.history th,
+table.history td {
+  overflow-wrap: break-word;
+}
+table.history td.why {
+  overflow-wrap: anywhere;
+}

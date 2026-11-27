@@ -1,0 +1,81 @@
+{
+  "piece": "quick-2",
+  "file": "note-types/quick_encounter/v1.json",
+  "sections": [
+    { "id": "social", "title": "Social needs", "showWhen": { "field": "visit.parts", "is": "social_needs" } },
+    {
+      "id": "medication",
+      "title": "Medication",
+      "showWhen": { "field": "visit.parts", "is": "medication" },
+      "needs": "orderMedications"
+    }
+  ],
+  "fields": [
+    {
+      "path": "social.support",
+      "kind": "choice",
+      "many": true,
+      "label": "Support",
+      "options": ["water", "food", "hygiene_kit", "socks", "handwarmers", "ride_arranged"]
+    },
+    {
+      "path": "social.needs",
+      "kind": "choice",
+      "many": true,
+      "label": "Needs",
+      "options": [
+        "housing",
+        "transportation",
+        { "code": "id", "label": "ID Documents" },
+        "phone",
+        "benefits"
+      ],
+      "mapsTo": "social_needs:needs.needs"
+    },
+    {
+      "path": "social.referral",
+      "kind": "choice",
+      "many": false,
+      "label": "Referral",
+      "options": [
+        { "code": "yes", "label": "Yes" },
+        { "code": "no", "label": "No" }
+      ]
+    },
+    {
+      "path": "social.referral_details",
+      "kind": "text",
+      "label": "Referral details",
+      "lines": "many",
+      "maxLength": 2000,
+      "required": true,
+      "showWhen": { "field": "social.referral", "is": "yes" }
+    },
+    {
+      "path": "medication.order",
+      "kind": "choice",
+      "many": true,
+      "label": "Order",
+      "options": ["otc", "prescription"]
+    },
+    {
+      "path": "medication.delivery",
+      "kind": "choice",
+      "many": false,
+      "label": "Delivery",
+      "options": [
+        { "code": "yes", "label": "YES" },
+        { "code": "no", "label": "NO" }
+      ]
+    },
+    {
+      "path": "medication.instructions",
+      "kind": "text",
+      "label": "Instructions for delivery",
+      "lines": "many",
+      "maxLength": 2000,
+      "required": true,
+      "showWhen": { "field": "medication.delivery", "is": "yes" }
+    }
+  ]
+}

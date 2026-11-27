@@ -1,0 +1,20 @@
+packages:
+  - apps/portal
+  - apps/website
+  - services/*
+  - packages/*
+  - db
+  - infra
+  - tools
+
+# Block install scripts by default; packages that need one are listed explicitly.
+onlyBuiltDependencies:
+  - esbuild
+
+auditConfig:
+  ignoreGhsas:
+    # braces <=3.0.3 stack exhaustion on deeply nested brace patterns. Reached only through
+    # @next/eslint-plugin-next > fast-glob > micromatch, a lint-time dependency that expands our own
+    # glob strings, never user input. No patched release exists (checked 2026-10-20). Revisit when
+    # one ships; Dependabot will raise it.
+    - GHSA-vfj7-8cjw-p6xm

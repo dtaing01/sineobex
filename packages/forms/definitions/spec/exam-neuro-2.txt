@@ -1,0 +1,71 @@
+      C. Motor Strength
+
+      &#32;&#32;&#32;&#32;•   Right upper extremity: \_\_\_\_\_ / 5
+
+      &#32;&#32;&#32;&#32;•   Left upper extremity: \_\_\_\_\_ / 5
+
+      &#32;&#32;&#32;&#32;•   Right lower extremity: \_\_\_\_\_ / 5
+
+      &#32;&#32;&#32;&#32;•   Left lower extremity: \_\_\_\_\_ / 5
+
+      D. Sensory
+
+      &#32;&#32;&#32;&#32;•   Intact
+
+      &#32;&#32;&#32;&#32;•   Decreased
+
+      &#32;&#32;&#32;&#32;•   Numbness
+
+      &#32;&#32;&#32;&#32;•   Tingling
+
+      &#32;&#32;&#32;&#32;•   Asymmetric
+
+      Location: Select body region.
+
+      E. Coordination
+
+      &#32;&#32;&#32;&#32;•   Finger-to-nose normal
+
+      &#32;&#32;&#32;&#32;•   Heel-to-shin normal
+
+      &#32;&#32;&#32;&#32;•   Abnormal
+
+      &#32;&#32;&#32;&#32;•   Unable
+
+      F. Reflexes
+
+      Optional expandable section.
+
+      Reflex
+
+      Grade
+
+      Biceps
+
+      0 / 1+ / 2+ / 3+ / 4+
+
+      Triceps
+
+      0 / 1+ / 2+ / 3+ / 4+
+
+      Patellar
+
+      0 / 1+ / 2+ / 3+ / 4+
+
+      Achilles
+
+      0 / 1+ / 2+ / 3+ / 4+
+
+      G. Gait
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Ataxic
+
+      &#32;&#32;&#32;&#32;•   Antalgic
+
+      &#32;&#32;&#32;&#32;•   Shuffling
+
+      &#32;&#32;&#32;&#32;•   Unsteady
+
+      &#32;&#32;&#32;&#32;•   Unable

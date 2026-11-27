@@ -1,0 +1,419 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../api/generated/api.dart' show SineobexApi;
+import '../api/transport.dart';
+import '../app_providers.dart' show syncControllerProvider;
+import '../presets/models.dart' show PresetKind, PresetState, SettingsBody;
+import '../presets/preset_store.dart';
+import '../presets/problem_check.dart';
+import '../security/secure_copy.dart';
+import '../sync/local_store.dart';
+import '../sync/sync_controller.dart';
+import '../sync/sync_engine.dart';
+import 'access.dart';
+
+import 'chart_cache.dart';
+import 'flags.dart';
+import 'id_links.dart';
+import 'patient_repository.dart';
+import 'patient_search.dart';
+import 'problems.dart';
+import 'team_index.dart';
+
+/// Everything about patients for the open team (design section 15, P2), made once per opened
+/// database by the sync controller's refresher factory ([patientRefreshers]), so the refreshers it
+/// runs and the screens share one index, one chart cache and one card hook.
+///
+/// Screens listen to it (and to the sync controller) for changes: an index swap, a chart download,
+/// a change made through [patients].
+///
+/// [idLinkBaseUrl] is `/v1/me`'s `idLinkBaseUrl` (where card links point), kept in the team's
+/// database so an offline restart still has it; null keeps what the database holds.
+class PatientServices extends ChangeNotifier {
+  PatientServices(OpenTeam team, {String? idLinkBaseUrl, SecureCopy copy = secureCopy, DateTime Function()? wallNow})
+    : store = team.store,
+      userId = team.userId,
+      teamId = team.teamId,
+      permissions = List.unmodifiable(team.permissions) {
+    DateTime corrected() {
+      final s = team.clock.stamp();
+      return s.correctedTime ?? s.deviceTime;
+    }
+
+    now = corrected;
+
+    index = TeamIndex(store, permissions: permissions, now: corrected)..onChanged = notifyListeners;
+    charts = ChartCache(store, team.api, now: corrected)..onChanged = notifyListeners;
+    idLinks = IdLinks(store, copy: copy, now: corrected)..install();
+    if (idLinkBaseUrl != null) IdLinks.rememberBaseUrl(store, idLinkBaseUrl);
+    problems = Problems(store, permissions: permissions);
+    flags = PatientFlags(store, userId: userId, permissions: permissions, index: index, now: corrected)
+      ..install()
+      ..onChanged = notifyListeners;
+    search = PatientSearcher(store, team.api, index: index, now: corrected);
+    patients = PatientRepository(
+      store,
+      index: index,
+      charts: charts,
+      idLinks: idLinks,
+      problems: problems,
+      flags: flags,
+      now: corrected,
+    )..onChanged = notifyListeners;
+    notices = ServerNotices(store, team.api)..onChanged = notifyListeners;
+    store.onConfirmed.add(_keepStatusCheck);
+    refreshers = [
+      TeamIndexRefresher(index, team.api, wallNow: wallNow),
+      ChartCacheRefresher(charts, now: wallNow),
+      NoticesRefresher(notices, now: wallNow),
+    ];
+    _byStore[store] = this;
+  }
+
+  final LocalStore store;
+  final String userId;
+  final String teamId;
+
+  /// The person's permission keys in the team, as /v1/me last reported them.
+  final List<String> permissions;
+
+  /// The phone's clock, corrected by the server's where a sync measured it.
+  late final DateTime Function() now;
+
+  late final TeamIndex index;
+  late final ChartCache charts;
+  late final IdLinks idLinks;
+  late final Problems problems;
+
+  /// A patient's flags: the flags sheet's, intake's risk level's, the patient list's and Needs
+  /// attention's one way to them (phase 5 design 8.2).
+  late final PatientFlags flags;
+  late final PatientSearcher search;
+  late final PatientRepository patients;
+  late final ServerNotices notices;
+
+  /// The index refresher, the chart cache's, then the notices' (the engine runs them after syncs,
+  /// on its timer, at an unlock and on pull to refresh).
+  late final List<AfterSyncRefresher> refreshers;
+
+  static final _byStore = Expando<PatientServices>('PatientServices');
+
+  /// The services made for [store] when its team opened; null when the controller has no
+  /// [patientRefreshers].
+  static PatientServices? of(LocalStore store) => _byStore[store];
+
+  /// Re-read after a change made elsewhere (a store call a screen made directly, a problem moved).
+  void changed() => notifyListeners();
+
+  // ---- what the role may do (D37; the server still decides) ----
+
+  /// Holds the team index (field roles).
+  bool get holdsIndex => mayHoldTeamIndex(permissions);
+
+  /// Registers people, edits their details, street names, allergies, consents and cards.
+  bool get mayEdit => permissions.contains('patients.edit');
+
+  /// Sees the problem list.
+  bool get seesProblems => mayViewProblems(permissions);
+
+  /// Adds problems, moves them, adds notes, marks allergies and problems entered in error.
+  bool get mayChart => permissions.contains('encounters.chart');
+
+  /// "Status check due" beside [problem] on the problem lists (phase 5 design 5.3, 8.2; section 11,
+  /// row 21): New or Ongoing, not entered in error, and its status not checked within the team's
+  /// window, by the settings preset this phone holds, offline ([problemCheckDue]). Never where the
+  /// presets aren't held, whatever a chart said, nor where they hold no settings preset: the phone
+  /// doesn't know the team's window then. A problem made here is checked once the server has it, and
+  /// one whose status this phone set or confirmed since the chart came is checked then ([_lastChecked]).
+  bool statusCheckDue(ProblemView problem) {
+    final presets = PresetStore(store);
+    if (!presets.downloaded) return false;
+    final days = [
+      for (final p in presets.presets(kind: PresetKind.settings))
+        if (p.state == PresetState.active)
+          if (p.body case final SettingsBody settings) settings.problemCheckDays,
+    ].firstOrNull;
+    if (days == null) return false;
+    final check = (
+      status: problem.status,
+      statusCheckedAt: _lastChecked(problem),
+      enteredInError: problem.enteredInError != null,
+    );
+    return problemCheckDue(check, now(), days);
+  }
+
+  /// When [problem]'s status was last checked, as this phone knows it: the chart's time, or later a
+  /// status set or confirmation of this phone's, still waiting for its receipt or confirmed since and
+  /// not yet on a chart, at its own time (the corrected clock's, else the device's, as the server's
+  /// check time reads it). Every status set counts, a confirmation of the same status included, so
+  /// **Still ongoing** pressed offline checks it at once (section 11, row 21).
+  DateTime? _lastChecked(ProblemView problem) {
+    final kept = int.tryParse(store.receiptKept(problem.id, _checkedKind) ?? '');
+    final times = [
+      ?problem.statusCheckedAt,
+      for (final e in store.outbox())
+        if (e.recordId == problem.id && e.op == 'set' && e.field == 'status' && e.state == ChangeState.pending)
+          e.correctedTime ?? e.deviceTime,
+      if (kept != null) DateTime.fromMillisecondsSinceEpoch(kept, isUtc: true),
+    ];
+    return times.isEmpty ? null : times.reduce((a, b) => a.isAfter(b) ? a : b);
+  }
+
+  /// A status set or confirmation of this phone's that a receipt confirms, applied on the server (not
+  /// held for review, nor kept beside another value): its own time is kept, since its outbox entry goes
+  /// now, so the problem stays checked until a chart gives the server's time. In the receipt's
+  /// transaction, kept with the problem's record, which takes it when it goes.
+  void _keepStatusCheck(OutboxEntry e, AcceptedReceipt receipt) {
+    if (e.entity != entityProblem || e.op != 'set' || e.field != 'status') return;
+    if (receipt.inReview || receipt.server != null) return;
+    final at = (e.correctedTime ?? e.deviceTime).millisecondsSinceEpoch;
+    final kept = int.tryParse(store.receiptKept(e.recordId, _checkedKind) ?? '');
+    if (kept == null || at > kept) store.keepForReceipt(e.recordId, _checkedKind, '$at');
+  }
+
+  /// What [_keepStatusCheck] keeps of a problem: when this phone last checked its status (a time only,
+  /// LocalStore.keepForReceipt).
+  static const _checkedKind = 'statusCheck';
+}
+
+/// For `SyncController(refreshers: (team) => patientRefreshers(team, idLinkBaseUrl: ...))`: makes
+/// the open team's [PatientServices] and returns its refreshers. [idLinkBaseUrl] is `/v1/me`'s.
+List<AfterSyncRefresher> patientRefreshers(OpenTeam team, {String? idLinkBaseUrl}) =>
+    PatientServices(team, idLinkBaseUrl: idLinkBaseUrl).refreshers;
+
+/// The open team's [PatientServices]; null while no team is open (locked, signed out, no team
+/// chosen) or when the controller was built without [patientRefreshers].
+final patientServicesProvider = NotifierProvider<OpenPatientServices, PatientServices?>(OpenPatientServices.new);
+
+class OpenPatientServices extends Notifier<PatientServices?> {
+  @override
+  PatientServices? build() {
+    final sync = ref.watch(syncControllerProvider);
+    PatientServices? current() {
+      final s = sync.store;
+      return s == null ? null : PatientServices.of(s);
+    }
+
+    void update() {
+      final next = current();
+      if (!identical(next, state)) state = next;
+    }
+
+    sync.addListener(update);
+    ref.onDispose(() => sync.removeListener(update));
+    return current();
+  }
+}
+
+/// The curated problem codes (assets/problem_codes.json), loaded once.
+final problemCodesProvider = FutureProvider<ProblemCodes>((ref) => ProblemCodes.load());
+
+/// The index state for the Patients tab's status line, or null with no team open.
+TeamIndexState? indexStateOf(PatientServices? s) => s?.index.state;
+
+/// Whether a chart the phone holds is only the index's partial copy.
+bool isPartialChart(LocalStore store, String patientId) =>
+    chartMetaOf(store, store.canonicalPatient(patientId))?.partial ?? false;
+
+// ------------------------------------------------------------------------------------------------
+// Notices from the server
+// ------------------------------------------------------------------------------------------------
+
+/// "Someone kept the server's value; yours is in history" (phase 2).
+const noticeConflictResolved = 'conflict_resolved';
+
+/// "Your new card is the valid one" (design 10.4: two cards were made for one patient).
+const noticeCardKept = 'id_link_kept';
+
+/// To members who manage users: two new cards were made for one patient.
+const noticeCardConflict = 'id_link_conflict';
+
+/// A Program Admin decided a "Resolved by mistake" request (design 9.4).
+const noticeReversalDecided = 'problem_reversal_decided';
+
+/// The person's notices from the server (`GET /v1/team/notices`: kind, entity and record ID only, and
+/// for a held sign-off's, its note's ID, D104, and for a held flag change's, its patient's, phase 5
+/// design 6.2), kept with the phone's own ([LocalStore.notices]), and read on the phone and on the
+/// server alike. Each is filed under the patient of the record it names where the phone holds that
+/// record, else under the patient it names.
+///
+/// The server's notice IDs live in `kv` with the local notice each became and its entity (IDs only,
+/// no PHI), so a notice is stored once however often it is fetched. The note a notice names is kept
+/// with the local notice ([LocalNotice.noteId]). A notice the phone already
+/// made from a receipt (the same kind about the same record, a card that lost) is that notice, not
+/// a second one. A read on the phone reaches the server at the next contact; offline reads wait in
+/// `kv` by notice ID.
+class ServerNotices {
+  ServerNotices(this.store, this.client);
+
+  final LocalStore store;
+  final SineobexApi client;
+
+  /// Called after notices arrive or are read, so screens re-read.
+  void Function()? onChanged;
+
+  static const _mapKey = 'notices.server';
+  static const _queueKey = 'notices.readQueue';
+
+  Map<String, Map<String, Object?>> _map() {
+    final v = store.kv(_mapKey);
+    if (v == null || v.isEmpty) return {};
+    return {
+      for (final MapEntry(:key, :value) in (jsonDecode(v) as Map<String, Object?>).entries)
+        key: {...value! as Map<String, Object?>},
+    };
+  }
+
+  void _saveMap(Map<String, Map<String, Object?>> m) => store.setKv(_mapKey, jsonEncode(m));
+
+  List<String> _queue() {
+    final v = store.kv(_queueKey);
+    return v == null || v.isEmpty ? [] : (jsonDecode(v) as List<Object?>).cast<String>();
+  }
+
+  void _saveQueue(List<String> q) => store.setKv(_queueKey, jsonEncode(q));
+
+  String? _serverIdOf(String localId) =>
+      _map().entries.where((e) => e.value['local'] == localId).map((e) => e.key).firstOrNull;
+
+  /// Whether [localId] came from the server.
+  bool fromServer(String localId) => _serverIdOf(localId) != null;
+
+  /// The entity a server notice names (`id_link`, `problem`, `encounter_note`, ...); null for the
+  /// phone's own notices.
+  String? entityOf(String localId) {
+    final id = _serverIdOf(localId);
+    return id == null ? null : _map()[id]?['entity'] as String?;
+  }
+
+  /// The person read [localId]: read here now, and on the server at the next contact.
+  void markRead(String localId) {
+    store.transaction(() {
+      store.markNoticeRead(localId);
+      final id = _serverIdOf(localId);
+      final queue = _queue();
+      if (id != null && !queue.contains(id) && _map()[id]?['acked'] != true) _saveQueue([...queue, id]);
+    });
+    onChanged?.call();
+  }
+
+  /// Sends the reads made here, then fetches the server's notices. Nothing while the store is frozen
+  /// (a removal's hand-over: the team's data is no longer this person's to download).
+  Future<void> sync() async {
+    if (store.frozen) return;
+    if (!await _sendReads()) return;
+    final fetched = await client.listNotices();
+    var added = false;
+    store.transaction(() {
+      final map = _map();
+      final local = {for (final n in store.notices()) n.id: n};
+      final linked = {for (final e in map.values) e['local']};
+      for (final n in fetched) {
+        final entry = map[n.id];
+        if (entry != null) {
+          // Read elsewhere (the portal): read here too.
+          final mine = local[entry['local']];
+          if (n.readAt != null && mine != null && mine.readAt == null) store.markNoticeRead(mine.id);
+          if (n.readAt != null) entry['acked'] = true;
+          continue;
+        }
+        // A held sign-off's notice read elsewhere (the note completed again on another phone, D107) is
+        // still the one thing that settles the sign-off it names here (D104): kept, read.
+        if (n.readAt != null && n.kind != noticeSignoffNotApplied) continue;
+        final same = local.values
+            .where((l) => l.kind == n.kind && l.recordId == n.recordId && n.recordId != null && !linked.contains(l.id))
+            .firstOrNull;
+        final id =
+            same?.id ??
+            store.addNotice(
+              n.kind,
+              recordId: n.recordId,
+              patientId: _patientOf(n.entity, n.recordId) ?? _named(n.patientId),
+              noteId: n.noteId,
+            );
+        if (n.readAt != null) store.markNoticeRead(id);
+        linked.add(id);
+        map[n.id] = {'local': id, 'entity': n.entity, 'acked': n.readAt != null};
+        added = true;
+      }
+      _saveMap(map);
+    });
+    if (added) onChanged?.call();
+  }
+
+  /// Marks on the server what was read here. False when the phone lost the network part way (what
+  /// is left stays queued).
+  Future<bool> _sendReads() async {
+    final map = _map();
+    final read = {
+      for (final n in store.notices())
+        if (n.readAt != null) n.id,
+    };
+    final pending = {
+      ..._queue(),
+      for (final MapEntry(:key, :value) in map.entries)
+        if (value['acked'] != true && read.contains(value['local'])) key,
+    };
+    for (final id in pending) {
+      try {
+        await client.markNoticeRead(noticeId: id);
+      } on NetworkException {
+        return false;
+      } on ApiException catch (e) {
+        if (e.status != 404) rethrow;
+      }
+      store.transaction(() {
+        final m = _map();
+        m[id]?['acked'] = true;
+        _saveMap(m);
+        _saveQueue([
+          for (final q in _queue())
+            if (q != id) q,
+        ]);
+      });
+    }
+    return true;
+  }
+
+  /// The patient a notice names (`Notice.patientId`: a held flag change's, phase 5 design 6.2), as
+  /// this phone knows them now, a merged record's survivor: for a notice whose record the phone
+  /// doesn't hold, which it lets go of once the server holds it, purges with its chart, and never had
+  /// when another phone of the person's made it.
+  String? _named(String? patientId) => patientId == null ? null : store.canonicalPatient(patientId);
+
+  /// The patient a notice is about, when the phone holds its record (a card, a problem).
+  String? _patientOf(String? entity, String? recordId) {
+    if (recordId == null) return null;
+    if (entity == entityIdLink) {
+      final row = store.database.select('SELECT patient_id FROM id_links WHERE id = ?', [recordId]).firstOrNull;
+      if (row != null) return store.canonicalPatient(row['patient_id']! as String);
+    }
+    final p = store.record(recordId)?.patientId;
+    return p == null ? null : store.canonicalPatient(p);
+  }
+}
+
+/// Pulls the person's notices after syncs (at most every [minInterval]), on the controller's timer,
+/// at an unlock and on pull to refresh, sending the reads made here first.
+class NoticesRefresher implements AfterSyncRefresher {
+  NoticesRefresher(this.notices, {this.minInterval = const Duration(minutes: 2), DateTime Function()? now})
+    : _now = now ?? DateTime.now;
+
+  final ServerNotices notices;
+  final Duration minInterval;
+  final DateTime Function() _now;
+  DateTime? _last;
+
+  @override
+  Future<void> refresh(RefreshReason reason) async {
+    if (notices.store.frozen) return;
+    final now = _now();
+    final last = _last;
+    if (reason == RefreshReason.afterSync && last != null && now.difference(last) < minInterval) return;
+    _last = now;
+    await notices.sync();
+  }
+}

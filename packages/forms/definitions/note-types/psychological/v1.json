@@ -1,0 +1,266 @@
+{
+  "key": "psychological",
+  "version": 1,
+  "title": "Behavioral health",
+  "kinds": ["medical"],
+  "group": "psych",
+  "sensitivity": "sensitive",
+  "sections": [
+    {
+      "id": "reason",
+      "title": "Reason for visit",
+      "spec": "psychological",
+      "fields": [
+        {
+          "id": "reasons",
+          "kind": "choice",
+          "many": true,
+          "label": "Reason for visit",
+          "options": [
+            {
+              "code": "check_in",
+              "label": "Check-in"
+            },
+            {
+              "code": "anxiety",
+              "label": "Anxiety"
+            },
+            {
+              "code": "depression",
+              "label": "Depression"
+            },
+            {
+              "code": "psychosis",
+              "label": "Psychosis"
+            },
+            {
+              "code": "sleep",
+              "label": "Sleep"
+            },
+            {
+              "code": "trauma",
+              "label": "Trauma"
+            },
+            {
+              "code": "substance_use",
+              "label": "Substance Use",
+              "suggests": "harm_reduction"
+            },
+            {
+              "code": "crisis",
+              "label": "Crisis"
+            },
+            {
+              "code": "medication",
+              "label": "Medication"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "concern",
+          "kind": "text",
+          "label": "Current concern",
+          "lines": "many",
+          "maxLength": 2000
+        }
+      ]
+    },
+    {
+      "id": "safety",
+      "title": "Safety",
+      "spec": "psychological",
+      "fields": [
+        {
+          "id": "suicidal",
+          "kind": "choice",
+          "many": false,
+          "label": "Suicidal thoughts",
+          "options": [
+            {
+              "code": "denies",
+              "label": "Denies"
+            },
+            {
+              "code": "passive",
+              "label": "Passive"
+            },
+            {
+              "code": "active",
+              "label": "Active"
+            },
+            {
+              "code": "unable_to_assess",
+              "label": "Unable to assess",
+              "unable": true
+            }
+          ]
+        },
+        {
+          "id": "homicidal",
+          "kind": "choice",
+          "many": false,
+          "label": "Homicidal thoughts",
+          "options": [
+            {
+              "code": "denies",
+              "label": "Denies"
+            },
+            {
+              "code": "active",
+              "label": "Active"
+            },
+            {
+              "code": "unable_to_assess",
+              "label": "Unable to assess",
+              "unable": true
+            }
+          ]
+        },
+        {
+          "id": "immediate",
+          "kind": "choice",
+          "many": false,
+          "label": "Immediate safety concern",
+          "options": [
+            {
+              "code": "no",
+              "label": "No"
+            },
+            {
+              "code": "yes",
+              "label": "Yes"
+            }
+          ]
+        },
+        {
+          "id": "red_flags",
+          "kind": "action",
+          "label": "Go to Red flags and disposition",
+          "action": "open_note_type",
+          "noteType": "red_flags_disposition",
+          "showWhen": {
+            "any": [
+              {
+                "field": "safety.suicidal",
+                "is": "active"
+              },
+              {
+                "field": "safety.homicidal",
+                "is": "active"
+              },
+              {
+                "field": "safety.immediate",
+                "is": "yes"
+              }
+            ]
+          }
+        },
+        {
+          "id": "assessment",
+          "kind": "text",
+          "label": "Safety assessment",
+          "lines": "many",
+          "maxLength": 2000
+        }
+      ]
+    },
+    {
+      "id": "mse",
+      "title": "Mental status exam",
+      "spec": "psychological",
+      "fields": [
+        {
+          "id": "notes",
+          "kind": "text",
+          "label": "Mental status exam",
+          "lines": "many",
+          "maxLength": 2000
+        }
+      ]
+    },
+    {
+      "id": "plan",
+      "title": "Intervention and outcome",
+      "spec": "psychological",
+      "fields": [
+        {
+          "id": "intervention",
+          "kind": "choice",
+          "many": true,
+          "label": "Intervention",
+          "options": [
+            {
+              "code": "supportive_counseling",
+              "label": "Supportive counseling"
+            },
+            {
+              "code": "motivational_interviewing",
+              "label": "Motivational interviewing"
+            },
+            {
+              "code": "grounding",
+              "label": "Grounding"
+            },
+            {
+              "code": "crisis_intervention",
+              "label": "Crisis intervention"
+            },
+            {
+              "code": "safety_planning",
+              "label": "Safety planning"
+            },
+            {
+              "code": "psychoeducation",
+              "label": "Psychoeducation"
+            },
+            {
+              "code": "medication_discussion",
+              "label": "Medication discussion"
+            },
+            {
+              "code": "warm_handoff",
+              "label": "Warm handoff"
+            },
+            {
+              "code": "referral",
+              "label": "Referral"
+            }
+          ]
+        },
+        {
+          "id": "outcome",
+          "kind": "choice",
+          "many": true,
+          "label": "Outcome",
+          "options": [
+            {
+              "code": "patient_engaged",
+              "label": "Patient engaged"
+            },
+            {
+              "code": "follow_up_scheduled",
+              "label": "Follow-up scheduled"
+            },
+            {
+              "code": "referral_accepted",
+              "label": "Referral accepted"
+            },
+            {
+              "code": "declined",
+              "label": "Declined"
+            },
+            {
+              "code": "crisis_response",
+              "label": "Crisis response"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

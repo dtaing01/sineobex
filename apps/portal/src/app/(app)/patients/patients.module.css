@@ -1,0 +1,67 @@
+/* Patient screens (phase 3 design 12.2). Here rather than in globals.css, so the patient units'
+   styles live with their screens. */
+
+/* A table whose rows become stacked blocks below 640 px, so nothing scrolls sideways at 320 px
+   (WCAG 1.4.10). Each cell names its column, as the hidden header row would; the headers stay in
+   the accessibility tree. */
+.stack th,
+.stack td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 639px) {
+  .stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .stack tbody,
+  .stack tr,
+  .stack tbody th,
+  .stack tbody td {
+    display: block;
+  }
+  .stack tr {
+    border-bottom: 1px solid var(--line);
+    padding: var(--space-2) 0;
+  }
+  .stack tbody th,
+  .stack tbody td {
+    border-bottom: none;
+    padding: var(--space-1) 0;
+  }
+  .stack td[data-label]::before {
+    content: attr(data-label) ': ';
+    font-weight: 600;
+  }
+}
+
+/* A second line under a name or a value: a legal name, a description, who and when. */
+.meta {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+/* An ID card's link: long, so it wraps anywhere rather than widening the page. */
+.link {
+  overflow-wrap: anywhere;
+}
+
+/* Cards one under another: .px-cards' 260 px columns don't fit inside a panel at 320 px. */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Month, day and year take a few digits. An input is otherwise about 20 characters wide, which
+   inside a fieldset inside a panel is wider than a 320 px screen. */
+.dateParts input {
+  width: 5em;
+}

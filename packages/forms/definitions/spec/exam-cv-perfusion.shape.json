@@ -1,0 +1,77 @@
+{
+  "piece": "exam-cv-perfusion",
+  "file": "modules/exam_cv_perfusion/v1.json",
+  "sections": [
+    {
+      "id": "cv_perfusion",
+      "title": "Perfusion, edema and JVD",
+      "showWhen": { "field": "exam.systems", "is": "cardiovascular" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "cv_perfusion.pulses",
+      "kind": "grid",
+      "label": "Pulses",
+      "sides": true,
+      "rows": ["radial", "dorsalis_pedis_dp", "posterior_tibial_pt"]
+    },
+    {
+      "path": "cv_perfusion.pulses.grade",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulse",
+      "options": { "list": "pulse_scale" }
+    },
+    {
+      "path": "cv_perfusion.more_pulses",
+      "kind": "grid",
+      "label": "More pulse sites",
+      "collapsed": true,
+      "sides": true,
+      "rows": ["brachial", "femoral"]
+    },
+    {
+      "path": "cv_perfusion.more_pulses.grade",
+      "kind": "choice",
+      "many": false,
+      "label": "Pulse",
+      "options": { "list": "pulse_scale" }
+    },
+    {
+      "path": "cv_perfusion.edema",
+      "kind": "choice",
+      "many": false,
+      "label": "Edema",
+      "options": [
+        "none",
+        "trace",
+        { "code": "one_plus", "label": "1+" },
+        { "code": "two_plus", "label": "2+" },
+        { "code": "three_plus", "label": "3+" },
+        { "code": "four_plus", "label": "4+" }
+      ],
+      "flags": { "normal": ["none"] }
+    },
+    {
+      "path": "cv_perfusion.edema_location",
+      "kind": "choice",
+      "many": true,
+      "label": "Edema location",
+      "options": ["bilateral_lower_extremities", "right", "left", "upper_extremity", "generalized"],
+      "showWhen": {
+        "field": "cv_perfusion.edema",
+        "is": ["trace", "one_plus", "two_plus", "three_plus", "four_plus"]
+      }
+    },
+    {
+      "path": "cv_perfusion.jvd",
+      "kind": "choice",
+      "many": false,
+      "label": "Jugular venous distention (JVD)",
+      "options": ["none", "present", "unable_to_assess"],
+      "flags": { "normal": ["none"], "unable": ["unable_to_assess"] }
+    }
+  ]
+}

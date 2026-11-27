@@ -1,0 +1,665 @@
+{
+  "key": "sexual_reproductive",
+  "version": 1,
+  "title": "Sexual and reproductive health",
+  "kinds": ["medical"],
+  "group": "clinical",
+  "sensitivity": "sensitive",
+  "sections": [
+    {
+      "id": "reason",
+      "title": "Reason",
+      "spec": "sexrepro-1",
+      "fields": [
+        {
+          "id": "reasons",
+          "kind": "choice",
+          "many": true,
+          "label": "Reason",
+          "options": [
+            {
+              "code": "sti_concern",
+              "label": "STI concern"
+            },
+            {
+              "code": "sti_exposure",
+              "label": "STI exposure"
+            },
+            {
+              "code": "testing",
+              "label": "Testing"
+            },
+            {
+              "code": "pregnancy",
+              "label": "Pregnancy"
+            },
+            {
+              "code": "contraception",
+              "label": "Contraception"
+            },
+            {
+              "code": "prep",
+              "label": "PrEP"
+            },
+            {
+              "code": "pep",
+              "label": "PEP"
+            },
+            {
+              "code": "menstrual",
+              "label": "Menstrual"
+            },
+            {
+              "code": "symptoms",
+              "label": "Symptoms"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pregnancy",
+      "title": "Pregnancy",
+      "spec": "sexrepro-1",
+      "showWhen": {
+        "field": "reason.reasons",
+        "is": "pregnancy"
+      },
+      "fields": [
+        {
+          "id": "test",
+          "kind": "choice",
+          "many": false,
+          "label": "Pregnancy test",
+          "options": [
+            {
+              "code": "positive",
+              "label": "Positive"
+            },
+            {
+              "code": "negative",
+              "label": "Negative"
+            }
+          ]
+        },
+        {
+          "id": "known",
+          "kind": "flag",
+          "label": "Known pregnancy, no test today",
+          "clears": ["test"]
+        },
+        {
+          "id": "possible",
+          "kind": "choice",
+          "many": false,
+          "label": "Pregnancy possible?",
+          "options": [
+            {
+              "code": "no",
+              "label": "No"
+            },
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "unsure",
+              "label": "Unsure"
+            }
+          ]
+        },
+        {
+          "id": "desired",
+          "kind": "choice",
+          "many": false,
+          "label": "Pregnancy desired?",
+          "options": [
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "unsure",
+              "label": "Unsure"
+            },
+            {
+              "code": "no",
+              "label": "No"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lmp",
+      "title": "Last menstrual period",
+      "spec": "sexrepro-1",
+      "showWhen": {
+        "field": "reason.reasons",
+        "is": ["pregnancy", "menstrual"]
+      },
+      "fields": [
+        {
+          "id": "date",
+          "kind": "date",
+          "label": "Date of last menstrual period",
+          "range": "past"
+        },
+        {
+          "id": "approximate",
+          "kind": "flag",
+          "label": "Approximate"
+        }
+      ]
+    },
+    {
+      "id": "contraception",
+      "title": "Contraception",
+      "spec": "sexrepro-1",
+      "showWhen": {
+        "field": "reason.reasons",
+        "is": "contraception"
+      },
+      "fields": [
+        {
+          "id": "method",
+          "kind": "choice",
+          "many": false,
+          "label": "Current method",
+          "options": [
+            {
+              "code": "none",
+              "label": "None"
+            },
+            {
+              "code": "pill",
+              "label": "Pill"
+            },
+            {
+              "code": "iud",
+              "label": "IUD"
+            },
+            {
+              "code": "implant",
+              "label": "Implant"
+            },
+            {
+              "code": "injection",
+              "label": "Injection"
+            },
+            {
+              "code": "condom",
+              "label": "Condom"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        },
+        {
+          "id": "change",
+          "kind": "choice",
+          "many": false,
+          "label": "Interested in changing method?",
+          "options": [
+            {
+              "code": "yes",
+              "label": "Yes"
+            },
+            {
+              "code": "no",
+              "label": "No"
+            },
+            {
+              "code": "unsure",
+              "label": "Unsure"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "menstrual",
+      "title": "Menstrual health",
+      "spec": "sexrepro-1",
+      "showWhen": {
+        "field": "reason.reasons",
+        "is": "menstrual"
+      },
+      "fields": [
+        {
+          "id": "status",
+          "kind": "choice",
+          "many": false,
+          "label": "Status",
+          "options": [
+            {
+              "code": "regular",
+              "label": "Regular"
+            },
+            {
+              "code": "irregular",
+              "label": "Irregular"
+            },
+            {
+              "code": "amenorrhea",
+              "label": "Amenorrhea"
+            },
+            {
+              "code": "postmenopausal",
+              "label": "Postmenopausal"
+            }
+          ]
+        },
+        {
+          "id": "cycle",
+          "kind": "number",
+          "label": "Typical cycle",
+          "min": 1,
+          "max": 90,
+          "decimals": 0,
+          "unit": "days"
+        },
+        {
+          "id": "duration",
+          "kind": "number",
+          "label": "Typical duration",
+          "min": 1,
+          "max": 30,
+          "decimals": 0,
+          "unit": "days"
+        },
+        {
+          "id": "heavy",
+          "kind": "choice",
+          "many": false,
+          "label": "Heavy bleeding?",
+          "options": [
+            {
+              "code": "no",
+              "label": "No"
+            },
+            {
+              "code": "yes",
+              "label": "Yes"
+            }
+          ]
+        },
+        {
+          "id": "pain",
+          "kind": "number",
+          "label": "Pain",
+          "min": 0,
+          "max": 10,
+          "decimals": 0,
+          "display": "outOf"
+        }
+      ]
+    },
+    {
+      "id": "pregnant",
+      "title": "Current pregnancy",
+      "spec": "sexrepro-2",
+      "showWhen": {
+        "any": [
+          {
+            "field": "pregnancy.test",
+            "is": "positive"
+          },
+          {
+            "field": "pregnancy.known",
+            "filled": true
+          }
+        ]
+      },
+      "fields": [
+        {
+          "id": "gestational_age",
+          "kind": "duration",
+          "label": "Gestational age",
+          "max": 315
+        },
+        {
+          "id": "due_date",
+          "kind": "date",
+          "label": "Estimated due date",
+          "range": "any"
+        },
+        {
+          "id": "gravida",
+          "kind": "number",
+          "label": "Gravida",
+          "min": 1,
+          "max": 30,
+          "decimals": 0
+        },
+        {
+          "id": "para",
+          "kind": "number",
+          "label": "Para",
+          "min": 0,
+          "max": 30,
+          "decimals": 0
+        },
+        {
+          "id": "history",
+          "kind": "choice",
+          "many": true,
+          "label": "Pregnancy history / current complications",
+          "options": [
+            {
+              "code": "gestational_diabetes",
+              "label": "Gestational diabetes"
+            },
+            {
+              "code": "gestational_hypertension",
+              "label": "Gestational hypertension"
+            },
+            {
+              "code": "preeclampsia",
+              "label": "Preeclampsia"
+            },
+            {
+              "code": "eclampsia",
+              "label": "Eclampsia"
+            },
+            {
+              "code": "preterm_birth",
+              "label": "Preterm birth"
+            },
+            {
+              "code": "preterm_labor",
+              "label": "Preterm labor"
+            },
+            {
+              "code": "placental_problems",
+              "label": "Placental Problems"
+            },
+            {
+              "code": "ectopic_pregnancy",
+              "label": "Ectopic pregnancy"
+            },
+            {
+              "code": "miscarriage",
+              "label": "Miscarriage"
+            },
+            {
+              "code": "stillbirth",
+              "label": "Stillbirth"
+            },
+            {
+              "code": "cesarean_delivery",
+              "label": "Cesarean delivery"
+            },
+            {
+              "code": "postpartum_hemorrhage",
+              "label": "Postpartum hemorrhage"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            },
+            {
+              "code": "none_known",
+              "label": "None known",
+              "exclusive": true
+            }
+          ]
+        },
+        {
+          "id": "symptoms",
+          "kind": "choice",
+          "many": true,
+          "label": "Current symptoms",
+          "options": [
+            {
+              "code": "vaginal_bleeding",
+              "label": "Vaginal bleeding"
+            },
+            {
+              "code": "pelvic_abdominal_pain",
+              "label": "Pelvic / Abdominal pain"
+            },
+            {
+              "code": "severe_nausea_vomiting",
+              "label": "Severe nausea / vomiting"
+            },
+            {
+              "code": "fever",
+              "label": "Fever"
+            },
+            {
+              "code": "dizziness_syncope",
+              "label": "Dizziness / syncope"
+            },
+            {
+              "code": "headache",
+              "label": "Headache"
+            },
+            {
+              "code": "vision_changes",
+              "label": "Vision changes"
+            },
+            {
+              "code": "swelling",
+              "label": "Swelling"
+            },
+            {
+              "code": "leakage_of_fluid",
+              "label": "Leakage of fluid"
+            },
+            {
+              "code": "decreased_fetal_movement",
+              "label": "Decreased fetal movement"
+            },
+            {
+              "code": "contractions",
+              "label": "Contractions"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "symptoms",
+      "title": "Symptoms",
+      "spec": "sexrepro-3",
+      "fields": [
+        {
+          "id": "reported",
+          "kind": "choice",
+          "many": true,
+          "label": "Symptoms",
+          "options": [
+            {
+              "code": "none",
+              "label": "None",
+              "exclusive": true
+            },
+            {
+              "code": "discharge",
+              "label": "Discharge"
+            },
+            {
+              "code": "dysuria",
+              "label": "Dysuria"
+            },
+            {
+              "code": "lesion",
+              "label": "Lesion"
+            },
+            {
+              "code": "pelvic_pain",
+              "label": "Pelvic pain"
+            },
+            {
+              "code": "testicular_pain",
+              "label": "Testicular pain"
+            },
+            {
+              "code": "rash",
+              "label": "Rash"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "testing",
+      "title": "Testing history",
+      "spec": "sexrepro-3",
+      "repeat": {
+        "max": 10,
+        "itemTitle": "Test {n}"
+      },
+      "fields": [
+        {
+          "id": "test",
+          "kind": "choice",
+          "many": false,
+          "label": "Test",
+          "options": [
+            {
+              "code": "hiv",
+              "label": "HIV"
+            },
+            {
+              "code": "syphilis",
+              "label": "Syphilis"
+            },
+            {
+              "code": "gonorrhea",
+              "label": "Gonorrhea"
+            },
+            {
+              "code": "chlamydia",
+              "label": "Chlamydia"
+            },
+            {
+              "code": "hep_b",
+              "label": "Hep B"
+            },
+            {
+              "code": "hep_c",
+              "label": "Hep C"
+            },
+            {
+              "code": "pregnancy",
+              "label": "Pregnancy"
+            }
+          ]
+        },
+        {
+          "id": "date",
+          "kind": "date",
+          "label": "Date",
+          "range": "past"
+        },
+        {
+          "id": "result",
+          "kind": "choice",
+          "many": false,
+          "label": "Result",
+          "options": [
+            {
+              "code": "positive",
+              "label": "Positive"
+            },
+            {
+              "code": "negative",
+              "label": "Negative"
+            },
+            {
+              "code": "pending",
+              "label": "Pending"
+            },
+            {
+              "code": "unknown",
+              "label": "Unknown"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prevention",
+      "title": "Prevention",
+      "spec": "sexrepro-3",
+      "fields": [
+        {
+          "id": "provided",
+          "kind": "choice",
+          "many": true,
+          "label": "Prevention",
+          "options": [
+            {
+              "code": "condoms_provided",
+              "label": "Condoms provided"
+            },
+            {
+              "code": "prep_discussed",
+              "label": "PrEP discussed"
+            },
+            {
+              "code": "pep_discussed",
+              "label": "PEP discussed"
+            },
+            {
+              "code": "vaccine",
+              "label": "Vaccine"
+            },
+            {
+              "code": "safer_sex_counseling",
+              "label": "Safer sex counseling"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "follow_up",
+      "title": "Follow-up",
+      "spec": "sexrepro-3",
+      "fields": [
+        {
+          "id": "plan",
+          "kind": "choice",
+          "many": true,
+          "label": "Follow-up",
+          "options": [
+            {
+              "code": "results_needed",
+              "label": "Results needed"
+            },
+            {
+              "code": "referral",
+              "label": "Referral"
+            },
+            {
+              "code": "pcp",
+              "label": "PCP"
+            },
+            {
+              "code": "none",
+              "label": "None",
+              "exclusive": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

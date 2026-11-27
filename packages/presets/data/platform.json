@@ -1,0 +1,1463 @@
+[
+  {
+    "originKey": "order_category.otc",
+    "platformVersion": 1,
+    "kind": "order_category",
+    "body": {
+      "name": "OTC",
+      "behaviour": "medication",
+      "sort": 10
+    }
+  },
+  {
+    "originKey": "order_category.rx",
+    "platformVersion": 1,
+    "kind": "order_category",
+    "body": {
+      "name": "Rx",
+      "behaviour": "medication",
+      "sort": 20
+    }
+  },
+  {
+    "originKey": "order_category.labs",
+    "platformVersion": 1,
+    "kind": "order_category",
+    "body": {
+      "name": "Labs",
+      "behaviour": "lab",
+      "sort": 30
+    }
+  },
+  {
+    "originKey": "order_category.supplies",
+    "platformVersion": 1,
+    "kind": "order_category",
+    "body": {
+      "name": "Supplies",
+      "behaviour": "supply",
+      "sort": 40
+    }
+  },
+  {
+    "originKey": "item.pregnancy_test",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Pregnancy test",
+      "categoryId": "order_category.labs",
+      "unit": "test",
+      "medical": true,
+      "captureLot": false,
+      "result": {
+        "type": "choice",
+        "options": ["Positive", "Negative"]
+      }
+    }
+  },
+  {
+    "originKey": "item.glucose_test",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Glucose test",
+      "categoryId": "order_category.labs",
+      "unit": "test",
+      "medical": true,
+      "captureLot": false,
+      "result": {
+        "type": "number",
+        "unit": "mg/dL"
+      }
+    }
+  },
+  {
+    "originKey": "item.doxycycline_100_mg",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Doxycycline 100 mg",
+      "categoryId": "order_category.rx",
+      "unit": "tablet",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.acetaminophen",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Acetaminophen",
+      "categoryId": "order_category.otc",
+      "unit": "tablet",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.hydrocortisone_cream",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Hydrocortisone cream",
+      "categoryId": "order_category.otc",
+      "unit": "each",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.naloxone_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Naloxone kit",
+      "categoryId": "order_category.otc",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.electrolyte_packet",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Electrolyte packet",
+      "categoryId": "order_category.supplies",
+      "unit": "packet",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.gauze",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Gauze",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.bandage",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Bandage",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.xeroform",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Xeroform",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.mepilex",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Mepilex",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.abd",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "ABD",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.hydrocolloid",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Hydrocolloid",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.aquacel",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Aquacel",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.compression",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Compression",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.flu_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Flu vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.covid_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "COVID vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.tdap_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Tdap vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.hep_a_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Hep A vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.hep_b_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Hep B vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.pneumococcal_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Pneumococcal vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.hpv_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "HPV vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.shingles_vaccine",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Shingles vaccine",
+      "categoryId": "order_category.rx",
+      "unit": "dose",
+      "medical": true,
+      "captureLot": true,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.food_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Food kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.hygiene_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Hygiene kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.socks",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Socks",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.handwarmers",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Handwarmers",
+      "categoryId": "order_category.supplies",
+      "unit": "each",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.advanced_wound_care_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Advanced wound care kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.abscess_and_drainage_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Abscess and drainage kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.safe_smoking_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Safe smoking kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.safer_crack_use_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Safer crack use kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.injection_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Injection kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.sexual_health_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Sexual health kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.menstrual_care_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Menstrual care kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.allergy_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Allergy kit",
+      "categoryId": "order_category.otc",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.cold_and_flu_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Cold and flu kit",
+      "categoryId": "order_category.otc",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.foot_fungus_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Foot fungus kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.dry_skin_and_chafing_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Dry skin and chafing kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": true,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "item.foot_protection_kit",
+    "platformVersion": 1,
+    "kind": "item",
+    "body": {
+      "name": "Foot protection kit",
+      "categoryId": "order_category.supplies",
+      "unit": "kit",
+      "medical": false,
+      "captureLot": false,
+      "result": null
+    }
+  },
+  {
+    "originKey": "bundle.basic_wound_care",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Basic wound care",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.gauze",
+          "qty": 1,
+          "core": true
+        },
+        {
+          "itemId": "item.bandage",
+          "qty": 1,
+          "core": true
+        },
+        {
+          "itemId": "item.doxycycline_100_mg",
+          "qty": 1,
+          "core": false
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.advanced_wound_care",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Advanced wound care",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.advanced_wound_care_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.abscess_drainage",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Abscess/drainage",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.abscess_and_drainage_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.safe_smoking",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Safe smoking",
+      "medical": false,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.safe_smoking_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.safer_crack_use",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Safer crack use",
+      "medical": false,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.safer_crack_use_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.injection",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Injection",
+      "medical": false,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.injection_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.overdose_response",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Overdose response",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.naloxone_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.sexual_health",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Sexual health",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.sexual_health_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.summer_dehydration",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Summer/dehydration",
+      "medical": false,
+      "prompt": "Check for signs of heat illness before giving this bundle.",
+      "lines": [
+        {
+          "itemId": "item.electrolyte_packet",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.winter_frostbite",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Winter/frostbite",
+      "medical": false,
+      "prompt": "Check for frostbite before giving this bundle.",
+      "lines": [
+        {
+          "itemId": "item.socks",
+          "qty": 1,
+          "core": true
+        },
+        {
+          "itemId": "item.handwarmers",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.hygiene",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Hygiene",
+      "medical": false,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.hygiene_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.menstrual_care",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Menstrual care",
+      "medical": false,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.menstrual_care_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.allergy",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Allergy",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.allergy_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.cold_flu",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Cold/flu",
+      "medical": true,
+      "prompt": "Ask about respiratory symptoms before giving this bundle.",
+      "lines": [
+        {
+          "itemId": "item.cold_and_flu_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.foot_fungus",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Foot fungus",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.foot_fungus_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.general_pain",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "General pain",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.acetaminophen",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.dry_skin_chafing",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Dry skin/chafing",
+      "medical": true,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.dry_skin_and_chafing_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "bundle.foot_protection",
+    "platformVersion": 1,
+    "kind": "bundle",
+    "body": {
+      "name": "Foot protection",
+      "medical": false,
+      "prompt": "",
+      "lines": [
+        {
+          "itemId": "item.foot_protection_kit",
+          "qty": 1,
+          "core": true
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "flag.high",
+    "platformVersion": 1,
+    "kind": "flag",
+    "body": {
+      "name": "High",
+      "tier": "primary",
+      "criteria": "Suggested starting criteria. Rewrite them for your team and say which put a patient at this level: recent hospital discharge, overdue follow-up, new lab results, open referral, frostbite risk, dehydration risk.",
+      "color": "red",
+      "rank": 10,
+      "sensitive": false
+    }
+  },
+  {
+    "originKey": "flag.medium",
+    "platformVersion": 1,
+    "kind": "flag",
+    "body": {
+      "name": "Medium",
+      "tier": "primary",
+      "criteria": "Suggested starting criteria. Rewrite them for your team and say which put a patient at this level: recent hospital discharge, overdue follow-up, new lab results, open referral, frostbite risk, dehydration risk.",
+      "color": "yellow",
+      "rank": 20,
+      "sensitive": false
+    }
+  },
+  {
+    "originKey": "flag.low",
+    "platformVersion": 1,
+    "kind": "flag",
+    "body": {
+      "name": "Low",
+      "tier": "primary",
+      "criteria": "Suggested starting criteria. Rewrite them for your team and say which put a patient at this level: recent hospital discharge, overdue follow-up, new lab results, open referral, frostbite risk, dehydration risk.",
+      "color": "green",
+      "rank": 30,
+      "sensitive": false
+    }
+  },
+  {
+    "originKey": "flag.frost_risk",
+    "platformVersion": 1,
+    "kind": "flag",
+    "body": {
+      "name": "Frost risk",
+      "tier": "secondary",
+      "criteria": "",
+      "color": "blue",
+      "rank": 10,
+      "sensitive": false
+    }
+  },
+  {
+    "originKey": "flag.dehydration_risk",
+    "platformVersion": 1,
+    "kind": "flag",
+    "body": {
+      "name": "Dehydration risk",
+      "tier": "secondary",
+      "criteria": "",
+      "color": "orange",
+      "rank": 20,
+      "sensitive": false
+    }
+  },
+  {
+    "originKey": "flag.pregnancy",
+    "platformVersion": 1,
+    "kind": "flag",
+    "body": {
+      "name": "Pregnancy",
+      "tier": "secondary",
+      "criteria": "",
+      "color": "purple",
+      "rank": 30,
+      "sensitive": true
+    }
+  },
+  {
+    "originKey": "field_supply_map.flu_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Flu vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.flu",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.flu_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.covid_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: COVID vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.covid",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.covid_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.tdap_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Tdap vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.tdap",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.tdap_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.hep_a_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Hep A vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.hep_a",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.hep_a_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.hep_b_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Hep B vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.hep_b",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.hep_b_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.pneumococcal_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Pneumococcal vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.pneumococcal",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.pneumococcal_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.hpv_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: HPV vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.hpv",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.hpv_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.shingles_vaccine_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "General / primary care: Shingles vaccine given",
+      "noteTypeKey": "general_primary_care",
+      "path": "preventive.vaccine_status.shingles",
+      "when": {
+        "equals": "given_today"
+      },
+      "lines": [
+        {
+          "itemId": "item.shingles_vaccine",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_dressing_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: dressing applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "answered": true
+      },
+      "lines": [
+        {
+          "itemId": "item.gauze",
+          "qty": 1
+        },
+        {
+          "itemId": "item.bandage",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_xeroform_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Xeroform applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "xeroform"
+      },
+      "lines": [
+        {
+          "itemId": "item.xeroform",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_mepilex_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Mepilex applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "mepilex"
+      },
+      "lines": [
+        {
+          "itemId": "item.mepilex",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_abd_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: ABD applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "abd"
+      },
+      "lines": [
+        {
+          "itemId": "item.abd",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_hydrocolloid_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Hydrocolloid applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "hydrocolloid"
+      },
+      "lines": [
+        {
+          "itemId": "item.hydrocolloid",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_aquacel_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Aquacel applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "aquacel"
+      },
+      "lines": [
+        {
+          "itemId": "item.aquacel",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.wound_care_compression_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Wound care: Compression applied",
+      "noteTypeKey": "wound_care",
+      "path": "wound.treatment.dressing",
+      "when": {
+        "includes": "compression"
+      },
+      "lines": [
+        {
+          "itemId": "item.compression",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_dressing_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: dressing applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "answered": true
+      },
+      "lines": [
+        {
+          "itemId": "item.gauze",
+          "qty": 1
+        },
+        {
+          "itemId": "item.bandage",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_abd_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: ABD applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "includes": "abd"
+      },
+      "lines": [
+        {
+          "itemId": "item.abd",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_xeroform_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: Xeroform applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "includes": "xeroform"
+      },
+      "lines": [
+        {
+          "itemId": "item.xeroform",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_compression_applied",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: Compression applied",
+      "noteTypeKey": "quick_encounter",
+      "path": "wound.dressing",
+      "when": {
+        "includes": "compression"
+      },
+      "lines": [
+        {
+          "itemId": "item.compression",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.outreach_food_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Outreach: food given",
+      "noteTypeKey": "outreach",
+      "path": "outreach.support",
+      "when": {
+        "includes": "food"
+      },
+      "lines": [
+        {
+          "itemId": "item.food_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.outreach_hygiene_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Outreach: hygiene given",
+      "noteTypeKey": "outreach",
+      "path": "outreach.support",
+      "when": {
+        "includes": "hygiene"
+      },
+      "lines": [
+        {
+          "itemId": "item.hygiene_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_food_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: food given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "food"
+      },
+      "lines": [
+        {
+          "itemId": "item.food_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_hygiene_kit_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: hygiene kit given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "hygiene_kit"
+      },
+      "lines": [
+        {
+          "itemId": "item.hygiene_kit",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_socks_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: socks given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "socks"
+      },
+      "lines": [
+        {
+          "itemId": "item.socks",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "field_supply_map.quick_encounter_handwarmers_given",
+    "platformVersion": 1,
+    "kind": "field_supply_map",
+    "body": {
+      "name": "Quick encounter: handwarmers given",
+      "noteTypeKey": "quick_encounter",
+      "path": "social.support",
+      "when": {
+        "includes": "handwarmers"
+      },
+      "lines": [
+        {
+          "itemId": "item.handwarmers",
+          "qty": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "condition_supply_map.rash_dermatitis",
+    "platformVersion": 1,
+    "kind": "condition_supply_map",
+    "body": {
+      "name": "Rash or dermatitis",
+      "codes": ["R21", "L30.9"],
+      "lines": [
+        {
+          "itemId": "item.hydrocortisone_cream",
+          "qtyPerPatient": 1
+        }
+      ]
+    }
+  },
+  {
+    "originKey": "settings.team",
+    "platformVersion": 1,
+    "kind": "settings",
+    "body": {
+      "name": "Team settings",
+      "bagMinimumsOn": false,
+      "newBagMinimums": [],
+      "problemCheckDays": 90
+    }
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "piece": "exam-lymphatic",
+  "notOptions": ["Cervical: Normal", "Axillary: Normal", "Inguinal: 2 cm, tender, mobile"],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_lymphatic, that the General note type includes: its section Lymphatic shows only while Lymphatic (exam.systems is lymphatic) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 3,
+      "what": "Nodes examined is choose-many, with no normal option: Normal picks no node group. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 29, 31; PLAN-OPEN (forms 10.1 #1): Normal does nothing in Lymphatic until a node group is picked (default 29 asks)"
+    },
+    {
+      "line": 15,
+      "what": "Findings for each node group is a grid whose rows are the node groups picked in Nodes examined. Its cell is a group, Findings, of two fields: Findings, choose-many, where Not enlarged is the normal option and Not enlarged and Enlarged, Tender and Non-tender, Mobile and Fixed exclude each other; and Size, in cm from 0.1 to 20 with one decimal, which can be typed in inches, shown once that row has a finding: the lines' example (Inguinal: 2 cm, tender, mobile) gives a size with no Enlarged.",
+      "why": "PRD main 411; forms 2.3, 4.3; focused-exam inventory construct 17, default 17, 32, 45; PLAN-OPEN (forms 10.1 #1): Size shown once the row has a finding, to confirm with the clinical team"
+    },
+    {
+      "line": 31,
+      "what": "The example of compact documentation is not typed: it is how the recap reads.",
+      "why": "focused-exam inventory construct 38, default 46"
+    }
+  ]
+}

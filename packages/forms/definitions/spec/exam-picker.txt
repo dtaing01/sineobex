@@ -1,0 +1,62 @@
+      Focused Exam Workflow — Sineobex
+
+      Step 1: Select the Exams
+
+      Prompt: What did you examine?
+
+      Allow clinicians to select multiple exam categories.
+
+      &#32;&#32;&#32;&#32;•   General
+
+      &#32;&#32;&#32;&#32;•   HEENT
+
+      &#32;&#32;&#32;&#32;•   Cardiac
+
+      &#32;&#32;&#32;&#32;•   Pulmonary
+
+      &#32;&#32;&#32;&#32;•   Abdomen
+
+      &#32;&#32;&#32;&#32;•   MSK
+
+      &#32;&#32;&#32;&#32;•   Neuro
+
+      &#32;&#32;&#32;&#32;•   Skin
+
+      &#32;&#32;&#32;&#32;•   Peripheral Vascular
+
+      &#32;&#32;&#32;&#32;•   Foot
+
+      &#32;&#32;&#32;&#32;•   GU
+
+      &#32;&#32;&#32;&#32;•   Psych
+
+      &#32;&#32;&#32;&#32;•   Lymph
+
+      &#32;&#32;&#32;&#32;•   Neck / Thyroid
+
+      &#32;&#32;&#32;&#32;•   Breast
+
+      &#32;&#32;&#32;&#32;•   Rectal
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      Step 2: Review Selected Exams
+
+      Example selection:
+
+      &#32;&#32;&#32;&#32;•   Cardiovascular
+
+      &#32;&#32;&#32;&#32;•   Pulmonary
+
+      &#32;&#32;&#32;&#32;•   Peripheral Vascular
+
+      &#32;&#32;&#32;&#32;•   Skin
+
+      &#91; + ADD EXAM \]
+
+      Only the selected sections should expand. All other exam sections remain hidden.
+      Step 4: Add More Exams or Continue
+
+      &#91; + ADD EXAM \]
+
+      &#91; CONTINUE \]

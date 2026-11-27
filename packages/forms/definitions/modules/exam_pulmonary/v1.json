@@ -1,0 +1,110 @@
+{
+  "name": "exam_pulmonary",
+  "version": 1,
+  "sections": [
+    {
+      "id": "pulmonary",
+      "title": "Pulmonary / respiratory",
+      "spec": "exam-pulmonary",
+      "showWhen": { "field": "exam.systems", "is": "pulmonary" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "work",
+          "kind": "choice",
+          "many": true,
+          "label": "Work of breathing",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "increased", "label": "Increased" },
+            { "code": "labored", "label": "Labored" },
+            { "code": "accessory_muscle_use", "label": "Accessory muscle use" },
+            { "code": "retractions", "label": "Retractions" },
+            { "code": "tripoding", "label": "Tripoding" },
+            { "code": "unable_to_speak_full_sentences", "label": "Unable to speak full sentences" }
+          ]
+        },
+        {
+          "id": "auscultation",
+          "kind": "choice",
+          "many": true,
+          "label": "Auscultation",
+          "options": { "list": "lung_findings" },
+          "sides": true
+        },
+        {
+          "id": "location_right",
+          "kind": "choice",
+          "many": true,
+          "label": "Location, right lung",
+          "options": [
+            { "code": "upper", "label": "Upper" },
+            { "code": "middle", "label": "Middle" },
+            { "code": "lower", "label": "Lower" },
+            { "code": "diffuse", "label": "Diffuse" }
+          ],
+          "showWhen": {
+            "field": "pulmonary.auscultation.right",
+            "is": ["diminished", "crackles", "wheezes", "rhonchi", "stridor", "bronchial"]
+          }
+        },
+        {
+          "id": "location_left",
+          "kind": "choice",
+          "many": true,
+          "label": "Location, left lung",
+          "options": [
+            { "code": "upper", "label": "Upper" },
+            { "code": "middle", "label": "Middle" },
+            { "code": "lower", "label": "Lower" },
+            { "code": "diffuse", "label": "Diffuse" }
+          ],
+          "showWhen": {
+            "field": "pulmonary.auscultation.left",
+            "is": ["diminished", "crackles", "wheezes", "rhonchi", "stridor", "bronchial"]
+          }
+        },
+        {
+          "id": "other_findings",
+          "kind": "choice",
+          "many": true,
+          "label": "Other findings",
+          "options": [
+            { "code": "pleural_rub", "label": "Pleural rub" },
+            { "code": "asymmetric_breath_sounds", "label": "Asymmetric breath sounds" }
+          ]
+        },
+        {
+          "id": "symptoms",
+          "kind": "choice",
+          "many": true,
+          "label": "Respiratory symptoms",
+          "options": [
+            { "code": "cough", "label": "Cough" },
+            { "code": "sputum", "label": "Sputum" },
+            { "code": "hemoptysis", "label": "Hemoptysis" },
+            { "code": "dyspnea", "label": "Dyspnea" },
+            { "code": "orthopnea", "label": "Orthopnea" },
+            { "code": "pleuritic_pain", "label": "Pleuritic pain" }
+          ]
+        },
+        {
+          "id": "sputum_color",
+          "kind": "text",
+          "label": "Sputum color",
+          "lines": "one",
+          "maxLength": 200,
+          "showWhen": { "field": "pulmonary.symptoms", "is": "sputum" }
+        },
+        {
+          "id": "sputum_amount",
+          "kind": "text",
+          "label": "Sputum amount",
+          "lines": "one",
+          "maxLength": 200,
+          "showWhen": { "field": "pulmonary.symptoms", "is": "sputum" }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+/* Six columns. The stacked table pattern (STACKED_TABLE) wraps its cells anywhere, so that no value
+   pushes the page sideways; in columns, that let the longest values take the width and split the
+   short ones mid-word ("Act|ive"), at any width, as the Flags history's reason did (review R3).
+   Here they wrap at spaces only, and so need about 600 px with text spacing: the pattern lays them
+   out in columns again from 640 px, where the page gives them less, so the phones table stays
+   stacked up to 800 px, as the pattern stacks it below 640 px. */
+table.phones th,
+table.phones td {
+  overflow-wrap: break-word;
+}
+@media (min-width: 640px) and (max-width: 799.98px) {
+  .phones,
+  .phones tbody,
+  .phones tr,
+  .phones th,
+  .phones td {
+    display: block;
+  }
+  .phones thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .phones tbody tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+  }
+  .phones tbody td {
+    border-bottom: 0;
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+  .phones td[data-label]::before {
+    content: attr(data-label) ': ';
+    font-weight: 700;
+  }
+}

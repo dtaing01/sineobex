@@ -1,0 +1,8 @@
+{
+  "name": "demo_regions",
+  "options": [
+    { "code": "arm", "label": "Arm" },
+    { "code": "leg", "label": "Leg" },
+    { "code": "back", "label": "Back" }
+  ]
+}

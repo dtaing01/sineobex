@@ -1,0 +1,50 @@
+{
+  "piece": "sexrepro-3",
+  "file": "note-types/sexual_reproductive/v1.json",
+  "sections": [
+    { "id": "symptoms", "title": "Symptoms" },
+    { "id": "testing", "title": "Testing history", "repeat": { "max": 10, "itemTitle": "Test {n}" } },
+    { "id": "prevention", "title": "Prevention" },
+    { "id": "follow_up", "title": "Follow-up" }
+  ],
+  "fields": [
+    {
+      "path": "symptoms.reported",
+      "kind": "choice",
+      "many": true,
+      "label": "Symptoms",
+      "options": ["none", "discharge", "dysuria", "lesion", "pelvic_pain", "testicular_pain", "rash"],
+      "flags": { "exclusive": ["none"] }
+    },
+    {
+      "path": "testing.test",
+      "kind": "choice",
+      "many": false,
+      "label": "Test",
+      "options": ["hiv", "syphilis", "gonorrhea", "chlamydia", "hep_b", "hep_c", "pregnancy"]
+    },
+    { "path": "testing.date", "kind": "date", "label": "Date", "range": "past" },
+    {
+      "path": "testing.result",
+      "kind": "choice",
+      "many": false,
+      "label": "Result",
+      "options": ["positive", "negative", "pending", "unknown"]
+    },
+    {
+      "path": "prevention.provided",
+      "kind": "choice",
+      "many": true,
+      "label": "Prevention",
+      "options": ["condoms_provided", "prep_discussed", "pep_discussed", "vaccine", "safer_sex_counseling"]
+    },
+    {
+      "path": "follow_up.plan",
+      "kind": "choice",
+      "many": true,
+      "label": "Follow-up",
+      "options": ["results_needed", "referral", "pcp", "none"],
+      "flags": { "exclusive": ["none"] }
+    }
+  ]
+}

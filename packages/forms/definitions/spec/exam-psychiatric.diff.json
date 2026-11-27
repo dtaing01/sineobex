@@ -1,0 +1,42 @@
+{
+  "piece": "exam-psychiatric",
+  "notOptions": [],
+  "added": [],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_psychiatric, that the General note type includes: its section Psychiatric / behavioral observation shows only while Psych (exam.systems is psych_observation) is picked in the exam picker, and offers one-tap Normal.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory default 10"
+    },
+    {
+      "line": 3,
+      "what": "The guidance line is not typed. Nothing here is linked to the Psychological note type's mental status exam.",
+      "why": "focused-exam inventory construct 39, default 49"
+    },
+    {
+      "line": 5,
+      "what": "Appearance / behavior is choose-many. Normal fills Calm and Cooperative, so neither is exclusive. Calm excludes Agitated.",
+      "why": "focused-exam inventory 3.14, default 13, 17, 26; PLAN-OPEN (forms 10.1 #1): the pair is this plan's reading of default 17"
+    },
+    {
+      "line": 21,
+      "what": "Speech is choose-many. Normal is the normal option and clears the others. Rapid excludes Slow.",
+      "why": "focused-exam inventory default 13, 17, 26; PLAN-OPEN (forms 10.1 #1): the pair is this plan's reading of default 17"
+    },
+    {
+      "line": 33,
+      "what": "Affect is choose-many. Appropriate is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 47,
+      "what": "Thought process is choose-many. Linear is the normal option and clears the others.",
+      "why": "focused-exam inventory default 13, 26"
+    },
+    {
+      "line": 57,
+      "what": "Orientation is choose-many, labelled Oriented to: each option picked is a sphere the patient is oriented to. Normal fills all four.",
+      "why": "focused-exam inventory 3.14, default 26"
+    }
+  ]
+}

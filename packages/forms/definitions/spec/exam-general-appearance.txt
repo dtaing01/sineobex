@@ -1,0 +1,51 @@
+      1\. General Appearance
+
+      A. Quick Status
+
+      &#32;&#32;&#32;&#32;•   Well appearing
+
+      &#32;&#32;&#32;&#32;•   No acute distress
+
+      &#32;&#32;&#32;&#32;•   Mild distress
+
+      &#32;&#32;&#32;&#32;•   Moderate distress
+
+      &#32;&#32;&#32;&#32;•   Severe distress
+
+      &#32;&#32;&#32;&#32;•   Ill appearing
+
+      &#32;&#32;&#32;&#32;•   Toxic appearing
+
+      &#32;&#32;&#32;&#32;•   Frail
+
+      &#32;&#32;&#32;&#32;•   Cachectic
+
+      &#32;&#32;&#32;&#32;•   Diaphoretic
+
+      &#32;&#32;&#32;&#32;•   Pale
+
+      &#32;&#32;&#32;&#32;•   Cyanotic
+
+      &#32;&#32;&#32;&#32;•   Other
+
+      B. Mental / Behavioral Appearance
+
+      &#32;&#32;&#32;&#32;•   Alert
+
+      &#32;&#32;&#32;&#32;•   Drowsy
+
+      &#32;&#32;&#32;&#32;•   Somnolent
+
+      &#32;&#32;&#32;&#32;•   Agitated
+
+      &#32;&#32;&#32;&#32;•   Calm
+
+      &#32;&#32;&#32;&#32;•   Cooperative
+
+      &#32;&#32;&#32;&#32;•   Uncooperative
+
+      C. Free Text
+
+      \- Additional findings: *\_\_*\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+      UI notes: Mostly quick taps with multi-select. Free text remains optional.

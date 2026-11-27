@@ -1,0 +1,198 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sineobex_field/features/patients/add_problem_screen.dart';
+import 'package:sineobex_field/patients/problems.dart' show ProblemCodes;
+import 'package:sineobex_field/sync/local_store.dart';
+
+import 'patient_kit.dart';
+
+/// Add problem (design 9.5, 12.1): code results from the bundled list as labelled buttons, the
+/// status chips with nothing chosen, "No code" allowed and explained, a sensitive code locking
+/// Sensitive on, and the recurrence question. Three themes, 200% text and 320 wide; offline.
+void main() {
+  Future<AppHarness> addProblem(WidgetTester tester, {Run? run, void Function(AppHarness h)? seed}) async {
+    final h = await signIn(tester, theme: run?.theme, scale: run?.scale ?? 1, narrow: run?.narrow ?? false);
+    seedP1(h.server);
+    seed?.call(h);
+    await syncAndRefresh(tester, h);
+    await go(tester, '/patients/$p1Id');
+    h.server.offline = true;
+    await tapOn(tester, find.text('Add problem'));
+    expect(find.byType(AddProblemScreen), findsOneWidget);
+    return h;
+  }
+
+  Map<String, Object?> created(AppHarness h) =>
+      h.sync.store!.outbox().lastWhere((e) => e.entity == entityProblem && e.op == 'create').value!
+          as Map<String, Object?>;
+
+  for (final run in runs) {
+    testWidgets('a coded problem from the list; status chips start empty (${runName(run)})', (tester) async {
+      final handle = tester.ensureSemantics();
+      final h = await addProblem(tester, run: run);
+      await expectShown(
+        tester,
+        find.text(
+          'No code is fine: the problem is saved without one. A problem with no code won’t add supplies to '
+          'route bags.',
+        ),
+      );
+      for (final status in ['New', 'Ongoing']) {
+        final chip = find.bySemanticsLabel(status);
+        await reveal(tester, chip);
+        expect(tester.getSemantics(chip), isSemantics(isInMutuallyExclusiveGroup: true, isSelected: false));
+      }
+      expect(find.text('Resolved'), findsNothing);
+      await expectScreenOk(tester);
+
+      await type(tester, 'codeSearch', 'burn left forearm first');
+      await settle(tester);
+      final result = find.bySemanticsLabel('Burn of first degree of left forearm, initial encounter, code T22.112A');
+      await expectShown(tester, result);
+      expect(tester.getSemantics(result), isSemantics(isButton: true));
+      await expectScreenOk(tester);
+      await tapOn(tester, result);
+      expect(
+        (await fieldNamed(tester, 'problemTitle')).controller!.text,
+        'Burn of first degree of left forearm, initial encounter',
+      );
+
+      // Without a status, Add problem says what is missing.
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+      await expectShown(tester, find.text('Choose New or Ongoing.'));
+      await tapOn(tester, find.text('Ongoing'));
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+      final value = created(h);
+      expect(value['status'], 'ongoing');
+      expect(value['code'], {
+        'system': 'icd10cm',
+        'code': 'T22.112A',
+        'display': 'Burn of first degree of left forearm, initial encounter',
+      });
+      expect(value['sensitive'], isFalse);
+      handle.dispose();
+    });
+  }
+
+  // The coordinator's decision on review finding C-3: the onset date is typed in three private boxes,
+  // as a note's date is (D92), beside the calendar alone; what the problem stores is unchanged.
+  for (final run in runs) {
+    testWidgets('the date it started is typed in three boxes, and saved as the problem stores it (${runName(run)})', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      final h = await addProblem(tester, run: run);
+      await type(tester, 'problemTitle', 'Demo: cough');
+      await tapOn(tester, find.text('Ongoing'));
+      await type(tester, 'form.onsetDate.month', '3');
+      await type(tester, 'form.onsetDate.day', '7');
+      await type(tester, 'form.onsetDate.year', '2020');
+      await expectScreenOk(tester);
+      await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+      expect(created(h)['onsetDate'], '2020-03-07');
+      handle.dispose();
+    });
+  }
+
+  testWidgets('a date it started that can’t be saved stops Add problem, and the field’s Clear takes it off', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await addProblem(tester);
+    await type(tester, 'problemTitle', 'Demo: cough');
+    await tapOn(tester, find.text('Ongoing'));
+    await type(tester, 'form.onsetDate.month', '3');
+    await type(tester, 'form.onsetDate.day', '7');
+    final before = h.sync.store!.outbox().length;
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+    await expectShown(tester, find.text('Fix the date it started first: what’s typed can’t be saved.'));
+    expect(h.sync.store!.outbox(), hasLength(before));
+    await type(tester, 'form.onsetDate.year', '2020');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settle(tester);
+    await tapOn(tester, find.bySemanticsLabel('Clear Date it started'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+    expect(created(h)['onsetDate'], isNull);
+    handle.dispose();
+  });
+
+  testWidgets('the date it started’s calendar is the calendar alone, and closes when the store freezes', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final h = await addProblem(tester);
+    await tapOn(tester, find.bySemanticsLabel(RegExp('^Date it started: ')));
+    final dialog = find.byType(DatePickerDialog);
+    expect(dialog, findsOneWidget);
+    // No typing mode: Material's is a box the keyboard would learn from.
+    expect(find.descendant(of: dialog, matching: find.byType(EditableText)), findsNothing);
+    h.sync.store!.freeze('Your access to this team ended. Saved records are being sent to a Program Admin.');
+    await tester.runAsync(() => h.sync.syncNow());
+    await settle(tester);
+    expect(find.byType(DatePickerDialog), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('a code result is a button Switch Access can activate (V6)', (tester) async {
+    final handle = tester.ensureSemantics();
+    await addProblem(tester);
+    await type(tester, 'codeSearch', 'burn left forearm first');
+    await settle(tester);
+    const label = 'Burn of first degree of left forearm, initial encounter, code T22.112A';
+    final result = find.bySemanticsLabel(label);
+    await reveal(tester, result);
+    expect(tester.getSemantics(result), isSemantics(isButton: true, hasTapAction: true));
+    tester.semantics.tap(find.semantics.byLabel(label));
+    await settle(tester);
+    expect(
+      (await fieldNamed(tester, 'problemTitle')).controller!.text,
+      'Burn of first degree of left forearm, initial encounter',
+    );
+    await expectShown(tester, find.text('Burn of first degree of left forearm, initial encounter (T22.112A)'));
+    handle.dispose();
+  });
+
+  testWidgets('the curated list ships as an asset the app can load', (tester) async {
+    final codes = await tester.runAsync(ProblemCodes.load);
+    expect(codes!.codes.length, greaterThan(400));
+    expect(codes.search('T22.112A').single.title, 'Burn of first degree of left forearm, initial encounter');
+  });
+
+  testWidgets('a sensitive code turns Sensitive on and locks it', (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await addProblem(tester);
+    await type(tester, 'codeSearch', 'F10');
+    await settle(tester);
+    await tapOn(tester, find.bySemanticsLabel(RegExp(r', code F10')).first);
+    final sensitive = tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Sensitive'));
+    expect(sensitive.value, isTrue);
+    expect(sensitive.onChanged, isNull);
+    await expectShown(tester, find.text('This code is always sensitive.'));
+    await tapOn(tester, find.text('New'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+    expect(created(h)['sensitive'], isTrue);
+    handle.dispose();
+  });
+
+  testWidgets('a title matching a Resolved problem asks whether it came back', (tester) async {
+    final handle = tester.ensureSemantics();
+    late String earlier;
+    final h = await addProblem(
+      tester,
+      seed: (h) {
+        earlier = h.server.seed(entityProblem, {'patientId': p1Id, 'title': 'Demo: cough', 'status': 'new'});
+        h.server.serverEdit(earlier, 'status', {'status': 'resolved', 'encounterId': null}, by: 'seed-user');
+      },
+    );
+    await type(tester, 'problemTitle', 'demo cough');
+    await expectShown(tester, find.text('Is this the same problem coming back?'));
+    await tapOn(tester, find.text('New'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+    await expectShown(tester, find.text('Answer whether this is the same problem coming back.'));
+    await tapOn(tester, find.text('Yes, it came back'));
+    await tapOn(tester, find.widgetWithText(FilledButton, 'Add problem'));
+    expect(created(h)['recurrenceOf'], earlier);
+    await expectScreenOk(tester);
+    handle.dispose();
+  });
+}

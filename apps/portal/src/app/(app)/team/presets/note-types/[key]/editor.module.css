@@ -1,0 +1,119 @@
+/* The note type editor (phase 5 design 8.1): sections as panels, their fields as a list, each
+   part's acts under its name, and the changes held for Publish. Nothing here may widen the page at
+   320 px (WCAG 1.4.10): every row wraps, and long words break only in a part's own name. */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.fields {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* A group's own fields, set in under it. */
+.fields .fields {
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--line);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fieldName {
+  font-weight: 700;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* What a held change does to a part, said under its name until Publish. */
+.held {
+  margin: 0;
+  font-style: italic;
+}
+
+.inline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Numbered, as a refusal names "Change 3": each change stays a list item, so its number is drawn,
+   and its parts are laid out in a column inside it. */
+.heldList {
+  margin: 0;
+  padding-left: var(--space-5);
+  list-style: decimal;
+  overflow-wrap: anywhere;
+}
+
+.heldList > li + li {
+  margin-top: var(--space-3);
+}
+
+.heldItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* A choice's answers, each with its acts. */
+.options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+/* A form the editor opens in place, such as Add a field: its fieldsets wrap, never widen. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.form fieldset {
+  min-width: 0;
+}

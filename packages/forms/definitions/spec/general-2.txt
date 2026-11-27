@@ -1,0 +1,9 @@
+   3. Subsection 3
+      1. Assessment&#32;
+         1. Problem&#32;
+            1. &#91;Search diagnosis/problem\]&#32;
+               1. Status: New, Chronic, Improving, Worse
+            2. Intervention&#32;
+               1. Buttons: \[ Education \] \[ Medication \] \[ Testing \] \[ Referral \] \[ Supplies \] \[ Procedure \] \[ Other \]
+   4. Encounter Summary&#32;
+      1. Text box for the summary/manual inputs

@@ -1,0 +1,85 @@
+/* A flag's pill (phase 5 design 8; PRD main 945): the colour's name and the flag's, "Red · High",
+   so the colour is never the only sign. The text is the theme's ink on its surface in every
+   theme; the colour is the swatch and the border, each at least 4:1 against the surface, the
+   ground and the sunken surface in Day, Night run and High contrast. */
+.pill {
+  background: var(--surface);
+  color: var(--ink);
+  border: 2px solid var(--flag, var(--line-strong));
+  /* Underlined inside a link, as the link around it is; plain everywhere else. */
+  text-decoration: inherit;
+  overflow-wrap: anywhere;
+}
+/* A patient's flags, one row that wraps: at 320 px each pill takes a line of its own if it must. */
+.pills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--flag, var(--line-strong));
+}
+
+/* The palette (packages/presets FLAG_COLORS). Six are the design system's own colours, which
+   change with the theme; orange and purple, which it has none for, are set for each theme here,
+   as tokens.css sets the others. A colour the portal doesn't know draws the neutral line. */
+.red {
+  --flag: var(--critical);
+}
+.yellow {
+  --flag: var(--warning);
+}
+.green {
+  --flag: var(--good);
+}
+.teal {
+  --flag: var(--accent);
+}
+.blue {
+  --flag: var(--info);
+}
+.grey {
+  --flag: var(--ink-muted);
+}
+.orange {
+  --flag: #c2410c;
+}
+.purple {
+  --flag: #6d28d9;
+}
+:global([data-theme='night']) .orange {
+  --flag: #fb923c;
+}
+:global([data-theme='night']) .purple {
+  --flag: #c4b5fd;
+}
+:global([data-theme='contrast']) .orange {
+  --flag: #9a3412;
+}
+:global([data-theme='contrast']) .purple {
+  --flag: #5b21b6;
+}
+/* With no theme chosen the portal follows the system, as globals.css does. */
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .orange {
+    --flag: #fb923c;
+  }
+  :global(:root:not([data-theme])) .purple {
+    --flag: #c4b5fd;
+  }
+}
+@media (prefers-contrast: more) {
+  :global(:root:not([data-theme])) .orange {
+    --flag: #9a3412;
+  }
+  :global(:root:not([data-theme])) .purple {
+    --flag: #5b21b6;
+  }
+}

@@ -1,0 +1,233 @@
+{
+  "key": "red_flags_disposition",
+  "version": 1,
+  "title": "Red flags and disposition",
+  "kinds": ["medical"],
+  "group": "clinical",
+  "sensitivity": "none",
+  "auto": "medical",
+  "sections": [
+    {
+      "id": "red_flags",
+      "title": "Red flags",
+      "spec": "red-flags",
+      "fields": [
+        {
+          "id": "emergency",
+          "kind": "choice",
+          "many": false,
+          "label": "Does the patient require emergency evaluation?",
+          "options": [
+            {
+              "code": "no",
+              "label": "NO"
+            },
+            {
+              "code": "uncertain",
+              "label": "UNCERTAIN"
+            },
+            {
+              "code": "yes",
+              "label": "YES"
+            }
+          ],
+          "required": true,
+          "handoff": true
+        },
+        {
+          "id": "ems_activated",
+          "kind": "choice",
+          "many": false,
+          "label": "EMS activated?",
+          "options": [
+            {
+              "code": "yes",
+              "label": "YES"
+            },
+            {
+              "code": "no",
+              "label": "NO"
+            }
+          ],
+          "showWhen": {
+            "field": "red_flags.emergency",
+            "is": "yes"
+          },
+          "handoff": true
+        },
+        {
+          "id": "transport",
+          "kind": "choice",
+          "many": false,
+          "label": "Patient agrees to transport?",
+          "options": [
+            {
+              "code": "yes",
+              "label": "YES"
+            },
+            {
+              "code": "no",
+              "label": "NO"
+            }
+          ],
+          "showWhen": {
+            "field": "red_flags.emergency",
+            "is": "yes"
+          },
+          "handoff": true
+        },
+        {
+          "id": "no_transport_reason",
+          "kind": "choice",
+          "many": false,
+          "label": "Reason not transported",
+          "options": [
+            {
+              "code": "patient_declined",
+              "label": "Patient declined"
+            },
+            {
+              "code": "capacity_concern",
+              "label": "Capacity concern"
+            },
+            {
+              "code": "other",
+              "label": "Other",
+              "other": true
+            }
+          ],
+          "showWhen": {
+            "field": "red_flags.transport",
+            "is": "no"
+          },
+          "handoff": true
+        },
+        {
+          "id": "ems_time",
+          "kind": "time",
+          "label": "Time EMS called",
+          "showWhen": {
+            "field": "red_flags.ems_activated",
+            "is": "yes"
+          },
+          "required": true,
+          "handoff": true
+        },
+        {
+          "id": "show_handoff",
+          "kind": "action",
+          "label": "Show handoff",
+          "action": "show_handoff",
+          "showWhen": {
+            "field": "red_flags.ems_activated",
+            "is": "yes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "disposition",
+      "title": "Disposition",
+      "spec": "red-flags",
+      "fields": [
+        {
+          "id": "disposition",
+          "kind": "choice",
+          "many": true,
+          "label": "Disposition",
+          "options": [
+            {
+              "code": "follow_up",
+              "label": "Follow-up"
+            },
+            {
+              "code": "pcp",
+              "label": "PCP"
+            },
+            {
+              "code": "specialty",
+              "label": "Specialty"
+            },
+            {
+              "code": "ed",
+              "label": "ED"
+            },
+            {
+              "code": "none",
+              "label": "None",
+              "exclusive": true
+            },
+            {
+              "code": "ems",
+              "label": "EMS"
+            },
+            {
+              "code": "ed_referral",
+              "label": "ED referral"
+            },
+            {
+              "code": "transport_arranged",
+              "label": "Transport arranged"
+            },
+            {
+              "code": "declined",
+              "label": "Declined"
+            }
+          ],
+          "excludes": [
+            ["declined", "ed"],
+            ["declined", "ems"],
+            ["declined", "ed_referral"],
+            ["declined", "transport_arranged"]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "follow_up",
+      "title": "Follow up",
+      "spec": "red-flags",
+      "fields": [
+        {
+          "id": "when",
+          "kind": "choice",
+          "many": false,
+          "label": "Follow up",
+          "options": [
+            {
+              "code": "next_street_clinic",
+              "label": "Next street clinic"
+            },
+            {
+              "code": "specific_date",
+              "label": "Specific date"
+            },
+            {
+              "code": "prn",
+              "label": "PRN"
+            }
+          ]
+        },
+        {
+          "id": "date",
+          "kind": "date",
+          "label": "Follow-up date",
+          "range": "future",
+          "required": true,
+          "showWhen": {
+            "field": "follow_up.when",
+            "is": "specific_date"
+          }
+        },
+        {
+          "id": "details",
+          "kind": "text",
+          "label": "Follow-up details",
+          "lines": "many",
+          "maxLength": 2000,
+          "showWhen": { "field": "follow_up.when", "filled": true }
+        }
+      ]
+    }
+  ]
+}

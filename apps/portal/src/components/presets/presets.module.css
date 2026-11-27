@@ -1,0 +1,166 @@
+/* The preset pages' shared parts (phase 5 design 8.1): item lines, the Removed list, the review. */
+
+/* A fieldset never shrinks below its content by default (min-inline-size: min-content): its lines
+   wrap instead, so the page never scrolls sideways at 320 px (WCAG 1.4.10). */
+.group {
+  min-width: 0;
+}
+
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.line {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.line legend {
+  font-weight: 700;
+  padding: 0 var(--space-2);
+}
+.item {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.item select {
+  width: 100%;
+}
+.quantity {
+  flex: 0 1 8rem;
+  min-width: 0;
+}
+.removed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.removedItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.removedName {
+  font-weight: 700;
+}
+.disclosure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.disclosure > div {
+  align-self: stretch;
+}
+.reviewDetails > summary {
+  cursor: pointer;
+  font-weight: 700;
+  /* 24px of text and 24px of padding: the 48px tap target. */
+  padding: var(--space-3) 0;
+}
+/* A table's words stay whole: one too wide for a phone held upright scrolls sideways in its own
+   group (.scroll), which WCAG 1.4.10 allows a data table, and the page itself never does. */
+.scroll {
+  overflow-x: auto;
+  /* Sized by where it sits, never by its table, so the table can't widen the page around it. */
+  contain: inline-size;
+}
+.review th,
+.review td {
+  padding: var(--space-2);
+}
+/* A list in a cell keeps its words whole too. The portal's lists break a word anywhere
+   (globals.css), which leaves the word out of the cell's narrowest width: the column would narrow
+   below it and split it ("Approximat/e") where the table should scroll in its group instead
+   (finding VR5). `break-word` counts the whole word, and `.scroll` keeps that width from the page. */
+.review ul {
+  list-style: none;
+  padding-left: 0;
+  overflow-wrap: break-word;
+}
+/* A history in its preset's own panel (HistoryTable's `flat`): its heading and table, unboxed. */
+.flat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+/* A field fixed at creation, shown in an edit form and never sent (FixedFact): set apart from the
+   boxes that take text. */
+.fixed {
+  background: var(--surface-sunken);
+}
+/* A list of presets that each open their own page, with a line of what each is under its name. */
+.entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.entries > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.entryName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+}
+/* A list whose order is the point, such as a tier's flags: numbered by place, each entry's moves
+   under its name. */
+.order {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-wrap: anywhere;
+}
+.moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.moves:empty {
+  display: none;
+}
+/* A choice's label with a mark before it, such as a colour's swatch before its name. */
+.marked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* A select of its own in a form, such as an item's Category: a percentage width keeps its longest
+   option from widening the page at 320 px (a box sized to its content would push the column wider
+   than a phone held upright), and its cap keeps it from spanning a desktop's form. */
+.choose {
+  width: 100%;
+  max-width: 24rem;
+}
+/* A box for a number of days, with "days" in it (a setting's window): as wide as a few digits and
+   the word need, not the form's width. */
+.days {
+  max-width: 12rem;
+}

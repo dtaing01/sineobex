@@ -1,0 +1,59 @@
+/* The Flags panel (phase 5 design 8.1). The page's own styles are patients.module.css; these are
+   the panel's alone. */
+
+/* The flag field as wide as its box lets it be, up to a line's worth: a choice's words run long ("…
+   · No longer on the team’s list (clear only)"), and a select as wide as its longest choice would
+   push the page sideways at 320 px (WCAG 1.4.10). */
+.choice {
+  width: 100%;
+  max-width: 32rem;
+}
+
+/* The history (review R3). .stack wraps its cells anywhere, so that no value pushes the page sideways;
+   here that let one long reason take nearly all the width and split every other column mid-word. Its
+   cells wrap only at spaces, but for the reason, which may be one long word and keeps wrapping
+   anywhere, and its time and Entered in error stay on one line. Below 1024 px, 200% zoom of a
+   1280 px window among them, it stacks one change under another, as .stack does below 640 px. */
+table.history th,
+table.history td {
+  overflow-wrap: break-word;
+}
+table.history td.why {
+  overflow-wrap: anywhere;
+}
+table.history .whole {
+  white-space: nowrap;
+}
+@media (max-width: 1023px) {
+  table.history thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  table.history tbody,
+  table.history tr,
+  table.history tbody th,
+  table.history tbody td {
+    display: block;
+  }
+  table.history tr {
+    border-bottom: 1px solid var(--line);
+    padding: var(--space-2) 0;
+  }
+  table.history tbody th,
+  table.history tbody td {
+    border-bottom: none;
+    padding: var(--space-1) 0;
+  }
+  table.history td[data-label]::before {
+    content: attr(data-label) ': ';
+    font-weight: 600;
+  }
+  /* Stacked, a time wraps at its spaces like any other line. */
+  table.history .whole {
+    white-space: normal;
+  }
+}

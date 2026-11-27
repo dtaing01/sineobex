@@ -1,0 +1,327 @@
+part of 'encounter_repository.dart';
+
+// Expand on the Quick encounter (phase 4 design, forms 6.4, 7.1): "Staff can expand any part of a
+// quick encounter into its full module partway through without re-entering what they filled in"
+// (PRD main 409). The interpreter's `expandQuick` says what to write; this writes it as ordinary
+// changes, through the store.
+
+/// One Expand a quick form offers: the part (a section of the quick note type) it sits on, and the
+/// full note type that part's answers map into.
+typedef ExpandTarget = ({String section, String noteTypeKey});
+
+/// The Expands of the quick note type [quick], in its order: for each section, each note type a
+/// field of it maps into (`mapsTo`), once. Empty for a note type that is not quick, which maps
+/// nothing (`validate.maps_to_not_quick`).
+List<ExpandTarget> expandTargets(NoteTypeDef quick) => [
+  if (quick.quick)
+    for (final s in quick.sections)
+      for (final key in {for (final mapsTo in _mapsTo(s.fields)) mapsTo.key}) (section: s.id, noteTypeKey: key),
+];
+
+/// Each `mapsTo` among [fields] and inside their groups, as its note type key and target path. A
+/// grid maps as a whole: its cell never does.
+Iterable<({String key, String path})> _mapsTo(Iterable<FieldDef> fields) sync* {
+  for (final f in fields) {
+    final mapsTo = f.mapsTo;
+    final colon = mapsTo?.indexOf(':') ?? -1;
+    if (colon > 0) yield (key: mapsTo!.substring(0, colon), path: mapsTo.substring(colon + 1));
+    if (f is GroupDef) yield* _mapsTo(f.fields);
+  }
+}
+
+/// A quick answer Expand did not write, for the person to see (forms 6.4, 10.1 #12).
+class ExpandLeftOut {
+  const ExpandLeftOut({required this.path, required this.target, required this.problem, required this.label});
+
+  /// The quick note's path.
+  final String path;
+
+  /// The full note's path it would have gone to, without an entry's part.
+  final String target;
+
+  /// Why: `checkAnswer`'s problem code against the full note's version (`wrong_type` for a number in
+  /// another unit, `too_long`, `unknown_option`, ...).
+  final String problem;
+
+  /// The quick field's label.
+  final String label;
+}
+
+/// What Expand did.
+class Expanded {
+  const Expanded({
+    required this.noteId,
+    required this.existing,
+    required this.written,
+    required this.leftOut,
+    required this.notCopied,
+    this.finished = false,
+  });
+
+  /// The full note, which the screen opens: from the visit read Expand was given, for a finished note
+  /// only that read shows ([finished]).
+  final String noteId;
+
+  /// The visit had a note of the type already, which opens as it is with nothing written into it: the
+  /// draft with answers the note types list would open, or a finished note ([finished]).
+  final bool existing;
+
+  /// What was written into the full note: path (entry part included) to value.
+  final Map<String, Object> written;
+
+  /// Quick answers the full note's version doesn't take: not written, and listed for the person.
+  final List<ExpandLeftOut> leftOut;
+
+  /// Quick answers, in a part the person can't chart (a section that needs an ordering credential
+  /// they lack), that were not carried: quick paths, for the person to be told.
+  final List<String> notCopied;
+
+  /// The note opened is finished: it opens read-only, and an addendum or a correction adds to it.
+  final bool finished;
+}
+
+extension QuickExpand on EncounterRepository {
+  /// Whether the form of [note] offers Expand: a quick note the person may change now, with a part
+  /// that maps into a full note type. Each part's Expands are [expandTargets].
+  bool mayExpand(NoteView note) =>
+      note.editable && note.definition != null && expandTargets(note.definition!).isNotEmpty;
+
+  /// Whether [expand] of [quickNoteId] into [full] would open a note already in the visit as it is,
+  /// copying nothing (12.1 #30): a teammate's draft, one of the person's own that holds answers, or a
+  /// finished note they may see, on the phone or in [visitRead] as [expand] takes it. The form then
+  /// says so under Expand, rather than that the answers are copied (review LFM-5). False when the
+  /// phone holds no such quick note.
+  Future<bool> expandOpensAsItIs(String quickNoteId, NoteTypeDef full, {VisitView? visitRead}) async {
+    _guardFrozen();
+    final encounterId = store.record(quickNoteId)?.attributes['encounterId'];
+    if (encounterId is! String) return false;
+    return (await _expandInto(encounterId, full.key, visitRead))?.asItIs ?? false;
+  }
+
+  /// The note of the type [key] already in the visit that Expand goes into, and whether it opens as
+  /// it is; null when it makes a new one. The draft the note types list would open, as it is unless
+  /// it is the person's own and empty; else a finished note the person may see, read-only, the
+  /// phone's or one only [visitRead] shows; else that empty draft of theirs, filled.
+  Future<({String id, bool asItIs, bool finished})?> _expandInto(
+    String encounterId,
+    String key,
+    VisitView? visitRead,
+  ) async {
+    final open = await _draftToOpen(encounterId, key);
+    final draft = open == null ? null : _noteRecord(open);
+    if (draft != null && _opensAsItIs(draft)) return (id: draft.id, asItIs: true, finished: false);
+    final finished = await _finishedToOpen(encounterId, key) ?? _finishedInRead(encounterId, key, visitRead);
+    if (finished != null) return (id: finished, asItIs: true, finished: true);
+    return draft == null ? null : (id: draft.id, asItIs: false, finished: false);
+  }
+
+  /// The first finished note of the type [key] that [visitRead], the visit [encounterId] as the server
+  /// read it for the person, shows and the phone does not hold: a teammate's, or one of their own that
+  /// has left the phone (lifecycle 8.2). The read holds only what the person may see (5.1). One the
+  /// phone holds is the phone's to decide, as its copy is the one a refresh keeps current.
+  String? _finishedInRead(String encounterId, String key, VisitView? visitRead) {
+    if (visitRead?.encounterId != encounterId) return null;
+    for (final note in visitRead!.notes) {
+      if (note.noteTypeKey == key && note.finished && store.record(note.noteId) == null) return note.noteId;
+    }
+    return null;
+  }
+
+  /// A draft Expand opens as it is: a teammate's, or the person's own that holds answers.
+  bool _opensAsItIs(LocalRecord draft) => !_actsAsAuthor(draft) || !noteIsEmpty(EncounterRepository._answersOf(draft));
+
+  /// The first finished note of the type [key] in the visit, in its order, that the person may see:
+  /// their own, or a teammate's, with its form on the phone.
+  Future<String?> _finishedToOpen(String encounterId, String key) async {
+    final held = _Held.scan(store, encounterId: encounterId);
+    for (final rec in held.ordered(held.notes)) {
+      if (rec.attributes['noteTypeKey'] != key || store.noteState(rec.id)!.status == NoteStatus.draft) continue;
+      final version = rec.attributes['noteTypeVersion'];
+      final definition = version is int ? await definitions.load(key, version) : null;
+      if (definition == null) continue;
+      if (_actsAsAuthor(rec) || _seesNote(definition, EncounterRepository._answersOf(rec))) return rec.id;
+    }
+    return null;
+  }
+
+  /// **Expand** on a quick note (forms 6.4): the parts of [quickNoteId] that map into [full] (the
+  /// team's listed version of that note type) carried into a full note of it in the same visit,
+  /// every mapped answer written, the quick note keeping its own. Returns the full note to open.
+  ///
+  /// - The full note is a new one, made with its answers in one change, unless the visit has a note
+  ///   of the type already. The draft the note types list would open ([addNote]'s rule) opens as it
+  ///   is when it holds answers ([Expanded.existing]): Expand never writes over an answer. Else the
+  ///   first finished note of the type the person may see opens read-only, nothing copied
+  ///   ([Expanded.finished]): an addendum or a correction adds to it. It is the phone's, or else one
+  ///   that [visitRead] shows (the visit read online or from the cached chart, as the screen holds
+  ///   it; a teammate's note the phone was never sent), which the screen opens from that read. Else
+  ///   the person's own empty draft of the type is filled, by its own version, as a new note would
+  ///   be.
+  /// - What is written is what the interpreter's `expandQuick` gives for the answers of the quick
+  ///   note the person may see, each repeating section of the full note it writes into given a new
+  ///   entry ([newEntryId], at [clock]'s time). What the full note's version doesn't take is left out
+  ///   and listed ([Expanded.leftOut]). A part the person can't chart (it `needs` an ordering
+  ///   credential they lack, forms 10.1 #53) is not carried ([Expanded.notCopied]).
+  /// - A full note of a Medical type brings the person's own Red flags note with it, as [addNote]
+  ///   does, and takes [redFlagsFinished] as it does: the visit read (online, or from the cached
+  ///   chart) shows a finished Red flags note this phone does not hold.
+  ///
+  /// PLAN-OPEN: what Expand does when the visit already has a note of the full type (lifecycle 12.1
+  /// #30). A draft with answers opens as it is, else a finished note read-only, else the person's own
+  /// empty draft is filled: copying again would write a second wound or set of vitals, or over an
+  /// answer.
+  ///
+  /// Throws, writing nothing: [ChartingPaused]; `not_charting`, `medical_credential`, `not_offered`
+  /// and `medical_note_needs_patient` as [addNote]; [RecordLocked] for a quick note that is finished
+  /// or sent for review (Expand is offered while it is charted); `read_only` when an answer to write
+  /// is one the server would hold from the person (an older quick version, whose maps the validator
+  /// no longer checks). An [ArgumentError] for a note that is not quick or a [full] it maps nothing
+  /// into; a [StateError] when the phone lacks the note, its definition, or the person may not see it.
+  Future<Expanded> expand(
+    String quickNoteId,
+    NoteTypeDef full, {
+    String Function()? newEntryId,
+    DateTime Function()? clock,
+    bool redFlagsFinished = false,
+    VisitView? visitRead,
+  }) async {
+    _guardFrozen();
+    final quickRec = _noteRecord(quickNoteId);
+    final quick = await _definitionOf(quickRec);
+    final parts = {
+      for (final t in expandTargets(quick))
+        if (t.noteTypeKey == full.key) t.section,
+    };
+    if (parts.isEmpty) throw ArgumentError.value(full.key, 'full', 'the quick note maps nothing into this note type');
+    final medical = isMedicalType(full);
+    _mayChart(medical: medical);
+    final encounterId = quickRec.attributes['encounterId'] as String? ?? '';
+    final visit = _visit(encounterId);
+    if (medical) _medicalNoteAllowed(visit);
+    final state = store.noteState(quickNoteId)!;
+    if (state.status != NoteStatus.draft || state.sentForReview) throw const RecordLocked();
+    final stored = EncounterRepository._answersOf(quickRec);
+    // All of it to its acting author; to anyone else what the server sent them, as they read it.
+    final seen = _actsAsAuthor(quickRec) ? stored : _visibleTo(quick, stored);
+    if (seen == null) throw StateError('the person may not see this note');
+    final flags = medical && !redFlagsFinished ? await _teamRedFlags() : null;
+
+    final open = await _expandInto(encounterId, full.key, visitRead);
+    LocalRecord? into;
+    if (open != null) {
+      if (open.asItIs) {
+        // A draft of their own opened to chart on brings their Red flags note; a finished note, read,
+        // brings none, and may be one the phone does not hold.
+        if (flags != null && !open.finished && _actsAsAuthor(_noteRecord(open.id))) {
+          await RedFlagsNote(this)._addRedFlagsNote(encounterId, flags);
+        }
+        return Expanded(
+          noteId: open.id,
+          existing: true,
+          finished: open.finished,
+          written: const {},
+          leftOut: const [],
+          notCopied: const [],
+        );
+      }
+      into = _noteRecord(open.id);
+    }
+    final target = into == null ? full : await _definitionOf(into);
+
+    // A part the person can't chart is not theirs to carry (forms 10.1 #53, lifecycle 6.4 rule 5).
+    final barred = {
+      for (final s in quick.sections)
+        if (s.needs == 'orderMedications' && !user.can.orderMedications) s.id,
+    };
+    String sectionOf(String path) => path.split('.').first;
+    final notCopied = [
+      for (final path in effectiveAnswers(quick, seen).keys)
+        if (barred.contains(sectionOf(path)) && parts.contains(sectionOf(path))) path,
+    ];
+    final carried = {
+      for (final MapEntry(:key, :value) in seen.entries)
+        if (!barred.contains(sectionOf(key))) key: value,
+    };
+
+    // A new entry in each repeating section of the full note an answer goes into, at an ID no answer
+    // of the note uses, a removed entry's included (as the form's Add makes one, forms 2.3).
+    final used = into == null ? const <String>{} : EncounterRepository._answersOf(into).keys.toSet();
+    final makeId = newEntryId ?? _makeEntryId;
+    final at = (clock ?? DateTime.now)().toUtc().toIso8601String();
+    final targetSections = {
+      for (final s in quick.sections)
+        for (final m in _mapsTo(s.fields))
+          if (m.key == full.key) m.path.split('.').first,
+    };
+    final entries = <String, ({String id, String at})>{
+      for (final s in target.sections)
+        if (s.repeat != null && targetSections.contains(s.id)) s.id: (id: _unusedEntryId(s.id, used, makeId), at: at),
+    };
+    final expansion = expandQuick(quick, carried, target, entries);
+    if (expansion.answers.keys.any((path) => _heldFromPerson(target, path, actsAsAuthor: true))) {
+      throw EncounterRepository._readOnly;
+    }
+    final leftOut = [
+      for (final l in expansion.leftOut)
+        ExpandLeftOut(
+          path: l.path,
+          target: l.target,
+          problem: l.problem.code,
+          label: fieldAt(quick, l.path)?.field?.label ?? l.path,
+        ),
+    ];
+
+    final withFlags = flags != null && await _needsRedFlags(encounterId, flags);
+    _guardFrozen();
+    final id = store.transaction(() {
+      final String id;
+      if (into == null) {
+        id = store.createNote(
+          encounterId: encounterId,
+          noteTypeKey: full.key,
+          noteTypeVersion: full.version,
+          data: expansion.answers,
+        );
+      } else {
+        id = into.id;
+        for (final MapEntry(:key, :value) in expansion.answers.entries) {
+          store.setField(id, '$_data$key', value);
+        }
+      }
+      if (withFlags) {
+        store.createNote(encounterId: encounterId, noteTypeKey: flags.key, noteTypeVersion: flags.version);
+      }
+      return id;
+    });
+    onChanged?.call();
+    return Expanded(noteId: id, existing: false, written: expansion.answers, leftOut: leftOut, notCopied: notCopied);
+  }
+
+  /// What a reader who does not act as the author sees of a note; null when they may not see it,
+  /// or the phone can't lay it out.
+  Answers? _visibleTo(NoteTypeDef definition, Answers stored) {
+    try {
+      return visibleAnswers(definition, stored, user.reader(actsAsAuthor: false));
+      // A definition the interpreter can't run is one the phone can't lay the note out by.
+      // ignore: avoid_catches_without_on_clauses
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// An entry ID in [section] that no answer in [used] has, from [make].
+String _unusedEntryId(String section, Set<String> used, String Function() make) {
+  for (var tries = 0; tries < 100; tries++) {
+    final id = make();
+    if (!used.any((path) => path.startsWith('$section.$id.'))) return id;
+  }
+  throw StateError('no unused entry ID was made');
+}
+
+/// An entry's ID as the form makes one (forms 2.3): `e` and seven characters from a-z0-9.
+String _makeEntryId() {
+  final random = Random.secure();
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  return 'e${String.fromCharCodes([for (var i = 0; i < 7; i++) chars.codeUnitAt(random.nextInt(chars.length))])}';
+}

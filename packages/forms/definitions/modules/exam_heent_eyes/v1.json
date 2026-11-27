@@ -1,0 +1,102 @@
+{
+  "name": "exam_heent_eyes",
+  "version": 1,
+  "sections": [
+    {
+      "id": "eyes",
+      "title": "Eyes",
+      "spec": "exam-heent-eyes",
+      "showWhen": { "field": "exam.systems", "is": "heent" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "pupils",
+          "kind": "choice",
+          "many": true,
+          "label": "Pupils",
+          "options": [
+            { "code": "perrl", "label": "PERRL", "exclusive": true, "normal": true },
+            { "code": "perrla", "label": "PERRLA", "exclusive": true },
+            { "code": "unequal_pupils", "label": "Unequal pupils" },
+            { "code": "sluggish_reaction", "label": "Sluggish reaction" },
+            { "code": "nonreactive", "label": "Nonreactive" },
+            { "code": "other", "label": "Other", "other": true }
+          ]
+        },
+        {
+          "id": "pupil_size",
+          "kind": "number",
+          "label": "Pupil size",
+          "min": 1,
+          "max": 9,
+          "decimals": 1,
+          "unit": "mm",
+          "sides": true,
+          "showWhen": { "field": "eyes.pupils", "is": "unequal_pupils" }
+        },
+        {
+          "id": "pupil_reaction",
+          "kind": "choice",
+          "many": false,
+          "label": "Pupil reaction",
+          "options": [
+            { "code": "reactive", "label": "Reactive" },
+            { "code": "nonreactive", "label": "Nonreactive" }
+          ],
+          "sides": true,
+          "showWhen": { "field": "eyes.pupils", "is": "unequal_pupils" }
+        },
+        {
+          "id": "movements",
+          "kind": "choice",
+          "many": true,
+          "label": "Extraocular movements",
+          "options": [
+            { "code": "intact", "label": "Intact", "exclusive": true, "normal": true },
+            { "code": "limited", "label": "Limited" },
+            { "code": "pain_with_movement", "label": "Pain with movement" },
+            { "code": "nystagmus", "label": "Nystagmus" },
+            { "code": "diplopia", "label": "Diplopia" }
+          ]
+        },
+        {
+          "id": "conjunctiva",
+          "kind": "choice",
+          "many": true,
+          "label": "Conjunctiva",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "injected", "label": "Injected" },
+            { "code": "pale", "label": "Pale" },
+            { "code": "discharge", "label": "Discharge" }
+          ]
+        },
+        {
+          "id": "sclera",
+          "kind": "choice",
+          "many": false,
+          "label": "Sclera",
+          "options": [
+            { "code": "anicteric", "label": "Anicteric", "normal": true },
+            { "code": "icteric", "label": "Icteric" }
+          ]
+        },
+        {
+          "id": "visual",
+          "kind": "choice",
+          "many": true,
+          "label": "Visual symptoms",
+          "options": [
+            { "code": "vision_normal", "label": "Vision normal", "exclusive": true, "normal": true },
+            { "code": "blurred_vision", "label": "Blurred vision" },
+            { "code": "vision_loss", "label": "Vision loss" },
+            { "code": "photophobia", "label": "Photophobia" },
+            { "code": "eye_pain", "label": "Eye pain" },
+            { "code": "foreign_body_sensation", "label": "Foreign body sensation" }
+          ]
+        },
+        { "id": "other", "kind": "text", "label": "Other eye findings", "lines": "many", "maxLength": 2000 }
+      ]
+    }
+  ]
+}

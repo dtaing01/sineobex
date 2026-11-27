@@ -1,0 +1,56 @@
+{
+  "piece": "exam-psychiatric",
+  "file": "modules/exam_psychiatric/v1.json",
+  "sections": [
+    {
+      "id": "psych_observation",
+      "title": "Psychiatric / behavioral observation",
+      "showWhen": { "field": "exam.systems", "is": "psych_observation" },
+      "normal": true
+    }
+  ],
+  "fields": [
+    {
+      "path": "psych_observation.appearance",
+      "kind": "choice",
+      "many": true,
+      "label": "Appearance / behavior",
+      "options": ["calm", "cooperative", "agitated", "guarded", "tearful", "withdrawn", "disorganized"],
+      "excludes": [["calm", "agitated"]],
+      "flags": { "normal": ["calm", "cooperative"] }
+    },
+    {
+      "path": "psych_observation.speech",
+      "kind": "choice",
+      "many": true,
+      "label": "Speech",
+      "options": ["normal", "rapid", "pressured", "slow", "slurred"],
+      "excludes": [["rapid", "slow"]],
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "psych_observation.affect",
+      "kind": "choice",
+      "many": true,
+      "label": "Affect",
+      "options": ["appropriate", "flat", "blunted", "anxious", "tearful", "irritable"],
+      "flags": { "exclusive": ["appropriate"], "normal": ["appropriate"] }
+    },
+    {
+      "path": "psych_observation.thought",
+      "kind": "choice",
+      "many": true,
+      "label": "Thought process",
+      "options": ["linear", "circumstantial", "tangential", "disorganized"],
+      "flags": { "exclusive": ["linear"], "normal": ["linear"] }
+    },
+    {
+      "path": "psych_observation.orientation",
+      "kind": "choice",
+      "many": true,
+      "label": "Oriented to",
+      "options": ["person", "place", "time", "situation"],
+      "flags": { "normal": ["person", "place", "time", "situation"] }
+    }
+  ]
+}

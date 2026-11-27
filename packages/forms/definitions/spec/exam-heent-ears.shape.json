@@ -1,0 +1,64 @@
+{
+  "piece": "exam-heent-ears",
+  "file": "modules/exam_heent_ears/v1.json",
+  "sections": [
+    { "id": "ears", "title": "Ears", "showWhen": { "field": "exam.systems", "is": "heent" }, "normal": true }
+  ],
+  "fields": [
+    {
+      "path": "ears.external",
+      "kind": "choice",
+      "many": true,
+      "label": "External ear",
+      "options": ["normal", "tender", "swelling", "erythema", "lesion", "drainage"],
+      "sides": true,
+      "flags": { "exclusive": ["normal"], "normal": ["normal"] }
+    },
+    {
+      "path": "ears.canal",
+      "kind": "choice",
+      "many": true,
+      "label": "Ear canal",
+      "options": ["clear", "cerumen", "erythema", "edema", "discharge", "foreign_body"],
+      "sides": true,
+      "flags": { "exclusive": ["clear"], "normal": ["clear"] }
+    },
+    {
+      "path": "ears.tympanic",
+      "kind": "choice",
+      "many": true,
+      "label": "Tympanic membrane",
+      "options": [
+        "normal",
+        "erythematous",
+        "bulging",
+        "retracted",
+        "perforated",
+        "effusion",
+        "unable_to_visualize"
+      ],
+      "sides": true,
+      "flags": {
+        "exclusive": ["normal", "unable_to_visualize"],
+        "normal": ["normal"],
+        "unable": ["unable_to_visualize"]
+      }
+    },
+    {
+      "path": "ears.hearing",
+      "kind": "choice",
+      "many": false,
+      "label": "Hearing",
+      "options": ["grossly_intact", "decreased"],
+      "flags": { "normal": ["grossly_intact"] }
+    },
+    {
+      "path": "ears.hearing_side",
+      "kind": "choice",
+      "many": false,
+      "label": "Hearing decreased on",
+      "options": { "list": "side" },
+      "showWhen": { "field": "ears.hearing", "is": "decreased" }
+    }
+  ]
+}

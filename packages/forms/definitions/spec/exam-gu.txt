@@ -1,0 +1,65 @@
+      9\. Genitourinary (GU)
+
+      Hidden by default unless specifically selected.
+
+      A. General Findings
+
+      &#32;&#32;&#32;&#32;•   No acute findings
+
+      &#32;&#32;&#32;&#32;•   Dysuria
+
+      &#32;&#32;&#32;&#32;•   Frequency
+
+      &#32;&#32;&#32;&#32;•   Urgency
+
+      &#32;&#32;&#32;&#32;•   Hematuria
+
+      &#32;&#32;&#32;&#32;•   Flank pain
+
+      &#32;&#32;&#32;&#32;•   Pelvic pain
+
+      &#32;&#32;&#32;&#32;•   Discharge
+
+      &#32;&#32;&#32;&#32;•   Genital lesion
+
+      &#32;&#32;&#32;&#32;•   Testicular pain / swelling
+
+      B. External Exam
+
+      &#32;&#32;&#32;&#32;•   Normal
+
+      &#32;&#32;&#32;&#32;•   Lesion
+
+      &#32;&#32;&#32;&#32;•   Ulcer
+
+      &#32;&#32;&#32;&#32;•   Rash
+
+      &#32;&#32;&#32;&#32;•   Discharge
+
+      &#32;&#32;&#32;&#32;•   Swelling
+
+      &#32;&#32;&#32;&#32;•   Tenderness
+
+      C. Costovertebral Angle (CVA)
+
+      &#32;&#32;&#32;&#32;•   No tenderness
+
+      &#32;&#32;&#32;&#32;•   Right
+
+      &#32;&#32;&#32;&#32;•   Left
+
+      &#32;&#32;&#32;&#32;•   Bilateral
+
+      D. Optional Sensitive Exam Workflow
+
+      &#32;&#32;&#32;&#32;•   Exam performed
+
+      If performed:
+
+      &#32;&#32;&#32;&#32;•   Chaperone: Yes / No
+
+      &#32;&#32;&#32;&#32;•   Patient consent: Yes
+
+      &#32;&#32;&#32;&#32;•   Findings: Structured inputs
+
+      Privacy requirement: Sensitive findings should have additional privacy protections and should not automatically appear prominently on the patient overview.

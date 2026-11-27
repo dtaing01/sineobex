@@ -1,0 +1,47 @@
+{
+  "piece": "exam-cv-rhythm",
+  "notOptions": [],
+  "added": ["Normal"],
+  "differences": [
+    {
+      "line": 1,
+      "what": "A module, exam_cv_rhythm, that the General note type includes: its section Heart rate, rhythm and sounds shows only while Cardiovascular (exam.systems is cardiovascular) is picked in the exam picker, and offers one-tap Normal. Cardiovascular is two modules, one for each piece; exam_cv_perfusion is the other.",
+      "why": "PRD main 414; forms 6.3; focused-exam inventory section 7 (pieces 6 and 7), default 10"
+    },
+    {
+      "line": 3,
+      "what": "Rate / Rhythm is two choose-one questions (Oct 19): Rate is Normal (added), Tachycardic or Bradycardic; Rhythm is Regular or Irregular. Normal fills Normal and Regular.",
+      "why": "PRD main 103; focused-exam inventory default 2"
+    },
+    {
+      "line": 13,
+      "what": "Heart sounds is choose-many. Normal S1/S2 is the normal option and is not exclusive: normal first and second sounds are charted with a murmur, rub or gallop beside them. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 26, 31 (a reading of default 13, as for Moist: Normal S1/S2 describes the first and second heart sounds, not every sound); PLAN-OPEN (forms 10.1 #23): the clinical team confirms which normal options are held beside a finding"
+    },
+    {
+      "line": 25,
+      "what": "If Murmur Is Present: a group, Murmur, that shows only while Murmur is picked, holding Location, Character, Intensity and Radiation.",
+      "why": "focused-exam inventory 3.3; PRD main 414"
+    },
+    {
+      "line": 27,
+      "what": "Location is choose-many. Other asks for a short text.",
+      "why": "focused-exam inventory default 13, 31"
+    },
+    {
+      "line": 39,
+      "what": "Character is choose-one.",
+      "why": "focused-exam inventory default 14 (a three-way state list)"
+    },
+    {
+      "line": 47,
+      "what": "Intensity is a whole number from 1 to 6, shown out of 6.",
+      "why": "focused-exam inventory default 44"
+    },
+    {
+      "line": 49,
+      "what": "Radiation is choose-many. None is exclusive. Other asks for a short text.",
+      "why": "focused-exam inventory 3.3, default 13, 31"
+    }
+  ]
+}

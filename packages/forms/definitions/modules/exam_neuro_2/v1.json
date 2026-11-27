@@ -1,0 +1,105 @@
+{
+  "name": "exam_neuro_2",
+  "version": 1,
+  "sections": [
+    {
+      "id": "neuro_motor",
+      "title": "Neurologic: strength, sensation, coordination, reflexes and gait",
+      "spec": "exam-neuro-2",
+      "showWhen": { "field": "exam.systems", "is": "neurologic" },
+      "normal": true,
+      "fields": [
+        {
+          "id": "strength",
+          "kind": "grid",
+          "label": "Motor strength",
+          "sides": true,
+          "rows": [
+            { "code": "upper_extremity", "label": "Upper extremity" },
+            { "code": "lower_extremity", "label": "Lower extremity" }
+          ],
+          "cell": {
+            "id": "score",
+            "kind": "number",
+            "label": "Strength",
+            "min": 0,
+            "max": 5,
+            "decimals": 0,
+            "display": "outOf",
+            "normal": 5
+          }
+        },
+        {
+          "id": "sensory",
+          "kind": "choice",
+          "many": true,
+          "label": "Sensory",
+          "options": [
+            { "code": "intact", "label": "Intact", "exclusive": true, "normal": true },
+            { "code": "decreased", "label": "Decreased" },
+            { "code": "numbness", "label": "Numbness" },
+            { "code": "tingling", "label": "Tingling" },
+            { "code": "asymmetric", "label": "Asymmetric" }
+          ]
+        },
+        {
+          "id": "sensory_location",
+          "kind": "region",
+          "label": "Location",
+          "options": { "list": "body_region" },
+          "side": "side",
+          "showWhen": {
+            "field": "neuro_motor.sensory",
+            "is": ["decreased", "numbness", "tingling", "asymmetric"]
+          }
+        },
+        {
+          "id": "coordination",
+          "kind": "choice",
+          "many": true,
+          "label": "Coordination",
+          "options": [
+            { "code": "finger_to_nose_normal", "label": "Finger-to-nose normal", "normal": true },
+            { "code": "heel_to_shin_normal", "label": "Heel-to-shin normal", "normal": true },
+            { "code": "abnormal", "label": "Abnormal" },
+            { "code": "unable", "label": "Unable", "exclusive": true, "unable": true }
+          ]
+        },
+        {
+          "id": "reflexes",
+          "kind": "grid",
+          "label": "Reflexes",
+          "collapsed": true,
+          "sides": true,
+          "rows": [
+            { "code": "biceps", "label": "Biceps" },
+            { "code": "triceps", "label": "Triceps" },
+            { "code": "patellar", "label": "Patellar" },
+            { "code": "achilles", "label": "Achilles" }
+          ],
+          "cell": {
+            "id": "grade",
+            "kind": "choice",
+            "many": false,
+            "label": "Grade",
+            "options": { "list": "reflex_scale" }
+          }
+        },
+        {
+          "id": "gait",
+          "kind": "choice",
+          "many": true,
+          "label": "Gait",
+          "options": [
+            { "code": "normal", "label": "Normal", "exclusive": true, "normal": true },
+            { "code": "ataxic", "label": "Ataxic" },
+            { "code": "antalgic", "label": "Antalgic" },
+            { "code": "shuffling", "label": "Shuffling" },
+            { "code": "unsteady", "label": "Unsteady" },
+            { "code": "unable", "label": "Unable", "exclusive": true, "unable": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

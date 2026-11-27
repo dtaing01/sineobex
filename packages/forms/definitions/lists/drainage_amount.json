@@ -1,0 +1,10 @@
+{
+  "name": "drainage_amount",
+  "options": [
+    { "code": "none", "label": "None" },
+    { "code": "scant", "label": "Scant" },
+    { "code": "small", "label": "Small" },
+    { "code": "moderate", "label": "Moderate" },
+    { "code": "large", "label": "Large" }
+  ]
+}

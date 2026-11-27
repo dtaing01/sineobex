@@ -1,0 +1,9 @@
+# Supabase CLI configuration for the preview build only (made-up patients).
+# Deploy: pnpm --filter @sineobex/api build && supabase functions deploy api --project-ref <ref> --workdir services/api
+project_id = "sineobex-preview"
+
+[functions.api]
+# The API verifies its own OIDC tokens and serves public endpoints (/v1/health, /v1/time),
+# so Supabase's gateway JWT check is off for this function.
+verify_jwt = false
+entrypoint = "./functions/api/bundle.js"

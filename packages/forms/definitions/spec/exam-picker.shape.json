@@ -1,0 +1,41 @@
+{
+  "piece": "exam-picker",
+  "file": "note-types/general_primary_care/v1.json",
+  "sections": [{ "id": "exam", "title": "Focused exam" }],
+  "fields": [
+    {
+      "path": "exam.systems",
+      "kind": "choice",
+      "many": true,
+      "label": "What did you examine?",
+      "options": [
+        { "code": "general_appearance", "label": "General" },
+        "heent",
+        { "code": "cardiovascular", "label": "Cardiac" },
+        "pulmonary",
+        { "code": "abdominal", "label": "Abdomen" },
+        "msk",
+        { "code": "neurologic", "label": "Neuro" },
+        "skin",
+        "peripheral_vascular",
+        { "code": "diabetic_foot", "label": "Foot" },
+        "gu",
+        { "code": "psych_observation", "label": "Psych" },
+        { "code": "lymphatic", "label": "Lymph" },
+        "neck_thyroid",
+        "breast",
+        "rectal",
+        "other"
+      ],
+      "flags": { "sensitiveExam": ["gu", "breast", "rectal"], "other": ["other"] }
+    },
+    {
+      "path": "exam.other_findings",
+      "kind": "text",
+      "label": "Other exam findings",
+      "lines": "many",
+      "maxLength": 2000,
+      "showWhen": { "field": "exam.systems", "is": "other" }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "demo_yes_no",
+  "options": [
+    { "code": "yes", "label": "Yes" },
+    { "code": "no", "label": "No" }
+  ]
+}

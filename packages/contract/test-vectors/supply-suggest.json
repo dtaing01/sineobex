@@ -1,0 +1,435 @@
+{
+  "note": "Hand-written (phase 5 design 5.3; PRD main 424-431, 441-442). Supplies a note suggests, and what a bundle applies: suggestSupplies and bundleLines in packages/presets/src/supplies.ts and apps/mobile/lib/presets/ (P2-supplies). The readers are packages/presets/test/supplies.test.ts and the phone's supplies test. Phase 6 calls them; this phase pins them. suggestSupplies({maps, items, noteTypeKey, definition, answers}): maps are the team's active field supply maps, each {id, body}; items the team's items by id, each {state}; noteTypeKey the note's type and definition its own version (one of this file's `definitions`, which pass forms' validate()); answers what the suggesting person may see of the note (visibleAnswers, forms 7.1), so an answer hidden from them, or in a field hidden by a condition, is not there to fire anything. A map fires only on a note of its noteTypeKey. With no path it fires once for the note, whatever the answers. Otherwise it fires where the note holds an answer at its path (its entry part put back: once for each entry of a repeating section that holds one, each wound its own firing) and the answer passes its when: answered, any answer; includes c, a choose-many holding c or a choose-one that is c; equals v, a choose-one that is v, a choose-many holding v alone, a number equal to v, a tick when v is true. A path this version of the note type lacks never fires. Each firing adds each line's quantity: qty, or {fromPath}, the answer at that path in the same entry (or row), read as a whole number from 0 to 99; anything else, or no answer, gives 0. A line whose item is archived, or not among items, is skipped. The answer is [{itemId, qty, mapId}]: one suggestion per map and item, the quantities of that map's lines naming that item summed over every firing; one that sums to 0 is left out. Two maps naming one item give a suggestion each. Suggestions are in the order of the maps given, each map's items in the order its lines first name them. bundleLines(bundle, items, multiplier): each line of the bundle body in order, {itemId, qty: the line's qty times multiplier, checked: the line's core}, a line whose item is archived or not among items left out. multiplier is the number of times the bundle is given (\"- 2 kits +\"), a whole number from 1. Ids and names are made up.",
+  "items": {
+    "00000000-0000-4000-8000-00000000a001": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a002": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a003": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a004": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a005": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a006": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a007": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a008": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a009": {"state": "archived"},
+    "00000000-0000-4000-8000-00000000a00a": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a00b": {"state": "active"},
+    "00000000-0000-4000-8000-00000000a00c": {"state": "active"}
+  },
+  "definitions": {
+    "demo_supplies": {"key": "demo_supplies", "version": 1, "title": "Demo supplies", "kinds": ["medical", "non_medical"], "group": "social", "sensitivity": "none", "sections": [{"id": "supplies", "title": "Demo supplies given", "fields": [{"id": "given", "label": "Demo given", "kind": "choice", "many": true, "options": [{"code": "water", "label": "Water"}, {"code": "socks", "label": "Socks"}, {"code": "other", "label": "Other", "other": true}]}, {"id": "size", "label": "Demo size", "kind": "choice", "many": false, "options": [{"code": "small", "label": "Small"}, {"code": "large", "label": "Large"}]}, {"id": "count", "label": "Demo count", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "amount", "label": "Demo amount", "kind": "number", "min": 0, "max": 10, "decimals": 1, "unit": "L"}, {"id": "kit", "label": "Demo kit given", "kind": "flag"}, {"id": "notes", "label": "Demo notes", "kind": "text", "lines": "one", "maxLength": 200}, {"id": "when", "label": "Demo date", "kind": "date", "range": "any"}, {"id": "for", "label": "Demo how long", "kind": "duration"}, {"id": "at", "label": "Demo time", "kind": "time"}, {"id": "pair", "label": "Demo pair", "kind": "choice", "many": false, "options": [{"code": "yes", "label": "Yes"}, {"code": "no", "label": "No"}], "sides": true}, {"id": "spot", "label": "Demo spot", "kind": "region", "options": [{"code": "arm", "label": "Arm"}, {"code": "leg", "label": "Leg"}]}, {"id": "pack", "label": "Demo pack", "kind": "group", "layout": "stack", "fields": [{"id": "contents", "label": "Demo contents", "kind": "choice", "many": true, "options": [{"code": "gauze", "label": "Gauze"}, {"code": "tape", "label": "Tape"}]}]}, {"id": "kits", "label": "Demo kits", "kind": "grid", "rows": [{"code": "food", "label": "Food"}, {"code": "hygiene", "label": "Hygiene"}], "cell": {"id": "kit", "label": "Demo kit", "kind": "group", "layout": "row", "fields": [{"id": "handed", "label": "Demo handed out", "kind": "flag"}, {"id": "count", "label": "Demo how many", "kind": "number", "min": 0, "max": 20, "decimals": 0}]}}, {"id": "info", "label": "Demo: count what was given.", "kind": "info"}, {"id": "photo", "label": "Demo photo", "kind": "photo", "max": 1}]}, {"id": "visits", "title": "Demo stops", "repeat": {"max": 5, "itemTitle": "Demo stop {n}"}, "fields": [{"id": "type", "label": "Demo stop type", "kind": "choice", "many": false, "options": [{"code": "food", "label": "Food"}, {"code": "water", "label": "Water"}]}, {"id": "n", "label": "Demo handed out", "kind": "number", "min": 0, "max": 99, "decimals": 0}, {"id": "packs", "label": "Demo packs", "kind": "grid", "rows": [{"code": "small", "label": "Small"}, {"code": "large", "label": "Large"}], "cell": {"id": "count", "label": "Demo packs given", "kind": "number", "min": 0, "max": 99, "decimals": 0}}]}, {"id": "later", "title": "Demo later", "fields": [{"id": "extra", "label": "Demo extra", "kind": "number", "min": 0, "max": 99, "decimals": 0}]}, {"id": "rounds", "title": "Demo rounds", "repeat": {"max": 5, "itemTitle": "Demo round {n}"}, "fields": [{"id": "n", "label": "Demo given this round", "kind": "number", "min": 0, "max": 99, "decimals": 0}]}]},
+    "demo_care": {"key": "demo_care", "version": 1, "title": "Demo care", "kinds": ["medical"], "group": "wound", "sensitivity": "none", "sections": [{"id": "preventive", "title": "Demo vaccines", "fields": [{"id": "vaccines", "label": "Demo vaccines", "kind": "choice", "many": true, "options": [{"code": "flu", "label": "Flu"}, {"code": "covid", "label": "COVID"}]}, {"id": "status", "label": "Demo status", "kind": "grid", "rows": {"pickedIn": "preventive.vaccines"}, "cell": {"id": "state", "label": "Demo state", "kind": "choice", "many": false, "options": [{"code": "given_today", "label": "Given today"}, {"code": "declined", "label": "Declined"}]}}]}, {"id": "wound", "title": "Demo wound", "repeat": {"max": 10, "itemTitle": "Demo wound {n}"}, "fields": [{"id": "treatment", "label": "Demo treatment", "kind": "group", "layout": "stack", "fields": [{"id": "dressing", "label": "Demo dressing", "kind": "choice", "many": true, "options": [{"code": "gauze", "label": "Gauze"}, {"code": "xeroform", "label": "Xeroform"}, {"code": "other", "label": "Other", "other": true}]}, {"id": "used", "label": "Demo pieces used", "kind": "number", "min": 0, "max": 120, "decimals": 0}]}]}]}
+  },
+  "suggestSupplies": [
+    {
+      "name": "a map with no path fires once for a note of its type",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.notes": "Demo"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a map with no path fires on a note with no answers",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 2}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 2, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a map with no path fires once, however many entries the note has",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food", "visits.e0000002.entryAt": "2026-01-01T10:05:00Z", "visits.e0000002.type": "water", "visits.e0000003.entryAt": "2026-01-01T10:10:00Z", "visits.e0000003.type": "food"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a map of another note type never fires",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_care", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}, {"id": "00000000-0000-4000-8000-00000000d002", "body": {"name": "Demo: Map 2", "noteTypeKey": "demo_care", "path": "preventive.vaccines", "when": {"includes": "flu"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": []
+    },
+    {
+      "name": "includes fires on a choose-many holding the code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water", "socks"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "includes does not fire on a choose-many without the code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "socks"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a006", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": []
+    },
+    {
+      "name": "includes never fires on a number, which holds no code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"includes": "five"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.count": 3},
+      "expected": []
+    },
+    {
+      "name": "a map on an entry's own answer, which names no field, never fires",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "visits.entryAt", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food"},
+      "expected": []
+    },
+    {
+      "name": "equals on a choose-many fires when it holds that code alone",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"equals": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "equals on a choose-many does not fire when it holds more",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"equals": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water", "socks"]},
+      "expected": []
+    },
+    {
+      "name": "equals on a choose-one fires on its code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.size", "when": {"equals": "large"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 2}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.size": "large"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 2, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "equals on a choose-one does not fire on another code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.size", "when": {"equals": "large"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 2}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.size": "small"},
+      "expected": []
+    },
+    {
+      "name": "includes on a choose-one fires on its code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.size", "when": {"includes": "small"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.size": "small"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "the Other option fires as any other code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "other"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00c", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["other"], "supplies.given_other": "Demo blanket"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00c", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "answered fires on a text that is there",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.notes", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.notes": "Demo"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "answered does not fire on a field with no answer",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.notes", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.count": 3},
+      "expected": []
+    },
+    {
+      "name": "answered fires on a choose-many that is there",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["socks"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "equals on a number fires on that number",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 2}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.count": 2},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "equals on a number does not fire on another",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.count", "when": {"equals": 2}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.count": 3},
+      "expected": []
+    },
+    {
+      "name": "equals on a decimal number fires on that number",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.amount", "when": {"equals": 2.5}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.amount": 2.5},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "equals true fires on a tick that is set",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.kit": true},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a tick that is not there does not fire",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.notes": "Demo"},
+      "expected": []
+    },
+    {
+      "name": "in a repeating section a map fires once for each entry it holds for",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food", "visits.e0000002.entryAt": "2026-01-01T10:05:00Z", "visits.e0000002.type": "water", "visits.e0000003.entryAt": "2026-01-01T10:10:00Z", "visits.e0000003.type": "food"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 2, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "each entry adds its quantity: three wounds dressed, two pieces each",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_care", "path": "wound.treatment.dressing", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2}]}}],
+      "noteTypeKey": "demo_care",
+      "definition": "demo_care",
+      "answers": {"wound.e0000001.entryAt": "2026-01-01T10:00:00Z", "wound.e0000001.treatment.dressing": ["gauze"], "wound.e0000002.entryAt": "2026-01-01T10:05:00Z", "wound.e0000002.treatment.dressing": ["xeroform"], "wound.e0000003.entryAt": "2026-01-01T10:10:00Z", "wound.e0000003.treatment.dressing": ["gauze", "xeroform"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 6, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "includes in a repeating section fires only in the entries that hold it",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_care", "path": "wound.treatment.dressing", "when": {"includes": "xeroform"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a003", "qty": 1}]}}],
+      "noteTypeKey": "demo_care",
+      "definition": "demo_care",
+      "answers": {"wound.e0000001.entryAt": "2026-01-01T10:00:00Z", "wound.e0000001.treatment.dressing": ["gauze"], "wound.e0000002.entryAt": "2026-01-01T10:05:00Z", "wound.e0000002.treatment.dressing": ["xeroform"], "wound.e0000003.entryAt": "2026-01-01T10:10:00Z", "wound.e0000003.treatment.dressing": ["gauze", "xeroform"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a003", "qty": 2, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity read from a number in the same entry",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": {"fromPath": "visits.n"}}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food", "visits.e0000001.n": 3, "visits.e0000002.entryAt": "2026-01-01T10:05:00Z", "visits.e0000002.type": "water", "visits.e0000002.n": 7, "visits.e0000003.entryAt": "2026-01-01T10:10:00Z", "visits.e0000003.type": "food", "visits.e0000003.n": 2},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 5, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity read from the field the map fires on",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_care", "path": "wound.treatment.used", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "wound.treatment.used"}}]}}],
+      "noteTypeKey": "demo_care",
+      "definition": "demo_care",
+      "answers": {"wound.e0000001.entryAt": "2026-01-01T10:00:00Z", "wound.e0000001.treatment.used": 4, "wound.e0000002.entryAt": "2026-01-01T10:05:00Z", "wound.e0000002.treatment.used": 1},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 5, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity that is not a whole number gives 0, and its line is left out",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": {"fromPath": "supplies.amount"}}, {"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"], "supplies.amount": 2.5},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity of 99 is read as it is",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_care", "path": "wound.treatment.used", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "wound.treatment.used"}}]}}],
+      "noteTypeKey": "demo_care",
+      "definition": "demo_care",
+      "answers": {"wound.e0000001.entryAt": "2026-01-01T10:00:00Z", "wound.e0000001.treatment.used": 99},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 99, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity above 99 gives 0",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_care", "path": "wound.treatment.used", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": {"fromPath": "wound.treatment.used"}}]}}],
+      "noteTypeKey": "demo_care",
+      "definition": "demo_care",
+      "answers": {"wound.e0000001.entryAt": "2026-01-01T10:00:00Z", "wound.e0000001.treatment.used": 100, "wound.e0000002.entryAt": "2026-01-01T10:05:00Z", "wound.e0000002.treatment.used": 2},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity of 0 adds nothing, and a line that sums to 0 is left out",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": {"fromPath": "visits.n"}}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food", "visits.e0000001.n": 0},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity whose number is not there gives 0",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": {"fromPath": "visits.n"}}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food"},
+      "expected": []
+    },
+    {
+      "name": "a quantity read from a number outside a repeating section",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": {"fromPath": "later.extra"}}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"], "later.extra": 6},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 6, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a quantity is read in the entry the map fired in, never in another section's entry of the same id",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "visits.type", "when": {"equals": "food"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": {"fromPath": "rounds.n"}}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food", "rounds.e0000001.entryAt": "2026-01-01T10:00:00Z", "rounds.e0000001.n": 4},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a map with no path reads its quantity once",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": {"fromPath": "later.extra"}}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.type": "food", "visits.e0000002.entryAt": "2026-01-01T10:05:00Z", "visits.e0000002.type": "food", "later.extra": 4},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 4, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a line naming an item twice in one map is summed into one suggestion",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": {"fromPath": "supplies.count"}}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"], "supplies.count": 3},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 4, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "two maps suggesting one item give a suggestion each, each with its map",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}, {"id": "00000000-0000-4000-8000-00000000d002", "body": {"name": "Demo: Map 2", "noteTypeKey": "demo_supplies", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 2}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 2, "mapId": "00000000-0000-4000-8000-00000000d002"}]
+    },
+    {
+      "name": "suggestions come map by map in the order given, each map’s items in the order of its lines",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a006", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a006", "qty": 1}]}}, {"id": "00000000-0000-4000-8000-00000000d002", "body": {"name": "Demo: Map 2", "noteTypeKey": "demo_supplies", "path": "supplies.kit", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["socks"], "supplies.kit": true},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a006", "qty": 2, "mapId": "00000000-0000-4000-8000-00000000d001"}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}, {"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d002"}]
+    },
+    {
+      "name": "a line naming an archived item is skipped, the rest of the map kept",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a009", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a line naming an item that is not there is skipped",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-000000009999", "qty": 1}, {"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a map whose path this version of the note type lacks never fires",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.retired", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]}}, {"id": "00000000-0000-4000-8000-00000000d002", "body": {"name": "Demo: Map 2", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "blanket"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": []
+    },
+    {
+      "name": "a grid cell whose rows are picked fires in the row that holds the code",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_care", "path": "preventive.status.flu", "when": {"equals": "given_today"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a007", "qty": 1}]}}, {"id": "00000000-0000-4000-8000-00000000d002", "body": {"name": "Demo: Map 2", "noteTypeKey": "demo_care", "path": "preventive.status.covid", "when": {"equals": "given_today"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a008", "qty": 1}]}}],
+      "noteTypeKey": "demo_care",
+      "definition": "demo_care",
+      "answers": {"preventive.vaccines": ["flu", "covid"], "preventive.status.flu": "given_today", "preventive.status.covid": "declined"},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a007", "qty": 1, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a cell of a group in a fixed row, with its quantity read from that row",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.kits.food.handed", "when": {"equals": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": {"fromPath": "supplies.kits.food.count"}}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.kits.food.handed": true, "supplies.kits.food.count": 4, "supplies.kits.hygiene.count": 9},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 4, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "a cell of a grid in a repeating section fires in each entry",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "visits.packs.small", "when": {"answered": true}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": {"fromPath": "visits.packs.small"}}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"visits.e0000001.entryAt": "2026-01-01T10:00:00Z", "visits.e0000001.packs.small": 2, "visits.e0000001.packs.large": 5, "visits.e0000002.entryAt": "2026-01-01T10:05:00Z", "visits.e0000002.packs.large": 1, "visits.e0000003.entryAt": "2026-01-01T10:10:00Z", "visits.e0000003.packs.small": 3},
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00b", "qty": 5, "mapId": "00000000-0000-4000-8000-00000000d001"}]
+    },
+    {
+      "name": "an answer hidden from the suggesting person is not among the answers given, so nothing fires",
+      "maps": [{"id": "00000000-0000-4000-8000-00000000d001", "body": {"name": "Demo: Map 1", "noteTypeKey": "demo_supplies", "path": "supplies.given", "when": {"includes": "water"}, "lines": [{"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 1}]}}],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.count": 1},
+      "expected": []
+    },
+    {
+      "name": "no maps, no suggestions",
+      "maps": [],
+      "noteTypeKey": "demo_supplies",
+      "definition": "demo_supplies",
+      "answers": {"supplies.given": ["water"]},
+      "expected": []
+    }
+  ],
+  "bundleLines": [
+    {
+      "name": "each line in order, a core one checked and an optional one not",
+      "bundle": {"name": "Demo: Bundle", "medical": true, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a00c", "qty": 1, "core": false}]},
+      "multiplier": 1,
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "checked": true}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1, "checked": true}, {"itemId": "00000000-0000-4000-8000-00000000a00c", "qty": 1, "checked": false}]
+    },
+    {
+      "name": "a multiplier of 2 doubles every line",
+      "bundle": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 2, "core": false}]},
+      "multiplier": 2,
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a004", "qty": 2, "checked": true}, {"itemId": "00000000-0000-4000-8000-00000000a005", "qty": 4, "checked": false}]
+    },
+    {
+      "name": "a multiplier of 3",
+      "bundle": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "core": true}]},
+      "multiplier": 3,
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 6, "checked": true}]
+    },
+    {
+      "name": "a line whose item is archived is left out",
+      "bundle": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a009", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1, "core": false}]},
+      "multiplier": 1,
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 2, "checked": true}, {"itemId": "00000000-0000-4000-8000-00000000a002", "qty": 1, "checked": false}]
+    },
+    {
+      "name": "a line whose item is not there is left out",
+      "bundle": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-000000009999", "qty": 1, "core": true}, {"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1, "core": true}]},
+      "multiplier": 1,
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a001", "qty": 1, "checked": true}]
+    },
+    {
+      "name": "a bundle whose every item is archived gives nothing",
+      "bundle": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a009", "qty": 1, "core": true}]},
+      "multiplier": 2,
+      "expected": []
+    },
+    {
+      "name": "a line of 99 times 3 is 297: the multiplier is the kits given",
+      "bundle": {"name": "Demo: Bundle", "medical": false, "prompt": "", "lines": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 99, "core": true}]},
+      "multiplier": 3,
+      "expected": [{"itemId": "00000000-0000-4000-8000-00000000a00a", "qty": 297, "checked": true}]
+    }
+  ]
+}

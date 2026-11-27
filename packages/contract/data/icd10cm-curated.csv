@@ -1,0 +1,439 @@
+# ICD-10-CM codes common in street medicine, for the phone's problem list and its code search
+# (phase 3 design 9.5): wounds and burns by site, cold and heat, bites, skin and foot problems,
+# infections, chronic disease, mental health, substance use and overdose, pregnancy and
+# reproductive care, and social needs. A problem may be saved with no code at all.
+#
+# Codes and titles are exactly as published by CDC/NCHS, which places ICD-10-CM in the public
+# domain: the official long descriptions of the ICD-10-CM tabular list, April 1, 2026 release
+# (FY2026). Every code here is billable (a complete code) in that release and is unchanged (not
+# deleted, retitled or made a header) by the FY2027 update effective October 1, 2026. A code with a
+# 7th character carries the tabular's text for it (", initial encounter"). `group` is this
+# project's own, for grouping the list on the phone.
+code,title,group
+S01.01XA,"Laceration without foreign body of scalp, initial encounter",wounds
+S01.81XA,"Laceration without foreign body of other part of head, initial encounter",wounds
+S00.03XA,"Contusion of scalp, initial encounter",wounds
+S00.83XA,"Contusion of other part of head, initial encounter",wounds
+S51.811A,"Laceration without foreign body of right forearm, initial encounter",wounds
+S51.812A,"Laceration without foreign body of left forearm, initial encounter",wounds
+S60.511A,"Abrasion of right hand, initial encounter",wounds
+S60.512A,"Abrasion of left hand, initial encounter",wounds
+S61.411A,"Laceration without foreign body of right hand, initial encounter",wounds
+S61.412A,"Laceration without foreign body of left hand, initial encounter",wounds
+S80.811A,"Abrasion, right lower leg, initial encounter",wounds
+S80.812A,"Abrasion, left lower leg, initial encounter",wounds
+S81.811A,"Laceration without foreign body, right lower leg, initial encounter",wounds
+S81.812A,"Laceration without foreign body, left lower leg, initial encounter",wounds
+S90.811A,"Abrasion, right foot, initial encounter",wounds
+S90.812A,"Abrasion, left foot, initial encounter",wounds
+S91.311A,"Laceration without foreign body, right foot, initial encounter",wounds
+S91.312A,"Laceration without foreign body, left foot, initial encounter",wounds
+T14.8XXA,"Other injury of unspecified body region, initial encounter",wounds
+T14.90XA,"Injury, unspecified, initial encounter",wounds
+S93.401A,"Sprain of unspecified ligament of right ankle, initial encounter",injuries
+S93.402A,"Sprain of unspecified ligament of left ankle, initial encounter",injuries
+S83.91XA,"Sprain of unspecified site of right knee, initial encounter",injuries
+S83.92XA,"Sprain of unspecified site of left knee, initial encounter",injuries
+S63.501A,"Unspecified sprain of right wrist, initial encounter",injuries
+S63.502A,"Unspecified sprain of left wrist, initial encounter",injuries
+S39.012A,"Strain of muscle, fascia and tendon of lower back, initial encounter",injuries
+S22.31XA,"Fracture of one rib, right side, initial encounter for closed fracture",injuries
+S22.32XA,"Fracture of one rib, left side, initial encounter for closed fracture",injuries
+S02.2XXA,"Fracture of nasal bones, initial encounter for closed fracture",injuries
+S06.0X0A,"Concussion without loss of consciousness, initial encounter",injuries
+S09.90XA,"Unspecified injury of head, initial encounter",injuries
+T20.10XA,"Burn of first degree of head, face, and neck, unspecified site, initial encounter",burns
+T20.20XA,"Burn of second degree of head, face, and neck, unspecified site, initial encounter",burns
+T22.111A,"Burn of first degree of right forearm, initial encounter",burns
+T22.112A,"Burn of first degree of left forearm, initial encounter",burns
+T22.211A,"Burn of second degree of right forearm, initial encounter",burns
+T22.212A,"Burn of second degree of left forearm, initial encounter",burns
+T23.101A,"Burn of first degree of right hand, unspecified site, initial encounter",burns
+T23.102A,"Burn of first degree of left hand, unspecified site, initial encounter",burns
+T23.201A,"Burn of second degree of right hand, unspecified site, initial encounter",burns
+T23.202A,"Burn of second degree of left hand, unspecified site, initial encounter",burns
+T24.201A,"Burn of second degree of unspecified site of right lower limb, except ankle and foot, initial encounter",burns
+T24.202A,"Burn of second degree of unspecified site of left lower limb, except ankle and foot, initial encounter",burns
+T25.121A,"Burn of first degree of right foot, initial encounter",burns
+T25.122A,"Burn of first degree of left foot, initial encounter",burns
+T25.221A,"Burn of second degree of right foot, initial encounter",burns
+T25.222A,"Burn of second degree of left foot, initial encounter",burns
+T30.0,"Burn of unspecified body region, unspecified degree",burns
+L55.1,Sunburn of second degree,burns
+T33.531A,"Superficial frostbite of right finger(s), initial encounter",exposure
+T33.532A,"Superficial frostbite of left finger(s), initial encounter",exposure
+T33.821A,"Superficial frostbite of right foot, initial encounter",exposure
+T33.822A,"Superficial frostbite of left foot, initial encounter",exposure
+T33.90XA,"Superficial frostbite of unspecified sites, initial encounter",exposure
+T34.90XA,"Frostbite with tissue necrosis of unspecified sites, initial encounter",exposure
+T69.021A,"Immersion foot, right foot, initial encounter",exposure
+T69.022A,"Immersion foot, left foot, initial encounter",exposure
+T69.1XXA,"Chilblains, initial encounter",exposure
+T68.XXXA,"Hypothermia, initial encounter",exposure
+T67.5XXA,"Heat exhaustion, unspecified, initial encounter",exposure
+T67.9XXA,"Effect of heat and light, unspecified, initial encounter",exposure
+X31.XXXA,"Exposure to excessive natural cold, initial encounter",exposure
+X30.XXXA,"Exposure to excessive natural heat, initial encounter",exposure
+W54.0XXA,"Bitten by dog, initial encounter",bites
+S61.451A,"Open bite of right hand, initial encounter",bites
+S61.452A,"Open bite of left hand, initial encounter",bites
+S81.851A,"Open bite, right lower leg, initial encounter",bites
+S81.852A,"Open bite, left lower leg, initial encounter",bites
+T63.441A,"Toxic effect of venom of bees, accidental (unintentional), initial encounter",bites
+L50.9,"Urticaria, unspecified",bites
+T78.40XA,"Allergy, unspecified, initial encounter",bites
+L03.011,Cellulitis of right finger,skin
+L03.012,Cellulitis of left finger,skin
+L03.113,Cellulitis of right upper limb,skin
+L03.114,Cellulitis of left upper limb,skin
+L03.115,Cellulitis of right lower limb,skin
+L03.116,Cellulitis of left lower limb,skin
+L03.211,Cellulitis of face,skin
+L03.317,Cellulitis of buttock,skin
+L03.90,"Cellulitis, unspecified",skin
+L02.212,"Cutaneous abscess of back [any part, except buttock and flank]",skin
+L02.31,Cutaneous abscess of buttock,skin
+L02.411,Cutaneous abscess of right axilla,skin
+L02.412,Cutaneous abscess of left axilla,skin
+L02.413,Cutaneous abscess of right upper limb,skin
+L02.414,Cutaneous abscess of left upper limb,skin
+L02.415,Cutaneous abscess of right lower limb,skin
+L02.416,Cutaneous abscess of left lower limb,skin
+L02.511,Cutaneous abscess of right hand,skin
+L02.512,Cutaneous abscess of left hand,skin
+L02.611,Cutaneous abscess of right foot,skin
+L02.612,Cutaneous abscess of left foot,skin
+L02.91,"Cutaneous abscess, unspecified",skin
+L02.01,Cutaneous abscess of face,skin
+L01.00,"Impetigo, unspecified",skin
+L08.9,"Local infection of the skin and subcutaneous tissue, unspecified",skin
+L30.9,"Dermatitis, unspecified",skin
+L29.9,"Pruritus, unspecified",skin
+L85.3,Xerosis cutis,skin
+L60.0,Ingrowing nail,skin
+R21,Rash and other nonspecific skin eruption,skin
+L89.151,"Pressure ulcer of sacral region, stage 1",skin
+L89.152,"Pressure ulcer of sacral region, stage 2",skin
+L89.153,"Pressure ulcer of sacral region, stage 3",skin
+L89.154,"Pressure ulcer of sacral region, stage 4",skin
+L97.911,Non-pressure chronic ulcer of unspecified part of right lower leg limited to breakdown of skin,skin
+L97.921,Non-pressure chronic ulcer of unspecified part of left lower leg limited to breakdown of skin,skin
+I87.2,Venous insufficiency (chronic) (peripheral),skin
+B86,Scabies,parasites
+B85.0,Pediculosis due to Pediculus humanus capitis,parasites
+B85.1,Pediculosis due to Pediculus humanus corporis,parasites
+B85.3,Phthiriasis,parasites
+B35.1,Tinea unguium,parasites
+B35.3,Tinea pedis,parasites
+B35.4,Tinea corporis,parasites
+B35.6,Tinea cruris,parasites
+B37.2,Candidiasis of skin and nail,parasites
+B37.0,Candidal stomatitis,parasites
+L84,Corns and callosities,foot
+M79.671,Pain in right foot,foot
+M79.672,Pain in left foot,foot
+L97.511,Non-pressure chronic ulcer of other part of right foot limited to breakdown of skin,foot
+L97.521,Non-pressure chronic ulcer of other part of left foot limited to breakdown of skin,foot
+E11.621,Type 2 diabetes mellitus with foot ulcer,foot
+J06.9,"Acute upper respiratory infection, unspecified",infections
+J02.9,"Acute pharyngitis, unspecified",infections
+J02.0,Streptococcal pharyngitis,infections
+J01.90,"Acute sinusitis, unspecified",infections
+J20.9,"Acute bronchitis, unspecified",infections
+J18.9,"Pneumonia, unspecified organism",infections
+J11.1,Influenza due to unidentified influenza virus with other respiratory manifestations,infections
+U07.1,COVID-19,infections
+A15.0,Tuberculosis of lung,infections
+Z22.7,Latent tuberculosis,infections
+B18.2,Chronic viral hepatitis C,infections
+B17.10,Acute hepatitis C without hepatic coma,infections
+Z21,Asymptomatic human immunodeficiency virus [HIV] infection status,infections
+B20,Human immunodeficiency virus [HIV] disease,infections
+N39.0,"Urinary tract infection, site not specified",infections
+H10.9,Unspecified conjunctivitis,infections
+H66.90,"Otitis media, unspecified, unspecified ear",infections
+A41.9,"Sepsis, unspecified organism",infections
+A09,"Infectious gastroenteritis and colitis, unspecified",infections
+A49.02,"Methicillin resistant Staphylococcus aureus infection, unspecified site",infections
+M86.9,"Osteomyelitis, unspecified",infections
+I33.0,Acute and subacute infective endocarditis,infections
+B02.9,Zoster without complications,infections
+A53.9,"Syphilis, unspecified",sexual_health
+A54.00,"Gonococcal infection of lower genitourinary tract, unspecified",sexual_health
+A56.00,"Chlamydial infection of lower genitourinary tract, unspecified",sexual_health
+A59.01,Trichomonal vulvovaginitis,sexual_health
+A60.00,"Herpesviral infection of urogenital system, unspecified",sexual_health
+A63.0,Anogenital (venereal) warts,sexual_health
+A64,Unspecified sexually transmitted disease,sexual_health
+N76.0,Acute vaginitis,sexual_health
+B37.31,Acute candidiasis of vulva and vagina,sexual_health
+Z11.3,Encounter for screening for infections with a predominantly sexual mode of transmission,sexual_health
+Z11.4,Encounter for screening for human immunodeficiency virus [HIV],sexual_health
+Z20.2,Contact with and (suspected) exposure to infections with a predominantly sexual mode of transmission,sexual_health
+J44.9,"Chronic obstructive pulmonary disease, unspecified",respiratory
+J44.1,Chronic obstructive pulmonary disease with (acute) exacerbation,respiratory
+J45.909,"Unspecified asthma, uncomplicated",respiratory
+J45.901,Unspecified asthma with (acute) exacerbation,respiratory
+J45.40,"Moderate persistent asthma, uncomplicated",respiratory
+J45.41,Moderate persistent asthma with (acute) exacerbation,respiratory
+J43.9,"Emphysema, unspecified",respiratory
+R06.02,Shortness of breath,respiratory
+R05.1,Acute cough,respiratory
+R05.3,Chronic cough,respiratory
+R04.2,Hemoptysis,respiratory
+R09.02,Hypoxemia,respiratory
+I10,Essential (primary) hypertension,cardiovascular
+I16.9,"Hypertensive crisis, unspecified",cardiovascular
+I16.0,Hypertensive urgency,cardiovascular
+I50.9,"Heart failure, unspecified",cardiovascular
+I25.10,Atherosclerotic heart disease of native coronary artery without angina pectoris,cardiovascular
+I21.9,"Acute myocardial infarction, unspecified",cardiovascular
+I48.91,Unspecified atrial fibrillation,cardiovascular
+I73.9,"Peripheral vascular disease, unspecified",cardiovascular
+I82.401,Acute embolism and thrombosis of unspecified deep veins of right lower extremity,cardiovascular
+I82.402,Acute embolism and thrombosis of unspecified deep veins of left lower extremity,cardiovascular
+I63.9,"Cerebral infarction, unspecified",cardiovascular
+G45.9,"Transient cerebral ischemic attack, unspecified",cardiovascular
+R03.0,"Elevated blood-pressure reading, without diagnosis of hypertension",cardiovascular
+R07.9,"Chest pain, unspecified",cardiovascular
+E11.9,Type 2 diabetes mellitus without complications,endocrine
+E11.65,Type 2 diabetes mellitus with hyperglycemia,endocrine
+E11.649,Type 2 diabetes mellitus with hypoglycemia without coma,endocrine
+E11.40,"Type 2 diabetes mellitus with diabetic neuropathy, unspecified",endocrine
+E11.22,Type 2 diabetes mellitus with diabetic chronic kidney disease,endocrine
+E10.9,Type 1 diabetes mellitus without complications,endocrine
+E10.10,Type 1 diabetes mellitus with ketoacidosis without coma,endocrine
+R73.03,Prediabetes,endocrine
+E16.2,"Hypoglycemia, unspecified",endocrine
+E78.5,"Hyperlipidemia, unspecified",endocrine
+E66.9,"Obesity, unspecified",endocrine
+E44.0,Moderate protein-calorie malnutrition,endocrine
+E46,Unspecified protein-calorie malnutrition,endocrine
+E51.2,Wernicke's encephalopathy,endocrine
+E86.0,Dehydration,endocrine
+E87.1,Hypo-osmolality and hyponatremia,endocrine
+E87.6,Hypokalemia,endocrine
+Z79.4,Long term (current) use of insulin,endocrine
+D64.9,"Anemia, unspecified",blood
+D50.9,"Iron deficiency anemia, unspecified",blood
+D51.9,"Vitamin B12 deficiency anemia, unspecified",blood
+D69.6,"Thrombocytopenia, unspecified",blood
+K21.9,Gastro-esophageal reflux disease without esophagitis,gastro
+K29.70,"Gastritis, unspecified, without bleeding",gastro
+K25.9,"Gastric ulcer, unspecified as acute or chronic, without hemorrhage or perforation",gastro
+K92.2,"Gastrointestinal hemorrhage, unspecified",gastro
+K92.0,Hematemesis,gastro
+K59.00,"Constipation, unspecified",gastro
+K64.9,Unspecified hemorrhoids,gastro
+K61.0,Anal abscess,gastro
+K70.30,Alcoholic cirrhosis of liver without ascites,gastro
+K70.31,Alcoholic cirrhosis of liver with ascites,gastro
+K70.10,Alcoholic hepatitis without ascites,gastro
+K74.60,Unspecified cirrhosis of liver,gastro
+K76.0,"Fatty (change of) liver, not elsewhere classified",gastro
+K85.20,Alcohol induced acute pancreatitis without necrosis or infection,gastro
+K86.0,Alcohol-induced chronic pancreatitis,gastro
+R10.9,Unspecified abdominal pain,gastro
+R10.13,Epigastric pain,gastro
+R11.2,"Nausea with vomiting, unspecified",gastro
+R19.7,"Diarrhea, unspecified",gastro
+R63.4,Abnormal weight loss,gastro
+N18.9,"Chronic kidney disease, unspecified",kidney
+N18.30,"Chronic kidney disease, stage 3 unspecified",kidney
+N17.9,"Acute kidney failure, unspecified",kidney
+N20.0,Calculus of kidney,kidney
+R31.9,"Hematuria, unspecified",kidney
+R32,Unspecified urinary incontinence,kidney
+R33.9,"Retention of urine, unspecified",kidney
+N40.1,Benign prostatic hyperplasia with lower urinary tract symptoms,kidney
+G40.909,"Epilepsy, unspecified, not intractable, without status epilepticus",neuro
+G40.919,"Epilepsy, unspecified, intractable, without status epilepticus",neuro
+R56.9,Unspecified convulsions,neuro
+G43.909,"Migraine, unspecified, not intractable, without status migrainosus",neuro
+R51.9,"Headache, unspecified",neuro
+G62.1,Alcoholic polyneuropathy,neuro
+G47.00,"Insomnia, unspecified",neuro
+G89.29,Other chronic pain,neuro
+G89.11,Acute pain due to trauma,neuro
+R20.2,Paresthesia of skin,neuro
+R42,Dizziness and giddiness,neuro
+R55,Syncope and collapse,neuro
+R41.82,"Altered mental status, unspecified",neuro
+R40.20,Unspecified coma,neuro
+R29.6,Repeated falls,neuro
+S06.9X0A,"Unspecified intracranial injury without loss of consciousness, initial encounter",neuro
+F07.81,Postconcussional syndrome,neuro
+M54.50,"Low back pain, unspecified",musculoskeletal
+M54.2,Cervicalgia,musculoskeletal
+M54.6,Pain in thoracic spine,musculoskeletal
+M54.40,"Lumbago with sciatica, unspecified side",musculoskeletal
+M25.561,Pain in right knee,musculoskeletal
+M25.562,Pain in left knee,musculoskeletal
+M25.511,Pain in right shoulder,musculoskeletal
+M25.512,Pain in left shoulder,musculoskeletal
+M25.571,Pain in right ankle and joints of right foot,musculoskeletal
+M25.572,Pain in left ankle and joints of left foot,musculoskeletal
+M79.604,Pain in right leg,musculoskeletal
+M79.605,Pain in left leg,musculoskeletal
+M79.641,Pain in right hand,musculoskeletal
+M79.642,Pain in left hand,musculoskeletal
+M19.90,"Unspecified osteoarthritis, unspecified site",musculoskeletal
+M10.9,"Gout, unspecified",musculoskeletal
+M62.82,Rhabdomyolysis,musculoskeletal
+Z89.511,Acquired absence of right leg below knee,musculoskeletal
+Z89.512,Acquired absence of left leg below knee,musculoskeletal
+Z99.3,Dependence on wheelchair,musculoskeletal
+F32.A,"Depression, unspecified",mental_health
+F32.9,"Major depressive disorder, single episode, unspecified",mental_health
+F33.9,"Major depressive disorder, recurrent, unspecified",mental_health
+F33.1,"Major depressive disorder, recurrent, moderate",mental_health
+F34.1,Dysthymic disorder,mental_health
+F41.9,"Anxiety disorder, unspecified",mental_health
+F41.1,Generalized anxiety disorder,mental_health
+F41.0,Panic disorder [episodic paroxysmal anxiety],mental_health
+F43.10,"Post-traumatic stress disorder, unspecified",mental_health
+F43.20,"Adjustment disorder, unspecified",mental_health
+F20.9,"Schizophrenia, unspecified",mental_health
+F25.9,"Schizoaffective disorder, unspecified",mental_health
+F29,Unspecified psychosis not due to a substance or known physiological condition,mental_health
+F31.9,"Bipolar disorder, unspecified",mental_health
+F31.81,Bipolar II disorder,mental_health
+F60.3,Borderline personality disorder,mental_health
+F90.9,"Attention-deficit hyperactivity disorder, unspecified type",mental_health
+F03.90,"Unspecified dementia, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety",mental_health
+F79,Unspecified intellectual disabilities,mental_health
+R45.851,Suicidal ideations,mental_health
+R45.88,Nonsuicidal self-harm,mental_health
+R44.0,Auditory hallucinations,mental_health
+T14.91XA,"Suicide attempt, initial encounter",mental_health
+Z91.51,Personal history of suicidal behavior,mental_health
+F10.10,"Alcohol abuse, uncomplicated",substance_use
+F10.20,"Alcohol dependence, uncomplicated",substance_use
+F10.21,"Alcohol dependence, in remission",substance_use
+F10.230,"Alcohol dependence with withdrawal, uncomplicated",substance_use
+F10.231,Alcohol dependence with withdrawal delirium,substance_use
+F10.239,"Alcohol dependence with withdrawal, unspecified",substance_use
+F11.10,"Opioid abuse, uncomplicated",substance_use
+F11.20,"Opioid dependence, uncomplicated",substance_use
+F11.21,"Opioid dependence, in remission",substance_use
+F11.23,Opioid dependence with withdrawal,substance_use
+F11.90,"Opioid use, unspecified, uncomplicated",substance_use
+F12.10,"Cannabis abuse, uncomplicated",substance_use
+F12.20,"Cannabis dependence, uncomplicated",substance_use
+F12.90,"Cannabis use, unspecified, uncomplicated",substance_use
+F13.20,"Sedative, hypnotic or anxiolytic dependence, uncomplicated",substance_use
+F13.239,"Sedative, hypnotic or anxiolytic dependence with withdrawal, unspecified",substance_use
+F14.10,"Cocaine abuse, uncomplicated",substance_use
+F14.20,"Cocaine dependence, uncomplicated",substance_use
+F14.23,Cocaine dependence with withdrawal,substance_use
+F15.10,"Other stimulant abuse, uncomplicated",substance_use
+F15.20,"Other stimulant dependence, uncomplicated",substance_use
+F15.23,Other stimulant dependence with withdrawal,substance_use
+F19.10,"Other psychoactive substance abuse, uncomplicated",substance_use
+F19.20,"Other psychoactive substance dependence, uncomplicated",substance_use
+F17.200,"Nicotine dependence, unspecified, uncomplicated",substance_use
+F17.210,"Nicotine dependence, cigarettes, uncomplicated",substance_use
+F17.290,"Nicotine dependence, other tobacco product, uncomplicated",substance_use
+Z72.0,Tobacco use,substance_use
+Z87.891,Personal history of nicotine dependence,substance_use
+Z71.41,Alcohol abuse counseling and surveillance of alcoholic,substance_use
+Z71.51,Drug abuse counseling and surveillance of drug abuser,substance_use
+Z79.891,Long term (current) use of opiate analgesic,substance_use
+T40.411A,"Poisoning by fentanyl or fentanyl analogs, accidental (unintentional), initial encounter",overdose
+T40.412A,"Poisoning by fentanyl or fentanyl analogs, intentional self-harm, initial encounter",overdose
+T40.414A,"Poisoning by fentanyl or fentanyl analogs, undetermined, initial encounter",overdose
+T40.1X1A,"Poisoning by heroin, accidental (unintentional), initial encounter",overdose
+T40.2X1A,"Poisoning by other opioids, accidental (unintentional), initial encounter",overdose
+T40.601A,"Poisoning by unspecified narcotics, accidental (unintentional), initial encounter",overdose
+T40.5X1A,"Poisoning by cocaine, accidental (unintentional), initial encounter",overdose
+T43.621A,"Poisoning by amphetamines, accidental (unintentional), initial encounter",overdose
+T42.4X1A,"Poisoning by benzodiazepines, accidental (unintentional), initial encounter",overdose
+T51.0X1A,"Toxic effect of ethanol, accidental (unintentional), initial encounter",overdose
+T39.1X1A,"Poisoning by 4-Aminophenol derivatives, accidental (unintentional), initial encounter",overdose
+T50.901A,"Poisoning by unspecified drugs, medicaments and biological substances, accidental (unintentional), initial encounter",overdose
+T50.902A,"Poisoning by unspecified drugs, medicaments and biological substances, intentional self-harm, initial encounter",overdose
+T58.01XA,"Toxic effect of carbon monoxide from motor vehicle exhaust, accidental (unintentional), initial encounter",overdose
+Z33.1,"Pregnant state, incidental",pregnancy
+Z32.01,"Encounter for pregnancy test, result positive",pregnancy
+Z32.02,"Encounter for pregnancy test, result negative",pregnancy
+Z34.90,"Encounter for supervision of normal pregnancy, unspecified, unspecified trimester",pregnancy
+O09.90,"Supervision of high risk pregnancy, unspecified, unspecified trimester",pregnancy
+O99.320,"Drug use complicating pregnancy, unspecified trimester",pregnancy
+O99.310,"Alcohol use complicating pregnancy, unspecified trimester",pregnancy
+O99.330,"Smoking (tobacco) complicating pregnancy, unspecified trimester",pregnancy
+O21.0,Mild hyperemesis gravidarum,pregnancy
+O20.0,Threatened abortion,pregnancy
+O20.9,"Hemorrhage in early pregnancy, unspecified",pregnancy
+O23.40,"Unspecified infection of urinary tract in pregnancy, unspecified trimester",pregnancy
+O24.419,"Gestational diabetes mellitus in pregnancy, unspecified control",pregnancy
+O13.9,"Gestational [pregnancy-induced] hypertension without significant proteinuria, unspecified trimester",pregnancy
+O14.90,"Unspecified pre-eclampsia, unspecified trimester",pregnancy
+O03.9,Complete or unspecified spontaneous abortion without complication,pregnancy
+O00.90,Unspecified ectopic pregnancy without intrauterine pregnancy,pregnancy
+Z39.2,Encounter for routine postpartum follow-up,pregnancy
+Z30.09,Encounter for other general counseling and advice on contraception,pregnancy
+Z30.011,Encounter for initial prescription of contraceptive pills,pregnancy
+Z30.013,Encounter for initial prescription of injectable contraceptive,pregnancy
+Z30.9,"Encounter for contraceptive management, unspecified",pregnancy
+N93.9,"Abnormal uterine and vaginal bleeding, unspecified",pregnancy
+N73.9,"Female pelvic inflammatory disease, unspecified",pregnancy
+K02.9,"Dental caries, unspecified",eye_ear_dental
+K04.7,Periapical abscess without sinus,eye_ear_dental
+K05.30,"Chronic periodontitis, unspecified",eye_ear_dental
+K08.109,"Complete loss of teeth, unspecified cause, unspecified class",eye_ear_dental
+K12.2,Cellulitis and abscess of mouth,eye_ear_dental
+S02.5XXA,"Fracture of tooth (traumatic), initial encounter for closed fracture",eye_ear_dental
+H54.7,Unspecified visual loss,eye_ear_dental
+T15.91XA,"Foreign body on external eye, part unspecified, right eye, initial encounter",eye_ear_dental
+T15.92XA,"Foreign body on external eye, part unspecified, left eye, initial encounter",eye_ear_dental
+S05.01XA,"Injury of conjunctiva and corneal abrasion without foreign body, right eye, initial encounter",eye_ear_dental
+S05.02XA,"Injury of conjunctiva and corneal abrasion without foreign body, left eye, initial encounter",eye_ear_dental
+H61.23,"Impacted cerumen, bilateral",eye_ear_dental
+H92.01,"Otalgia, right ear",eye_ear_dental
+H92.02,"Otalgia, left ear",eye_ear_dental
+R04.0,Epistaxis,eye_ear_dental
+R50.9,"Fever, unspecified",symptoms
+R53.83,Other fatigue,symptoms
+R53.81,Other malaise,symptoms
+R60.0,Localized edema,symptoms
+R60.9,"Edema, unspecified",symptoms
+R59.9,"Enlarged lymph nodes, unspecified",symptoms
+R64,Cachexia,symptoms
+R62.7,Adult failure to thrive,symptoms
+R47.81,Slurred speech,symptoms
+W19.XXXA,"Unspecified fall, initial encounter",symptoms
+Y04.0XXA,"Assault by unarmed brawl or fight, initial encounter",symptoms
+T74.11XA,"Adult physical abuse, confirmed, initial encounter",symptoms
+T76.11XA,"Adult physical abuse, suspected, initial encounter",symptoms
+T74.21XA,"Adult sexual abuse, confirmed, initial encounter",symptoms
+T76.21XA,"Adult sexual abuse, suspected, initial encounter",symptoms
+Z00.00,Encounter for general adult medical examination without abnormal findings,screening
+Z23,Encounter for immunization,screening
+Z11.1,Encounter for screening for respiratory tuberculosis,screening
+Z48.00,Encounter for change or removal of nonsurgical wound dressing,screening
+Z48.02,Encounter for removal of sutures,screening
+Z76.0,Encounter for issue of repeat prescription,screening
+Z79.01,Long term (current) use of anticoagulants,screening
+Z88.0,Allergy status to penicillin,screening
+Z91.010,Allergy to peanuts,screening
+Z91.040,Latex allergy status,screening
+Z99.81,Dependence on supplemental oxygen,screening
+Z99.2,Dependence on renal dialysis,screening
+Z59.01,Sheltered homelessness,social
+Z59.02,Unsheltered homelessness,social
+Z59.10,"Inadequate housing, unspecified",social
+Z59.811,"Housing instability, housed, with risk of homelessness",social
+Z59.41,Food insecurity,social
+Z59.5,Extreme poverty,social
+Z59.6,Low income,social
+Z59.11,Inadequate housing environmental temperature,social
+Z56.0,"Unemployment, unspecified",social
+Z60.2,Problems related to living alone,social
+Z65.1,Imprisonment and other incarceration,social
+Z65.2,Problems related to release from prison,social
+Z65.3,Problems related to other legal circumstances,social
+Z65.4,Victim of crime and terrorism,social
+Z75.3,Unavailability and inaccessibility of health-care facilities,social
+Z91.410,Personal history of adult physical and sexual abuse,social
+Z62.810,Personal history of physical and sexual abuse in childhood,social
+Z91.81,History of falling,social
