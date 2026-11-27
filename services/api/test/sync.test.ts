@@ -1,16 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { TeamScope } from '../src/auth/context.ts';
-import { PERMISSION_KEYS } from '../src/auth/permissions.ts';
-import { createDatabase, createSql } from '../src/db/database.ts';
+import type { TeamScope } from '../src/auth/context.ts';
 import { ApiError } from '../src/lib/errors.ts';
-import { silentLogger } from '../src/lib/log.ts';
 import { valueHash } from '../src/sync/canonical.ts';
 import { listDevices, MAX_PENDING_PER_PERSON } from '../src/sync/devices.ts';
 import { MAX_NOTE_FIELDS } from '../src/sync/records.ts';
 import { decideQuarantine, listQuarantine, QUARANTINE_PAGE_SIZE } from '../src/sync/review.ts';
-import type { Deps } from '../src/types.ts';
-import { createHarness, TEST_ISSUER, type Harness } from './harness.ts';
+import { bypassRowSecurity, type Bypass } from './bypass-scope.ts';
+import { createHarness, type Harness } from './harness.ts';
 import { createPatient } from './patient-fixtures.ts';
 import {
   addMember,
@@ -2261,7 +2258,7 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
     let theirs: Awaited<ReturnType<typeof secondTeam>>;
     let oursStaff: string;
     let theirsStaff: string;
-    let bypass: ReturnType<typeof createSql>;
+    let bypass: Bypass;
     let scope: TeamScope;
     /** Our team's held items, oldest first, and theirs, received between them. */
     let first: string;
@@ -2293,51 +2290,10 @@ describe('phase 2 sync: receipts, reconciliation, quarantine, devices', () => {
       first = await held(ours, at);
       theirItem = await held(theirs, new Date(at.getTime() + 1));
       last = await held(ours, new Date(at.getTime() + 2));
-      // The scratch database's owner, a superuser: no policy applies to it.
-      bypass = createSql(h.scratch.ownerUrl, { max: 2 });
-      const deps: Deps = {
-        config: h.config,
-        db: createDatabase(bypass),
-        verifier: { verify: () => Promise.reject(new Error('no token is verified here')) },
-        identityAdmin: h.identityAdmin,
-        log: silentLogger,
-        now: () => h.clock.now,
-      };
-      const admin = await idOf('riverside-admin@example.com');
-      scope = new TeamScope(
-        deps,
-        {
-          userId: admin,
-          email: 'riverside-admin@example.com',
-          displayName: 'Morgan (demo)',
-          isOwner: false,
-          token: {
-            issuer: TEST_ISSUER,
-            subject: 'bypass|riverside-admin@example.com',
-            email: 'riverside-admin@example.com',
-            emailVerified: true,
-            aal: 'aal2',
-            sessionId: null,
-            authTime: h.clock.now,
-            expiresAt: new Date(h.clock.now.getTime() + 3_600_000),
-          },
-        },
-        {
-          teamId: ours.teamId,
-          teamName: 'Riverside (demo)',
-          teamSettings: {},
-          membershipId: randomUUID(),
-          roleId: randomUUID(),
-          roleKey: 'program_admin',
-          roleName: 'Program Admin',
-          permissions: new Set(PERMISSION_KEYS),
-          credential: 'none',
-          credentialFields: {},
-        },
-        { requestId: 'bypass-test', ip: null, deviceId: null },
-      );
+      bypass = bypassRowSecurity(h);
+      scope = await bypass.scope(ours.teamId, 'riverside-admin@example.com');
     });
-    afterAll(() => bypass.end({ timeout: 5 }));
+    afterAll(() => bypass.end());
 
     /** The team's audit events of [action] since [since], their details. */
     const events = async (action: string, since: string) =>
