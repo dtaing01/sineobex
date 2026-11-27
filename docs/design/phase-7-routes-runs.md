@@ -22,6 +22,7 @@
 | The route cache: charts of a route's patients kept on the phone, with phase 4's timeline and last three visits | main 337, 533; D30, D67; lifecycle 5.2 |
 | The route lead's share of the 24-hour incomplete-note alert, and notes not complete in the report | main 99; lifecycle 3.9, 5.6 |
 | Phase 6's outing becomes part of a route: no outing without a route after this phase | phase 6 design 3, 4.1, risk 2 |
+| "Request supplies" beside a route's bag check result: the items and counts, naming no patient, sent to phase 6's Restock alerts page | main 366; phase 6 design 11 #31 (PL-34) |
 
 | Out | Who takes it | PRD |
 |---|---|---|
@@ -29,7 +30,7 @@
 | Volunteer roster, emailing volunteers, run sign-up; team chat | V2; chat is deferred past the MVP | main 360, 362, 745, 330 |
 | The continuity-of-care priority list and check-ins | Phase 9. Until then the builder ranks by flags, due follow-ups and missed runs | main 322; Build plan 113 |
 | Building a route on the phone | Not in the Build plan's phase 7. The lead adds stops on the phone; the builder is portal only | Build plan 102; main 941 |
-| "Request supplies", recounts, bag minimums | Phase 6 | main 366, 477 |
+| Recounts, bag minimums | Phase 6 | main 477 |
 | A real push provider; a push for an overdue note or for tasks due | Waits for accounts, and for a scheduled job that does not exist (phase 6 design 7, 9). The sentences are in phase 6's list | main 746 |
 | Home's recent patient activity and team members active | Not placed in a phase yet (PLAN-OPEN, section 11) | main 744 |
 
@@ -100,7 +101,7 @@ Three migrations, each the next free number, each **level X**: every table gets 
 | `.planned_bundle_ids`, `.note` | uuid[], text null at most 200 | Planned order sets (main 331); a planner's note ("size 9 sneakers", main 366) |
 | `.holds_patient` | boolean | True while the stop is active, not on-the-fly, and its route is `assigned` or `confirmed`. Partial unique index (`team_id`, `patient_id`) where true: one active route per patient (main 340) |
 
-**The outing, absorbed** (phase 6 design 4.1, risk 2). The same migration (1) gives every `bag_outings` row that has no `route_id` a run and a route: the outing's name (or "Bags out") and date, its lead as lead and only member, status `completed` when the outing is ended and `assigned` otherwise; (2) sets `route_id` not null, adds the composite foreign key to `routes` and a unique index on it. From then on a route has exactly one outing, made with the route (bags or none), and an outing has exactly one route. `bag_outings.service_date`, `.lead_user_id`, `.name` and `.ended_at` are copies that only section 5's writer sets, in the transaction that changes the route; a schema test compares them. `bag_outing_bags` keeps phase 6's rule of one route a day per bag. Orders, stock alerts and held pushes keep pointing at the outing, so nothing of phase 6's is rewritten.
+**The outing, absorbed** (phase 6 design 4.1, risk 2). The same migration (1) gives every `bag_outings` row that has no `route_id` a run and a route: the outing's name (or "Bags out") and date, its lead as lead, and as members the people phase 6 stored on it (`bag_outing_members`, phase 6 design 4.1), status `completed` when the outing is ended and `assigned` otherwise; (2) sets `route_id` not null, adds the composite foreign key to `routes` and a unique index on it. From then on a route has exactly one outing, made with the route (bags or none), and an outing has exactly one route. `bag_outings.service_date`, `.lead_user_id`, `.name` and `.ended_at` are copies that only section 5's writer sets, in the transaction that changes the route; a schema test compares them. `bag_outing_bags` keeps phase 6's rule of one route a day per bag. Orders, stock alerts and held pushes keep pointing at the outing, so nothing of phase 6's is rewritten.
 
 `routes`, `route_stops` and the outing are written only by section 5's writer; a schema test replays each route's events and compares.
 
